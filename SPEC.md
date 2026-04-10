@@ -226,7 +226,7 @@ MCP is the sole mechanism for extending agent capabilities. Built-in tools cover
 
 ### ToolLoopAgent
 
-The ToolLoopAgent is the AI execution engine that processes a single Todoist task to completion. It drives an iterative tool-calling loop against the configured AI provider until the task is done, the maximum step limit is reached, or an unrecoverable error occurs.
+The ToolLoopAgent is the AI execution engine that processes a single Todoist task to completion. It is intentionally minimal: a single tool-calling loop against the configured AI provider, with no orchestration layers, planning steps, or internal retry logic beyond what the loop itself provides. The loop runs until the task is done, the maximum step limit is reached, or an error occurs.
 
 **Role contract:**
 
