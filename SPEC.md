@@ -270,12 +270,12 @@ The Main Agent assembles two prompts before invoking the AI SDK tool loop.
 
 | Prompt | Assembly | Content |
 |--------|----------|---------|
-| System prompt | Dynamic, per execution | Goal setting (complete the task, report progress) + available tools description (built-in and MCP tool names and capabilities) |
+| System prompt | Dynamic, assembled per execution | Goal setting (complete the task, report progress) + available tools description (names and capabilities of built-in and MCP tools) |
 | User prompt | Fixed template | Task context: id, title, description, current section, and comment history from prior executions |
 
 **Prompt rules:**
 
-- The system prompt is assembled at each task execution. It describes the agent's goal and lists all available tools so the model knows what actions it can take.
+- The system prompt is assembled at each task execution. It describes the agent's goal and lists available tools (names and capabilities) so the model understands what actions it can take. Tool definitions for function calling are provided separately via AI SDK's tools parameter; the system prompt provides the human-readable context that guides tool usage.
 - The user prompt uses a fixed template to present Todoist task content in a structured format. It includes the task's comment history to provide execution context — this allows the agent to understand prior progress and avoid repeating work.
 - Comments are retrieved via the built-in Get Comments tool before prompt assembly.
 
