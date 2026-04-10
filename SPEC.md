@@ -195,7 +195,7 @@ Shrimp is a single-process service composed of four collaborating components. ts
 |---------|------|
 | Hono | HTTP framework; defines routes and response contracts |
 | tsyringe | Dependency injection container; wires all components at startup |
-| AI SDK | Abstraction over AI provider APIs; drives the ToolLoopAgent execution loop |
+| AI SDK | Abstraction over AI provider APIs; drives the AI Agent execution loop |
 | MCP (Model Context Protocol) | Extension mechanism; all agent tools are MCP tools |
 | dotenv | Loads environment variables (API keys, board ID) from `.env` in development |
 | tsdown | Bundles the application for production deployment |
@@ -209,7 +209,7 @@ POST /heartbeat
   → Hono route handler
   → Task Queue (enqueue; drop if busy)
     → Queue worker: select task via MCP Todoist tools
-    → AI Agent (ToolLoopAgent): execute task via MCP tools in a loop
+    → AI Agent: execute task via MCP tools in a loop
       → MCP Todoist tools: post comment, move task to Done
     → Queue worker: release slot
 ```
