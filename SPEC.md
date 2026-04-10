@@ -70,7 +70,7 @@ Enqueues one task-processing cycle in the background.
 **Behavior rules:**
 
 - Returns immediately after enqueuing; does not wait for task processing to complete.
-- The background worker selects at most one task: an In Progress task takes priority over a Backlog task.
+- The queue worker selects at most one task: an In Progress task takes priority over a Backlog task.
 - If no actionable task is found, the enqueued cycle completes silently with no side effects.
 - Task progress reporting and status updates happen asynchronously via the background queue.
 
@@ -84,6 +84,26 @@ Serializes task processing to ensure only one task runs at a time.
 - Processing sequence per job: select task → execute via AI Agent → report progress → update status.
 - The queue lives in process memory. On container restart, any in-flight work is lost; Todoist remains the source of truth and the task will be picked up again on the next heartbeat.
 - No retry logic inside the queue. If the AI Agent fails, the task stays in its current Todoist state and will be retried on the next heartbeat cycle.
+
+### Event-Driven Trigger Flow
+
+End-to-end sequence from external trigger to task completion. Each step references the component that owns the detail.
+
+| Step | Actor | Action | Outcome |
+|------|-------|--------|---------|
+| 1 | External caller | `POST /heartbeat` | Request accepted; see [`POST /heartbeat`](#post-heartbeat) for response rules |
+| 2 | Heartbeat handler | Enqueue a processing job | If queue slot is free, job is accepted; if busy, job is silently dropped; see [In-Memory Task Queue](#in-memory-task-queue) |
+| 3 | Queue worker | Select one task | Check for an In Progress task first; if none, take the oldest Backlog task; if no actionable task exists, cycle ends with no side effects |
+| 4 | Queue worker | Delegate task to AI Agent | Agent receives the selected task and executes via MCP tools until the task is complete or no further progress is possible |
+| 5 | AI Agent | Report progress | Agent posts a comment on the Todoist task with current status |
+| 6 | AI Agent | Update task status | If task is complete, agent marks it Done in Todoist; otherwise task remains in its current state for the next heartbeat cycle |
+| 7 | Queue worker | Release queue slot | Processing job is removed; queue is ready to accept the next heartbeat |
+
+**Flow invariants:**
+
+- Only one job occupies the queue at any time; step 2 enforces mutual exclusion.
+- Steps 3–7 run entirely in the background; the external caller at step 1 never waits for them.
+- A task not completed in one cycle is retried naturally when the next heartbeat triggers step 3 again.
 
 ### `GET /health`
 
