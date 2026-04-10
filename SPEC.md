@@ -74,7 +74,7 @@ Enqueues one task-processing cycle in the background.
 - Always returns `202 Accepted` immediately, regardless of whether the background cycle was enqueued or dropped. The caller cannot distinguish the two cases; this is intentional fire-and-forget semantics.
 - Returns immediately after enqueuing; does not wait for task processing to complete.
 - The queue worker selects at most one task: an In Progress task takes priority over a Backlog task.
-- If no actionable task is found, the enqueued cycle completes silently with no side effects.
+- If no actionable task is found, the cycle ends immediately with no side effects. The AI Agent is not invoked.
 - Task progress reporting and status updates happen asynchronously via the background queue.
 
 ### In-Memory Task Queue
@@ -98,7 +98,7 @@ End-to-end sequence from external trigger to task completion. Each step referenc
 |------|-------|--------|---------|
 | 1 | External caller | `POST /heartbeat` | Request accepted; see [`POST /heartbeat`](#post-heartbeat) for response rules |
 | 2 | Heartbeat handler | Enqueue a processing job | If queue slot is free, job is accepted; if busy, job is silently dropped; see [In-Memory Task Queue](#in-memory-task-queue) |
-| 3 | Queue worker | Select one task | Check for an In Progress task first; if none, take one Backlog task; if no actionable task exists, cycle ends with no side effects |
+| 3 | Queue worker | Select one task | Check for an In Progress task first; if none, take one Backlog task; if no actionable task exists, cycle ends immediately — AI Agent is not invoked |
 | 4 | Queue worker | Delegate task to AI Agent | Agent receives the selected task and executes via MCP tools until the task is complete or no further progress is possible |
 | 5 | AI Agent | Report progress | Agent posts a comment on the Todoist task with current status |
 | 6 | AI Agent | Update task status | If task is complete, agent marks it Done in Todoist; otherwise task remains in its current state for the next heartbeat cycle |
@@ -128,7 +128,7 @@ Shrimp reads from and writes to a single designated Todoist project configured a
 1. Query the Board for tasks in the In Progress section.
 2. If one or more In Progress tasks exist, select the one with the earliest position in the section (Todoist's natural ordering).
 3. If no In Progress tasks exist, query the Backlog section and select one task.
-4. If both sections are empty, no task is selected and the cycle ends silently.
+4. If both sections are empty, no task is selected; the cycle ends immediately and the AI Agent is not invoked.
 
 **Backlog task promotion:**
 
