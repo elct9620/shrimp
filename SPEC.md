@@ -50,3 +50,41 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Multi-Board or multi-account support | Single configured board per instance |
 | Web UI or dashboard | No user-facing interface beyond the two API endpoints |
 | Authentication / multi-tenancy | Single-instance deployment; no user accounts |
+
+## Behavior
+
+### `POST /heartbeat`
+
+Triggers one task-processing cycle.
+
+**Request:** no body required.
+
+**Response:**
+
+| Scenario | Status | Body |
+|----------|--------|------|
+| Task selected and executed | `200 OK` | `{ "task_id": "<id>", "status": "completed" \| "in_progress" }` |
+| No actionable task found | `200 OK` | `{ "task_id": null, "status": "idle" }` |
+| Processing error | `500 Internal Server Error` | `{ "error": "<message>" }` |
+
+**Behavior rules:**
+
+- Selects at most one task per call: an In Progress task takes priority over a Backlog task.
+- Runs the AI Agent synchronously; returns only after the agent has finished or failed.
+- On completion, the task's Todoist status is updated and a comment is posted before the response is returned.
+
+### `GET /health`
+
+Liveness check used by Docker `HEALTHCHECK`.
+
+**Request:** no body or parameters.
+
+**Response:**
+
+| Scenario | Status | Body |
+|----------|--------|------|
+| Service is running | `200 OK` | `{ "status": "ok" }` |
+
+**Behavior rules:**
+
+- Always returns `200` as long as the process is alive; no dependency checks performed.
