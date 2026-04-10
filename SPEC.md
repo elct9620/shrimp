@@ -108,6 +108,7 @@ End-to-end sequence from external trigger to task completion. Each step referenc
 - Only one job occupies the queue at any time; step 2 enforces mutual exclusion.
 - Steps 3–7 run entirely in the background; the external caller at step 1 never waits for them.
 - A task not completed in one cycle is retried naturally when the next heartbeat triggers step 3 again.
+- The queue slot (step 7) is released regardless of whether steps 4–6 succeed or fail; no failure path can leave the slot occupied.
 
 ### Todoist Integration
 
