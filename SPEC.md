@@ -93,7 +93,7 @@ End-to-end sequence from external trigger to task completion. Each step referenc
 |------|-------|--------|---------|
 | 1 | External caller | `POST /heartbeat` | Request accepted; see [`POST /heartbeat`](#post-heartbeat) for response rules |
 | 2 | Heartbeat handler | Enqueue a processing job | If queue slot is free, job is accepted; if busy, job is silently dropped; see [In-Memory Task Queue](#in-memory-task-queue) |
-| 3 | Queue worker | Select one task | Check for an In Progress task first; if none, take the oldest Backlog task; if no actionable task exists, cycle ends with no side effects |
+| 3 | Queue worker | Select one task | Check for an In Progress task first; if none, take one Backlog task; if no actionable task exists, cycle ends with no side effects |
 | 4 | Queue worker | Delegate task to AI Agent | Agent receives the selected task and executes via MCP tools until the task is complete or no further progress is possible |
 | 5 | AI Agent | Report progress | Agent posts a comment on the Todoist task with current status |
 | 6 | AI Agent | Update task status | If task is complete, agent marks it Done in Todoist; otherwise task remains in its current state for the next heartbeat cycle |
@@ -104,6 +104,39 @@ End-to-end sequence from external trigger to task completion. Each step referenc
 - Only one job occupies the queue at any time; step 2 enforces mutual exclusion.
 - Steps 3–7 run entirely in the background; the external caller at step 1 never waits for them.
 - A task not completed in one cycle is retried naturally when the next heartbeat triggers step 3 again.
+
+### Todoist Integration
+
+Shrimp reads from and writes to a single designated Todoist project configured as a Kanban board (the "Board"). Sections on the Board represent task statuses.
+
+**Section-to-status mapping:**
+
+| Todoist Section | Status Meaning |
+|-----------------|---------------|
+| Backlog | Task is queued, not yet started |
+| In Progress | Task has been picked up and is being worked on |
+| Done | Task is complete; no further action taken |
+
+**Task selection rules:**
+
+1. Query the Board for tasks in the In Progress section.
+2. If one or more In Progress tasks exist, select one.
+3. If no In Progress tasks exist, query the Backlog section and select one task.
+4. If both sections are empty, no task is selected and the cycle ends silently.
+
+**Progress reporting:**
+
+- After each execution attempt, the AI Agent posts a comment on the selected Todoist task summarizing what was done and what remains.
+- The comment is always posted, whether the task completed or not.
+
+**Task completion:**
+
+- When the AI Agent determines the task is done, it moves the task to the Done section.
+- Shrimp does not delete tasks; it only moves them to Done.
+
+**Source of truth:**
+
+- Todoist is the authoritative state of all tasks. The in-memory queue holds a reference to the selected task ID only; on restart, the next heartbeat re-reads Todoist to select the current task.
 
 ### `GET /health`
 
