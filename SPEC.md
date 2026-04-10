@@ -122,9 +122,17 @@ Shrimp reads from and writes to a single designated Todoist project configured a
 **Task selection rules:**
 
 1. Query the Board for tasks in the In Progress section.
-2. If one or more In Progress tasks exist, select one.
+2. If one or more In Progress tasks exist, select the one with the earliest position in the section (Todoist's natural ordering).
 3. If no In Progress tasks exist, query the Backlog section and select one task.
 4. If both sections are empty, no task is selected and the cycle ends silently.
+
+**Backlog task promotion:**
+
+- When a Backlog task is selected, it is moved to In Progress before execution begins.
+
+**API failure handling:**
+
+- If any Todoist API call fails during a cycle, the task remains in its current section; the queue slot is released and the task is retried on the next heartbeat.
 
 **Progress reporting:**
 
@@ -138,7 +146,7 @@ Shrimp reads from and writes to a single designated Todoist project configured a
 
 **Source of truth:**
 
-- Todoist is the authoritative state of all tasks. The in-memory queue holds a reference to the selected task ID only; on restart, the next heartbeat re-reads Todoist to select the current task.
+- Todoist is the authoritative state of all tasks. On restart, the next heartbeat re-reads Todoist to determine the current task.
 
 ### `GET /health`
 
@@ -186,8 +194,6 @@ Shrimp is a single-process service composed of four collaborating components. ts
 | AI SDK | Abstraction over AI provider APIs; drives the ToolLoopAgent execution loop |
 | MCP (Model Context Protocol) | Extension mechanism; all agent tools are MCP tools |
 | dotenv | Loads runtime configuration (API keys, board ID) from environment |
-| tsdown | Bundles the service for production deployment |
-| vitest | Test runner |
 
 ### Request Flow
 
@@ -207,11 +213,16 @@ POST /heartbeat
 
 ### Extension Model
 
-MCP is the sole mechanism for extending agent capabilities. Built-in tools cover Todoist task selection, comment posting, and status updates. Additional tools (file access, web search, code execution) are added by registering new MCP servers; no changes to the agent or queue are required.
+MCP is the sole mechanism for extending agent capabilities. Built-in tools cover Todoist task selection, comment posting, and status updates. Additional tools (file access, web search, code execution) are added by registering new MCP servers; no changes to the agent or queue are required. MCP servers are registered via the `MCP_CONFIG` environment variable at startup.
+
+### Failure Handling
+
+- **MCP server connection failure at startup**: fail fast — process exits.
+- **Runtime AI/MCP failure during task processing**: queue worker releases slot; task stays in its current Todoist state.
 
 ### ToolLoopAgent
 
-The ToolLoopAgent is the AI execution engine that processes a single Todoist task to completion. It uses the AI SDK's tool-calling loop: given a prompt, the model generates text or tool calls; the agent executes each tool call and feeds results back to the model; the loop continues until the model produces a final response with no pending tool calls or an explicit stop condition is reached.
+The ToolLoopAgent is the AI execution engine that processes a single Todoist task to completion. It drives an iterative tool-calling loop against the configured AI provider until the task is done, the maximum step limit is reached, or an unrecoverable error occurs.
 
 **Role contract:**
 
@@ -219,8 +230,10 @@ The ToolLoopAgent is the AI execution engine that processes a single Todoist tas
 |----------|-------------|
 | Input | A Todoist task (id, title, description, current section) |
 | Output | Execution complete; progress comment posted; task moved to Done if finished |
-| Termination | Model emits a final text response with no tool calls, or maximum steps reached |
-| Failure | On unrecoverable error, the task remains in its current Todoist state; no partial state is written |
+| Completion | The agent determines task completion when the model invokes the Move Task tool to move the task to Done. If the model's final response contains no tool calls and the task was not moved to Done, the task is considered incomplete. |
+| Maximum steps | Configurable via `AI_MAX_STEPS` environment variable (default: a sensible built-in limit). When reached: post a progress comment indicating incomplete execution, leave task in current section, return control to queue. |
+| Unrecoverable error | Any error that prevents the tool loop from continuing (provider error, tool execution exception) halts the loop. |
+| Failure | On failure, the task section is not moved; comments already posted remain in Todoist. The task stays in its current section for retry on the next heartbeat. |
 
 **Provider abstraction:**
 
@@ -238,13 +251,11 @@ The agent uses AI SDK's provider interface. Any OpenAI-compatible endpoint is th
 | Step | Actor | Action |
 |------|-------|--------|
 | 1 | Queue worker | Passes task to ToolLoopAgent |
-| 2 | ToolLoopAgent | Constructs prompt from task id, title, description, and current section |
-| 3 | ToolLoopAgent | Invokes the AI SDK tool loop with the assembled prompt and the MCP tool set |
-| 4 | AI SDK | Sends prompt to configured provider; receives model response |
-| 5 | AI SDK / ToolLoopAgent | If response contains tool calls, executes each via MCP and loops back to step 4 with results |
-| 6 | ToolLoopAgent | When model produces a final response, posts a progress comment via MCP Todoist tool |
-| 7 | ToolLoopAgent | If task is complete, moves task to Done via MCP Todoist tool; otherwise leaves it in current section |
-| 8 | Queue worker | Receives control back; releases queue slot |
+| 2 | ToolLoopAgent | If task is in Backlog, move to In Progress via MCP Move Task tool |
+| 3 | ToolLoopAgent | Constructs prompt from task id, title, description, and current section |
+| 4 | ToolLoopAgent | Invokes the AI SDK tool loop with the assembled prompt and the MCP tool set; loop continues until done, max steps reached, or unrecoverable error |
+| 5 | ToolLoopAgent | Posts a progress comment via MCP Todoist tool; if task is complete (moved to Done by model), leaves it in Done; otherwise leaves it in current section |
+| 6 | Queue worker | Receives control back; releases queue slot |
 
 **MCP tool integration:**
 
@@ -269,6 +280,7 @@ All runtime configuration is supplied through environment variables. No configur
 | `AI_PROVIDER_ENDPOINT` | Base URL of the OpenAI-compatible AI provider | Yes |
 | `AI_PROVIDER_API_KEY` | API key for the AI provider | Yes |
 | `AI_MODEL` | Model identifier to use (e.g., `gpt-4o`) | Yes |
+| `AI_MAX_STEPS` | Maximum tool-loop steps per task execution | No (default: built-in sensible limit) |
 | `TODOIST_API_TOKEN` | Todoist personal API token | Yes |
 | `TODOIST_PROJECT_ID` | ID of the Todoist project used as the Board | Yes |
 | `MCP_CONFIG` | JSON-encoded array of MCP server definitions to connect at startup; each entry specifies `name`, `command`, and `args` | Yes |
