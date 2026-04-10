@@ -83,7 +83,9 @@ Serializes task processing to ensure only one task runs at a time.
 **Behavior rules:**
 
 - The queue holds at most one pending job. If a heartbeat arrives while a task is already being processed, the new request is silently dropped (no error, no queuing).
+- The slot is occupied from the moment a job is accepted until the queue worker releases it after processing completes or fails. Any heartbeat arriving during this window is dropped.
 - Processing sequence per job: select task → execute via AI Agent → report progress → update status.
+- If any step in the processing sequence fails, the queue slot is released and the task remains in its current Todoist state.
 - The queue lives in process memory. On container restart, any in-flight work is lost; Todoist remains the source of truth and the task will be picked up again on the next heartbeat.
 - No retry logic inside the queue. If the AI Agent fails, the task stays in its current Todoist state and will be retried on the next heartbeat cycle.
 
@@ -194,6 +196,7 @@ Shrimp is a single-process service composed of four collaborating components. ts
 | AI SDK | Abstraction over AI provider APIs; drives the ToolLoopAgent execution loop |
 | MCP (Model Context Protocol) | Extension mechanism; all agent tools are MCP tools |
 | dotenv | Loads runtime configuration (API keys, board ID) from environment |
+| tsdown | Bundles the application for production deployment |
 
 ### Request Flow
 
@@ -230,9 +233,9 @@ The ToolLoopAgent is the AI execution engine that processes a single Todoist tas
 |----------|-------------|
 | Input | A Todoist task (id, title, description, current section) |
 | Output | Execution complete; progress comment posted; task moved to Done if finished |
-| Completion | The agent determines task completion when the model invokes the Move Task tool to move the task to Done. If the model's final response contains no tool calls and the task was not moved to Done, the task is considered incomplete. |
+| Completion | The agent determines task completion when the model invokes the Move Task tool to move the task to Done. If the model's final response contains no tool calls and the task was not moved to Done, the task is considered incomplete. If the loop terminates for any reason and the task has not been moved to Done, the task is considered incomplete. |
 | Maximum steps | Configurable via `AI_MAX_STEPS` environment variable (default: `50`). When reached: post a progress comment indicating incomplete execution, leave task in current section, return control to queue. |
-| Unrecoverable error | Any non-retryable error — authentication failure, invalid tool schema, or an error where retrying would produce the same result — halts the loop immediately. Transient errors (network timeout, rate limit) are not distinguished; all errors halt the loop and the task is retried at the queue level on the next heartbeat. |
+| Error | Any error during the tool loop halts the loop immediately. The task stays in its current section; the queue retries on the next heartbeat. |
 | Failure | On failure, the task section is not moved; comments already posted remain in Todoist. The task stays in its current section for retry on the next heartbeat. |
 
 **Provider abstraction:**
@@ -259,7 +262,7 @@ The agent uses AI SDK's provider interface. Any OpenAI-compatible endpoint is th
 
 **MCP tool integration:**
 
-All tools available to the agent are discovered from registered MCP servers at agent startup. The agent does not hard-code any tool name or behavior. Built-in MCP tools cover the minimum required capabilities:
+All tools available to the agent are discovered from registered MCP servers at process startup. The agent does not hard-code any tool name or behavior. Built-in MCP tools cover the minimum required capabilities:
 
 | Built-in Tool | Purpose |
 |---------------|---------|
@@ -289,8 +292,9 @@ All runtime configuration is supplied through environment variables. No configur
 **Rules:**
 
 - Missing required variables cause the process to fail at startup; no partial startup allowed.
-- `MCP_CONFIG` defines which MCP servers are available to the agent; an empty array means the agent has no tools.
+- `MCP_CONFIG` defines which MCP servers are available to the agent; an empty array means the agent has no supplementary tools.
 - Each `MCP_CONFIG` entry must have: `name` (string identifier), `command` (executable to launch), `args` (array of string arguments).
+- The built-in Todoist tools (Get tasks, Post comment, Move task) are provided by an internal MCP server that is always registered regardless of `MCP_CONFIG`. `MCP_CONFIG` adds supplementary tools only.
 
 ### Docker Deployment
 
@@ -301,12 +305,13 @@ Shrimp runs as a single container. There is no multi-instance or multi-tenant de
 | Deployment unit | Single Docker container |
 | Health check | `GET /health` — returns `200 OK` while the process is alive |
 | Build tool | `tsdown` bundles the application before the Docker image is built |
-| Environment injection | All variables passed via `docker run --env` or an `.env` file mounted at runtime |
+| Environment injection | All variables passed via `docker run --env` or `--env-file` |
 
 **Container invariants:**
 
 - One container, one Todoist Board, one AI provider.
 - Container restart causes in-flight task work to be lost; Todoist remains the source of truth and the task is retried on the next heartbeat.
+- In Docker deployments, `dotenv` is not active; all variables are supplied via Docker's env injection mechanisms.
 
 ### Development Setup
 
