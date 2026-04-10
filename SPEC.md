@@ -255,3 +255,57 @@ All tools available to the agent are discovered from registered MCP servers at a
 | Move task | Change a task's section (e.g., Backlog → In Progress → Done) |
 
 Additional tools are available if extra MCP servers are registered; the agent's behavior expands automatically without code changes.
+
+## Deployment & Configuration
+
+### Environment Variables
+
+All runtime configuration is supplied through environment variables. No configuration files beyond `.env` are used.
+
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `AI_PROVIDER_ENDPOINT` | Base URL of the OpenAI-compatible AI provider | Yes |
+| `AI_PROVIDER_API_KEY` | API key for the AI provider | Yes |
+| `AI_MODEL` | Model identifier to use (e.g., `gpt-4o`) | Yes |
+| `TODOIST_API_TOKEN` | Todoist personal API token | Yes |
+| `TODOIST_PROJECT_ID` | ID of the Todoist project used as the Board | Yes |
+| `MCP_CONFIG` | JSON-encoded array of MCP server definitions to connect at startup; each entry specifies `name`, `command`, and `args` | Yes |
+| `PORT` | HTTP port the service listens on | No (default: `3000`) |
+
+**Rules:**
+
+- Missing required variables cause the process to fail at startup; no partial startup allowed.
+- `MCP_CONFIG` defines which MCP servers are available to the agent; an empty array means the agent has no tools.
+- Each `MCP_CONFIG` entry must have: `name` (string identifier), `command` (executable to launch), `args` (array of string arguments).
+
+### Docker Deployment
+
+Shrimp runs as a single container. There is no multi-instance or multi-tenant deployment.
+
+| Aspect | Value |
+|--------|-------|
+| Deployment unit | Single Docker container |
+| Health check | `GET /health` — returns `200 OK` while the process is alive |
+| Build tool | `tsdown` bundles the application before the Docker image is built |
+| Environment injection | All variables passed via `docker run --env` or an `.env` file mounted at runtime |
+
+**Container invariants:**
+
+- One container, one Todoist Board, one AI provider.
+- Container restart causes in-flight task work to be lost; Todoist remains the source of truth and the task is retried on the next heartbeat.
+
+### Development Setup
+
+For local development, configuration is loaded from a `.env` file in the project root via `dotenv`.
+
+| Tool | Role |
+|------|------|
+| `.env` | Supplies all environment variables locally; not committed to source control |
+| `dotenv` | Loads `.env` at process startup in non-production environments |
+| `vitest` | Test runner for unit and integration tests |
+| `tsdown` | Bundles the application for production |
+
+**Development rules:**
+
+- `.env` is the only local configuration mechanism; no other config files are read.
+- Tests must not depend on live external services (Todoist API, AI provider); use mocks or stubs.
