@@ -206,3 +206,52 @@ POST /heartbeat
 ### Extension Model
 
 MCP is the sole mechanism for extending agent capabilities. Built-in tools cover Todoist task selection, comment posting, and status updates. Additional tools (file access, web search, code execution) are added by registering new MCP servers; no changes to the agent or queue are required.
+
+### ToolLoopAgent
+
+The ToolLoopAgent is the AI execution engine that processes a single Todoist task to completion. It uses the AI SDK's tool-calling loop: given a prompt, the model generates text or tool calls; the agent executes each tool call and feeds results back to the model; the loop continues until the model produces a final response with no pending tool calls or an explicit stop condition is reached.
+
+**Role contract:**
+
+| Contract | Description |
+|----------|-------------|
+| Input | A Todoist task (id, title, description, current section) |
+| Output | Execution complete; progress comment posted; task moved to Done if finished |
+| Termination | Model emits a final text response with no tool calls, or maximum steps reached |
+| Failure | On unrecoverable error, the task remains in its current Todoist state; no partial state is written |
+
+**Provider abstraction:**
+
+The agent uses AI SDK's provider interface. Any OpenAI-compatible endpoint is the default; a different provider is selected by changing the configured provider identifier and credentials. The agent has no knowledge of which provider is active — it calls AI SDK, and AI SDK calls the provider.
+
+| Dimension | Inside the agent | Outside the agent |
+|-----------|-----------------|------------------|
+| Model selection | No — reads from configuration | Provider endpoint and model name are environment configuration |
+| Prompt construction | Yes — assembles task context into the system and user prompts | Task content originates in Todoist |
+| Tool execution | Yes — invokes MCP tool calls returned by the model | Tool implementations live in MCP servers |
+| Result interpretation | Yes — decides whether the task is done based on model output | Model judgment drives the decision |
+
+**Execution lifecycle per task:**
+
+| Step | Actor | Action |
+|------|-------|--------|
+| 1 | Queue worker | Passes task to ToolLoopAgent |
+| 2 | ToolLoopAgent | Constructs prompt from task id, title, description, and current section |
+| 3 | ToolLoopAgent | Invokes the AI SDK tool loop with the assembled prompt and the MCP tool set |
+| 4 | AI SDK | Sends prompt to configured provider; receives model response |
+| 5 | AI SDK / ToolLoopAgent | If response contains tool calls, executes each via MCP and loops back to step 4 with results |
+| 6 | ToolLoopAgent | When model produces a final response, posts a progress comment via MCP Todoist tool |
+| 7 | ToolLoopAgent | If task is complete, moves task to Done via MCP Todoist tool; otherwise leaves it in current section |
+| 8 | Queue worker | Receives control back; releases queue slot |
+
+**MCP tool integration:**
+
+All tools available to the agent are discovered from registered MCP servers at agent startup. The agent does not hard-code any tool name or behavior. Built-in MCP tools cover the minimum required capabilities:
+
+| Built-in Tool | Purpose |
+|---------------|---------|
+| Get tasks | Read tasks from the configured Todoist board |
+| Post comment | Write a progress comment on a task |
+| Move task | Change a task's section (e.g., Backlog → In Progress → Done) |
+
+Additional tools are available if extra MCP servers are registered; the agent's behavior expands automatically without code changes.
