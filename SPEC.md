@@ -231,8 +231,8 @@ The ToolLoopAgent is the AI execution engine that processes a single Todoist tas
 | Input | A Todoist task (id, title, description, current section) |
 | Output | Execution complete; progress comment posted; task moved to Done if finished |
 | Completion | The agent determines task completion when the model invokes the Move Task tool to move the task to Done. If the model's final response contains no tool calls and the task was not moved to Done, the task is considered incomplete. |
-| Maximum steps | Configurable via `AI_MAX_STEPS` environment variable (default: a sensible built-in limit). When reached: post a progress comment indicating incomplete execution, leave task in current section, return control to queue. |
-| Unrecoverable error | Any error that prevents the tool loop from continuing (provider error, tool execution exception) halts the loop. |
+| Maximum steps | Configurable via `AI_MAX_STEPS` environment variable (default: `50`). When reached: post a progress comment indicating incomplete execution, leave task in current section, return control to queue. |
+| Unrecoverable error | Any non-retryable error — authentication failure, invalid tool schema, or an error where retrying would produce the same result — halts the loop immediately. Transient errors (network timeout, rate limit) are not distinguished; all errors halt the loop and the task is retried at the queue level on the next heartbeat. |
 | Failure | On failure, the task section is not moved; comments already posted remain in Todoist. The task stays in its current section for retry on the next heartbeat. |
 
 **Provider abstraction:**
@@ -280,7 +280,7 @@ All runtime configuration is supplied through environment variables. No configur
 | `AI_PROVIDER_ENDPOINT` | Base URL of the OpenAI-compatible AI provider | Yes |
 | `AI_PROVIDER_API_KEY` | API key for the AI provider | Yes |
 | `AI_MODEL` | Model identifier to use (e.g., `gpt-4o`) | Yes |
-| `AI_MAX_STEPS` | Maximum tool-loop steps per task execution | No (default: built-in sensible limit) |
+| `AI_MAX_STEPS` | Maximum tool-loop steps per task execution | No (default: `50`) |
 | `TODOIST_API_TOKEN` | Todoist personal API token | Yes |
 | `TODOIST_PROJECT_ID` | ID of the Todoist project used as the Board | Yes |
 | `MCP_CONFIG` | JSON-encoded array of MCP server definitions to connect at startup; each entry specifies `name`, `command`, and `args` | Yes |
