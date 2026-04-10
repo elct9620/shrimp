@@ -8,7 +8,7 @@ Shrimp keeps a Todoist task board moving forward without human supervision: each
 
 ## Users
 
-Developers or individual users who deploy a Shrimp instance, configure a Todoist Board (a designated Todoist project used as the agent's work queue) and AI Provider, and let background tasks be processed automatically.
+Developers or individual users who deploy a Shrimp instance, configure a Todoist Board (a designated Todoist project used as the task source) and AI Provider, and let background tasks be processed automatically.
 
 ## Success Criteria
 
@@ -118,7 +118,7 @@ Shrimp reads from and writes to a single designated Todoist project configured a
 
 | Todoist Section | Status Meaning |
 |-----------------|---------------|
-| Backlog | Task is queued, not yet started |
+| Backlog | Task is waiting, not yet started |
 | In Progress | Task has been picked up and is being worked on |
 | Done | Task is complete; no further action taken |
 
