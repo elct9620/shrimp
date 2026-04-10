@@ -196,7 +196,7 @@ Shrimp is a single-process service composed of four collaborating components. ts
 | tsyringe | Dependency injection container; wires all components at startup |
 | AI SDK | Abstraction over AI provider APIs; drives the ToolLoopAgent execution loop |
 | MCP (Model Context Protocol) | Extension mechanism; all agent tools are MCP tools |
-| dotenv | Loads runtime configuration (API keys, board ID) from environment |
+| dotenv | Loads environment variables (API keys, board ID) from `.env` in development |
 | tsdown | Bundles the application for production deployment |
 
 ### Request Flow
@@ -217,7 +217,7 @@ POST /heartbeat
 
 ### Extension Model
 
-MCP is the sole mechanism for extending agent capabilities. Built-in tools cover Todoist task selection, comment posting, and status updates. Additional tools (file access, web search, code execution) are added by registering new MCP servers; no changes to the agent or queue are required. MCP servers are registered via the `MCP_CONFIG` environment variable at startup.
+MCP is the sole mechanism for extending agent capabilities. Built-in tools cover Todoist task selection, comment posting, and status updates. Additional tools (file access, web search, code execution) are added by registering new MCP servers; no changes to the agent or queue are required. Supplementary MCP servers are registered via a `.mcp.json` configuration file.
 
 ### Failure Handling
 
@@ -241,7 +241,7 @@ The ToolLoopAgent is the AI execution engine that processes a single Todoist tas
 
 **Provider abstraction:**
 
-The agent uses AI SDK's provider interface. Any OpenAI-compatible endpoint is the default; a different provider is selected by changing the configured provider identifier and credentials. The agent has no knowledge of which provider is active — it calls AI SDK, and AI SDK calls the provider.
+The agent uses AI SDK's provider interface with OpenAI-compatible conventions (`OPENAI_BASE_URL`, `OPENAI_API_KEY`). A different provider is used by pointing these variables to another OpenAI-compatible endpoint. The agent has no knowledge of which provider is active — it calls AI SDK, and AI SDK calls the provider.
 
 | Dimension | Inside the agent | Outside the agent |
 |-----------|-----------------|------------------|
@@ -277,25 +277,24 @@ Additional tools are available if extra MCP servers are registered; the agent's 
 
 ### Environment Variables
 
-All runtime configuration is supplied through environment variables. No configuration files beyond `.env` are used.
+Runtime configuration is supplied through environment variables and a `.mcp.json` configuration file.
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `AI_PROVIDER_ENDPOINT` | Base URL of the OpenAI-compatible AI provider | Yes |
-| `AI_PROVIDER_API_KEY` | API key for the AI provider | Yes |
+| `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible AI provider | Yes |
+| `OPENAI_API_KEY` | API key for the AI provider | Yes |
 | `AI_MODEL` | Model identifier to use (e.g., `gpt-4o`) | Yes |
 | `AI_MAX_STEPS` | Maximum tool-loop steps per task execution | No (default: `50`) |
 | `TODOIST_API_TOKEN` | Todoist personal API token | Yes |
 | `TODOIST_PROJECT_ID` | ID of the Todoist project used as the Board | Yes |
-| `MCP_CONFIG` | JSON-encoded array of MCP server definitions to connect at startup; each entry specifies `name`, `command`, and `args` | Yes |
 | `PORT` | HTTP port the service listens on | No (default: `3000`) |
 
 **Rules:**
 
 - Missing required variables cause the process to fail at startup; no partial startup allowed.
-- `MCP_CONFIG` defines which MCP servers are available to the agent; an empty array means the agent has no supplementary tools.
-- Each `MCP_CONFIG` entry must have: `name` (string identifier), `command` (executable to launch), `args` (array of string arguments).
-- The built-in Todoist tools (Get tasks, Post comment, Move task) are provided by an internal MCP server that is always registered regardless of `MCP_CONFIG`. `MCP_CONFIG` adds supplementary tools only.
+- Supplementary MCP servers are configured via a `.mcp.json` file in the project root. The file follows the standard MCP configuration format: a JSON object with a `mcpServers` key mapping server names to their definitions (`command`, `args`).
+- If `.mcp.json` is absent or contains no servers, the agent runs with built-in tools only.
+- The built-in Todoist tools (Get tasks, Post comment, Move task) are provided by an internal MCP server that is always registered regardless of `.mcp.json`. `.mcp.json` adds supplementary tools only.
 
 ### Docker Deployment
 
@@ -327,5 +326,5 @@ For local development, configuration is loaded from a `.env` file in the project
 
 **Development rules:**
 
-- `.env` is the only local configuration mechanism; no other config files are read.
+- `.env` supplies environment variables locally; `.mcp.json` configures supplementary MCP servers. Both files are not committed to source control.
 - Tests must not depend on live external services (Todoist API, AI provider); use mocks or stubs.
