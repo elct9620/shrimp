@@ -8,7 +8,7 @@ Shrimp keeps a Todoist task board moving forward without human supervision: each
 
 ## Users
 
-Developers or individual users who deploy a Shrimp instance, configure a Todoist Board (a designated Todoist project used as the task source) and AI Provider, and let background tasks be processed automatically.
+Developers or individual users who deploy a Shrimp instance, configure a Todoist Board (a designated Todoist project used as the task source) and an OpenAI-compatible endpoint, and let background tasks be processed automatically.
 
 ## Success Criteria
 
@@ -26,6 +26,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 - No Web UI or dashboard
 - No management of Todoist Project structure (only reads from a designated Board)
 - No cross-Board or multi-Board integration
+- No persistent or distributed task queue (in-memory only; lost on restart)
 
 ## Scope
 
