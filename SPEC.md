@@ -116,6 +116,10 @@ End-to-end sequence from external trigger to task completion. Each step referenc
 
 Shrimp reads from and writes to a single designated Todoist project configured as a Kanban board (the "Board"). Sections on the Board represent task statuses.
 
+**Prerequisites:**
+
+- The Board must contain three sections named Backlog, In Progress, and Done. If any required section is missing at task selection time, the cycle ends immediately with no side effects.
+
 **Section-to-status mapping:**
 
 | Todoist Section | Status Meaning |
@@ -127,8 +131,8 @@ Shrimp reads from and writes to a single designated Todoist project configured a
 **Task selection rules:**
 
 1. Query the Board for tasks in the In Progress section.
-2. If one or more In Progress tasks exist, select the one with the highest Todoist priority (p1 > p2 > p3 > p4); among tasks with equal priority, select the one with the earliest position in the section.
-3. If no In Progress tasks exist, query the Backlog section and select the task with the highest Todoist priority; among tasks with equal priority, select the one with the earliest position in the section.
+2. If one or more In Progress tasks exist, select the one with the highest Todoist priority (p1 > p2 > p3 > p4); among tasks with equal priority, select the one appearing first in the Todoist API response order for that section.
+3. If no In Progress tasks exist, query the Backlog section and select the task with the highest Todoist priority; among tasks with equal priority, select the one appearing first in the Todoist API response order for that section.
 4. If both sections are empty, no task is selected; the cycle ends immediately and the AI Agent is not invoked.
 
 **Backlog task promotion:**
@@ -141,7 +145,7 @@ Shrimp reads from and writes to a single designated Todoist project configured a
 
 **Progress reporting:**
 
-- After each execution attempt, the AI Agent posts a comment on the selected Todoist task summarizing what was done and what remains.
+- After each execution attempt, the AI Agent posts a comment on the selected Todoist task summarizing what was done and what remains. The comment content and format are determined by the AI model; no fixed template is imposed.
 - The comment is always posted, whether the task completed or not.
 
 **Task completion:**
@@ -216,7 +220,8 @@ The agent has two categories of tools: built-in tools for core Todoist operation
 
 ### Failure Handling
 
-- **MCP server connection failure at startup**: fail fast — process exits.
+- **`.mcp.json` invalid format**: if the file exists but contains invalid JSON or does not conform to the expected structure (`mcpServers` key with server definitions), the process fails at startup (fail fast).
+- **MCP server connection failure at startup**: the failed MCP server is excluded; the agent continues startup with the remaining servers. If no MCP servers connect successfully, the agent runs with built-in tools only.
 - **Runtime AI/MCP failure during task processing**: queue worker releases slot; task stays in its current Todoist state.
 
 ### Main Agent
@@ -236,7 +241,7 @@ The Main Agent is the AI execution engine that processes a single Todoist task t
 
 **Provider abstraction:**
 
-The agent uses AI SDK's provider interface with OpenAI-compatible conventions (`OPENAI_BASE_URL`, `OPENAI_API_KEY`). A different provider is used by pointing these variables to another OpenAI-compatible endpoint. The agent has no knowledge of which provider is active — it calls AI SDK, and AI SDK calls the provider.
+The agent uses AI SDK's provider interface with OpenAI-compatible conventions (`OPENAI_BASE_URL`, `OPENAI_API_KEY`). A different provider is used by pointing these variables to another OpenAI-compatible endpoint. The agent has no knowledge of which provider is active — it calls AI SDK, and AI SDK calls the provider. The configured model must support tool calling (function calling); if it does not, the agent cannot execute tasks.
 
 | Dimension | Inside the agent | Outside the agent |
 |-----------|-----------------|------------------|
@@ -294,7 +299,7 @@ Runtime configuration is supplied through environment variables and a `.mcp.json
 | `OPENAI_BASE_URL` | Base URL of the OpenAI-compatible AI provider | Yes |
 | `OPENAI_API_KEY` | API key for the AI provider | Yes |
 | `AI_MODEL` | Model identifier to use (e.g., `gpt-4o`) | Yes |
-| `AI_MAX_STEPS` | Maximum tool-loop steps per task execution | No (default: `50`) |
+| `AI_MAX_STEPS` | Maximum tool-loop steps per task execution (must be a positive integer) | No (default: `50`) |
 | `TODOIST_API_TOKEN` | Todoist personal API token | Yes |
 | `TODOIST_PROJECT_ID` | ID of the Todoist project used as the Board | Yes |
 | `PORT` | HTTP port the service listens on | No (default: `3000`) |
