@@ -14,7 +14,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 | Criterion | Pass Condition |
 |-----------|---------------|
-| Heartbeat triggers task selection | Calling `/heartbeat` causes the agent to select one task and begin execution |
+| Heartbeat triggers task selection | Calling `/heartbeat` enqueues a background cycle that selects one task and begins execution |
 | Priority order is correct | If an In Progress task exists, it is continued first; otherwise a new task is taken from Backlog |
 | Progress reporting | The agent comments on the task with its current status |
 | Task completion | When the agent determines a task is done, it updates the task status to Done |
@@ -55,7 +55,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 ### `POST /heartbeat`
 
-Triggers one task-processing cycle.
+Enqueues one task-processing cycle in the background.
 
 **Request:** no body required.
 
@@ -63,15 +63,14 @@ Triggers one task-processing cycle.
 
 | Scenario | Status | Body |
 |----------|--------|------|
-| Task selected and executed | `200 OK` | `{ "task_id": "<id>", "status": "completed" \| "in_progress" }` |
-| No actionable task found | `200 OK` | `{ "task_id": null, "status": "idle" }` |
-| Processing error | `500 Internal Server Error` | `{ "error": "<message>" }` |
+| Accepted | `202 Accepted` | `{ "status": "accepted" }` |
 
 **Behavior rules:**
 
-- Selects at most one task per call: an In Progress task takes priority over a Backlog task.
-- Runs the AI Agent synchronously; returns only after the agent has finished or failed.
-- On completion, the task's Todoist status is updated and a comment is posted before the response is returned.
+- Returns immediately after enqueuing; does not wait for task processing to complete.
+- The background worker selects at most one task: an In Progress task takes priority over a Backlog task.
+- If no actionable task is found, the enqueued cycle completes silently with no side effects.
+- Task progress reporting and status updates happen asynchronously via the background queue.
 
 ### `GET /health`
 
