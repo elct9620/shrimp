@@ -4,7 +4,7 @@ An ultra-minimal background agent that automatically processes Todoist tasks in 
 
 ## Purpose
 
-Shrimp keeps a Todoist task board moving forward without human supervision: each time it is woken by a Heartbeat, it picks the highest-priority task, delegates execution to an AI Agent, and reports progress back as task comments.
+Shrimp keeps a Todoist task board moving forward without human supervision: each time it is woken by a Heartbeat, it picks the highest-priority task, delegates execution to the Main Agent, and reports progress back as task comments.
 
 ## Users
 
@@ -14,7 +14,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 | Criterion | Pass Condition |
 |-----------|---------------|
-| Heartbeat triggers task selection | Calling `/heartbeat` returns `202 Accepted` immediately; a background cycle is enqueued to select and process one task |
+| Heartbeat triggers task selection | Calling `/heartbeat` returns `202 Accepted` immediately; a background cycle is dispatched to select and process one task |
 | Priority order is correct | If an In Progress task exists, it is continued first; otherwise a new task is taken from Backlog |
 | Progress reporting | After each execution attempt, the agent posts a non-empty Todoist comment on the selected task summarizing what was done |
 | Task completion | When the agent determines a task is done, it updates the task status to Done |
@@ -40,7 +40,8 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Progress reporting via comments | Agent posts a Todoist comment with status after each execution |
 | Task completion | Agent marks the task Done when it determines the task is finished |
 | Health check endpoint | `/health` returns a liveness signal for Docker health check |
-| MCP-based tool extension | All agent capabilities are provided through MCP tools, allowing new tools to be added without modifying the agent |
+| Built-in Todoist tools | Core Todoist operations (get tasks, post comment, move task) are built-in to the agent |
+| MCP-based tool extension | Additional capabilities can be added via MCP servers without modifying the agent |
 
 ### IS NOT
 
@@ -99,7 +100,7 @@ End-to-end sequence from external trigger to task completion. Each step referenc
 | 1 | External caller | `POST /heartbeat` | Request accepted; see [`POST /heartbeat`](#post-heartbeat) for response rules |
 | 2 | Heartbeat handler | Enqueue a processing job | If queue slot is free, job is accepted; if busy, job is silently dropped; see [In-Memory Task Queue](#in-memory-task-queue) |
 | 3 | Queue worker | Select one task | Check for an In Progress task first; if none, take one Backlog task; if no actionable task exists, cycle ends immediately — AI Agent is not invoked |
-| 4 | Queue worker | Delegate task to AI Agent | Agent receives the selected task and executes via MCP tools until the task is complete or no further progress is possible |
+| 4 | Queue worker | Delegate task to AI Agent | Agent receives the selected task and executes via built-in and MCP tools until the task is complete or no further progress is possible |
 | 5 | AI Agent | Report progress | Agent posts a comment on the Todoist task with current status |
 | 6 | AI Agent | Update task status | If task is complete, agent marks it Done in Todoist; otherwise task remains in its current state for the next heartbeat cycle |
 | 7 | Queue worker | Release queue slot | Processing job is removed; queue is ready to accept the next heartbeat |
@@ -178,8 +179,8 @@ Shrimp is a single-process service composed of four collaborating components. ts
 |-----------|---------------|
 | HTTP Layer (Hono) | Accepts inbound requests, validates route contracts, delegates to Queue |
 | Task Queue | Serializes background work; enforces the single-slot invariant |
-| AI Agent | Drives task execution by invoking MCP tools in a loop until done or stuck |
-| MCP Tool Layer | Provides all agent capabilities (Todoist read/write, file access, etc.) as pluggable tools |
+| AI Agent (Main Agent) | Drives task execution by invoking built-in and MCP tools in a loop until done or stuck |
+| Tool Layer | Built-in Todoist tools for core operations; MCP servers for extensible capabilities |
 
 ### System Boundary
 
@@ -196,7 +197,7 @@ Shrimp is a single-process service composed of four collaborating components. ts
 | Hono | HTTP framework; defines routes and response contracts |
 | tsyringe | Dependency injection container; wires all components at startup |
 | AI SDK | Abstraction over AI provider APIs; drives the AI Agent execution loop |
-| MCP (Model Context Protocol) | Extension mechanism; all agent tools are MCP tools |
+| MCP (Model Context Protocol) | Extension mechanism; supplementary agent tools are provided via MCP servers |
 | dotenv | Loads environment variables (API keys, board ID) from `.env` in development |
 | tsdown | Bundles the application for production deployment |
 
@@ -208,9 +209,9 @@ Each heartbeat traverses the following component chain:
 POST /heartbeat
   → Hono route handler
   → Task Queue (enqueue; drop if busy)
-    → Queue worker: select task via MCP Todoist tools
-    → AI Agent: execute task via MCP tools in a loop
-      → MCP Todoist tools: post comment, move task to Done
+    → Queue worker: select task via built-in Todoist tools
+    → Main Agent: execute task via built-in + MCP tools in a loop
+      → Built-in Todoist tools: post comment, move task to Done
     → Queue worker: release slot
 ```
 
@@ -218,7 +219,7 @@ POST /heartbeat
 
 ### Extension Model
 
-MCP is the sole mechanism for extending agent capabilities. Built-in tools cover Todoist task selection, comment posting, and status updates. Additional tools (file access, web search, code execution) are added by registering new MCP servers; no changes to the agent or queue are required. Supplementary MCP servers are registered via a `.mcp.json` configuration file.
+The agent has two categories of tools: built-in tools for core Todoist operations, and MCP tools for extensible capabilities. Built-in tools (get tasks, post comment, move task) are always available and do not require MCP. Additional tools (file access, web search, code execution) are added by registering MCP servers via a `.mcp.json` configuration file; no changes to the agent are required.
 
 ### Failure Handling
 
@@ -248,7 +249,7 @@ The agent uses AI SDK's provider interface with OpenAI-compatible conventions (`
 |-----------|-----------------|------------------|
 | Model selection | No — reads from configuration | Provider endpoint and model name are environment configuration |
 | Prompt construction | Yes — assembles task context into the system and user prompts | Task content originates in Todoist |
-| Tool execution | Yes — invokes MCP tool calls returned by the model | Tool implementations live in MCP servers |
+| Tool execution | Yes — invokes tool calls returned by the model | Built-in tools are internal; MCP tools live in external servers |
 | Result interpretation | Yes — decides whether the task is done based on model output | Model judgment drives the decision |
 
 **Execution lifecycle per task:**
@@ -256,23 +257,22 @@ The agent uses AI SDK's provider interface with OpenAI-compatible conventions (`
 | Step | Actor | Action |
 |------|-------|--------|
 | 1 | Queue worker | Passes task to Main Agent |
-| 2 | Main Agent | If task is in Backlog, move to In Progress via MCP Move Task tool |
+| 2 | Main Agent | If task is in Backlog, move to In Progress via built-in Move Task tool |
 | 3 | Main Agent | Constructs prompt from task id, title, description, and current section |
-| 4 | Main Agent | Invokes the AI SDK tool loop with the assembled prompt and the MCP tool set; loop continues until done, max steps reached, or unrecoverable error |
-| 5 | Main Agent | Posts a progress comment via MCP Todoist tool; if task is complete (moved to Done by model), leaves it in Done; otherwise leaves it in current section |
+| 4 | Main Agent | Invokes the AI SDK tool loop with the assembled prompt and all available tools (built-in + MCP); loop continues until done, max steps reached, or error |
+| 5 | Main Agent | Posts a progress comment via built-in Post Comment tool; if task is complete (moved to Done by model), leaves it in Done; otherwise leaves it in current section |
 | 6 | Queue worker | Receives control back; releases queue slot |
 
-**MCP tool integration:**
+**Tool integration:**
 
-All tools available to the agent are discovered from registered MCP servers at process startup. The agent does not hard-code any tool name or behavior. Built-in MCP tools cover the minimum required capabilities:
+The agent uses two categories of tools:
 
-| Built-in Tool | Purpose |
-|---------------|---------|
-| Get tasks | Read tasks from the configured Todoist board |
-| Post comment | Write a progress comment on a task |
-| Move task | Change a task's section (e.g., Backlog → In Progress → Done) |
+| Category | Tools | Source |
+|----------|-------|--------|
+| Built-in | Get tasks, Post comment, Move task | Compiled into the agent; always available |
+| MCP | Any tools from registered MCP servers | Discovered from `.mcp.json` at process startup |
 
-Additional tools are available if extra MCP servers are registered; the agent's behavior expands automatically without code changes.
+Built-in tools handle core Todoist operations. MCP tools extend the agent's capabilities without code changes.
 
 ## Deployment & Configuration
 
@@ -295,7 +295,7 @@ Runtime configuration is supplied through environment variables and a `.mcp.json
 - Missing required variables cause the process to fail at startup; no partial startup allowed.
 - Supplementary MCP servers are configured via a `.mcp.json` file in the project root. The file follows the standard MCP configuration format: a JSON object with a `mcpServers` key mapping server names to their definitions (`command`, `args`).
 - If `.mcp.json` is absent or contains no servers, the agent runs with built-in tools only.
-- The built-in Todoist tools (Get tasks, Post comment, Move task) are provided by an internal MCP server that is always registered regardless of `.mcp.json`. `.mcp.json` adds supplementary tools only.
+- The built-in Todoist tools (Get tasks, Post comment, Move task) are compiled into the agent and always available. `.mcp.json` adds supplementary tools only.
 
 ### Docker Deployment
 
