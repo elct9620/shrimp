@@ -225,9 +225,9 @@ MCP is the sole mechanism for extending agent capabilities. Built-in tools cover
 - **MCP server connection failure at startup**: fail fast — process exits.
 - **Runtime AI/MCP failure during task processing**: queue worker releases slot; task stays in its current Todoist state.
 
-### ToolLoopAgent
+### Main Agent
 
-The ToolLoopAgent is the AI execution engine that processes a single Todoist task to completion. It is intentionally minimal: a single tool-calling loop against the configured AI provider, with no orchestration layers, planning steps, or internal retry logic beyond what the loop itself provides. The loop runs until the task is done, the maximum step limit is reached, or an error occurs.
+The Main Agent is the AI execution engine that processes a single Todoist task to completion. It is intentionally minimal: a single tool-calling loop against the configured AI provider, with no orchestration layers, planning steps, or internal retry logic beyond what the loop itself provides. The loop runs until the task is done, the maximum step limit is reached, or an error occurs.
 
 **Role contract:**
 
@@ -255,11 +255,11 @@ The agent uses AI SDK's provider interface with OpenAI-compatible conventions (`
 
 | Step | Actor | Action |
 |------|-------|--------|
-| 1 | Queue worker | Passes task to ToolLoopAgent |
-| 2 | ToolLoopAgent | If task is in Backlog, move to In Progress via MCP Move Task tool |
-| 3 | ToolLoopAgent | Constructs prompt from task id, title, description, and current section |
-| 4 | ToolLoopAgent | Invokes the AI SDK tool loop with the assembled prompt and the MCP tool set; loop continues until done, max steps reached, or unrecoverable error |
-| 5 | ToolLoopAgent | Posts a progress comment via MCP Todoist tool; if task is complete (moved to Done by model), leaves it in Done; otherwise leaves it in current section |
+| 1 | Queue worker | Passes task to Main Agent |
+| 2 | Main Agent | If task is in Backlog, move to In Progress via MCP Move Task tool |
+| 3 | Main Agent | Constructs prompt from task id, title, description, and current section |
+| 4 | Main Agent | Invokes the AI SDK tool loop with the assembled prompt and the MCP tool set; loop continues until done, max steps reached, or unrecoverable error |
+| 5 | Main Agent | Posts a progress comment via MCP Todoist tool; if task is complete (moved to Done by model), leaves it in Done; otherwise leaves it in current section |
 | 6 | Queue worker | Receives control back; releases queue slot |
 
 **MCP tool integration:**
