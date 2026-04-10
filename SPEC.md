@@ -14,9 +14,9 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 | Criterion | Pass Condition |
 |-----------|---------------|
-| Heartbeat triggers task selection | Calling `/heartbeat` enqueues a background cycle that selects one task and begins execution |
+| Heartbeat triggers task selection | Calling `/heartbeat` returns `202 Accepted` immediately; a background cycle is enqueued to select and process one task |
 | Priority order is correct | If an In Progress task exists, it is continued first; otherwise a new task is taken from Backlog |
-| Progress reporting | The agent comments on the task with its current status |
+| Progress reporting | After each execution attempt, the agent posts a non-empty Todoist comment on the selected task summarizing what was done |
 | Task completion | When the agent determines a task is done, it updates the task status to Done |
 | Health check | `/health` returns OK; the Docker container stays healthy |
 
@@ -39,7 +39,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Progress reporting via comments | Agent posts a Todoist comment with status after each execution |
 | Task completion | Agent marks the task Done when it determines the task is finished |
 | Health check endpoint | `/health` returns a liveness signal for Docker health check |
-| MCP-based tool extension | All agent capabilities are provided through MCP tools; no hard-coded tool logic |
+| MCP-based tool extension | All agent capabilities are provided through MCP tools, allowing new tools to be added without modifying the agent |
 
 ### IS NOT
 
@@ -48,7 +48,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Parallel task processing | Queue processes one task at a time; concurrent execution is out of scope |
 | Persistent or distributed queue | Queue is in-memory only; tasks are lost on restart (Todoist is the source of truth) |
 | Proactive scheduling | No cron or timer inside Shrimp; heartbeat is always externally triggered |
-| Todoist Project/Board management | Shrimp reads tasks only; it does not create, move, or delete projects |
+| Todoist Project/Board management | Shrimp reads from and writes to the configured Board only; it does not create or modify Board structure |
 | Multi-Board or multi-account support | Single configured board per instance |
 | Web UI or dashboard | No user-facing interface beyond the two API endpoints |
 | Authentication / multi-tenancy | Single-instance deployment; no user accounts |
@@ -65,10 +65,12 @@ Enqueues one task-processing cycle in the background.
 
 | Scenario | Status | Body |
 |----------|--------|------|
-| Accepted | `202 Accepted` | `{ "status": "accepted" }` |
+| Queue slot is free — cycle enqueued | `202 Accepted` | `{ "status": "accepted" }` |
+| Queue slot is busy — cycle dropped | `202 Accepted` | `{ "status": "accepted" }` |
 
 **Behavior rules:**
 
+- Always returns `202 Accepted` immediately, regardless of whether the background cycle was enqueued or dropped. The caller cannot distinguish the two cases; this is intentional fire-and-forget semantics.
 - Returns immediately after enqueuing; does not wait for task processing to complete.
 - The queue worker selects at most one task: an In Progress task takes priority over a Backlog task.
 - If no actionable task is found, the enqueued cycle completes silently with no side effects.
