@@ -33,7 +33,8 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 | Feature | Description |
 |---------|-------------|
-| Heartbeat-triggered task selection | On `/heartbeat`, select one task: In Progress first, then Backlog |
+| In-memory task queue | A single-slot in-memory queue that serializes task processing; one task at a time |
+| Heartbeat-triggered task selection | On `/heartbeat`, enqueue a processing cycle: select one task (In Progress first, then Backlog) |
 | AI-driven task execution | Delegate the selected task to an AI Agent; agent runs until the task is complete or the agent cannot make further progress |
 | Progress reporting via comments | Agent posts a Todoist comment with status after each execution |
 | Task completion | Agent marks the task Done when it determines the task is finished |
@@ -44,7 +45,8 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 | Excluded | Reason |
 |----------|--------|
-| Parallel task processing | One task per heartbeat; concurrency is out of scope |
+| Parallel task processing | Queue processes one task at a time; concurrent execution is out of scope |
+| Persistent or distributed queue | Queue is in-memory only; tasks are lost on restart (Todoist is the source of truth) |
 | Proactive scheduling | No cron or timer inside Shrimp; heartbeat is always externally triggered |
 | Todoist Project/Board management | Shrimp reads tasks only; it does not create, move, or delete projects |
 | Multi-Board or multi-account support | Single configured board per instance |
@@ -71,6 +73,17 @@ Enqueues one task-processing cycle in the background.
 - The background worker selects at most one task: an In Progress task takes priority over a Backlog task.
 - If no actionable task is found, the enqueued cycle completes silently with no side effects.
 - Task progress reporting and status updates happen asynchronously via the background queue.
+
+### In-Memory Task Queue
+
+Serializes task processing to ensure only one task runs at a time.
+
+**Behavior rules:**
+
+- The queue holds at most one pending job. If a heartbeat arrives while a task is already being processed, the new request is silently dropped (no error, no queuing).
+- Processing sequence per job: select task → execute via AI Agent → report progress → update status.
+- The queue lives in process memory. On container restart, any in-flight work is lost; Todoist remains the source of truth and the task will be picked up again on the next heartbeat.
+- No retry logic inside the queue. If the AI Agent fails, the task stays in its current Todoist state and will be retried on the next heartbeat cycle.
 
 ### `GET /health`
 
