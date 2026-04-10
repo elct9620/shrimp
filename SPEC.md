@@ -153,3 +153,56 @@ Liveness check used by Docker `HEALTHCHECK`.
 **Behavior rules:**
 
 - Always returns `200` as long as the process is alive; no dependency checks performed.
+
+## Design
+
+### Architecture Overview
+
+Shrimp is a single-process service composed of four collaborating components. tsyringe wires them together at startup; no component constructs its own dependencies.
+
+| Component | Responsibility |
+|-----------|---------------|
+| HTTP Layer (Hono) | Accepts inbound requests, validates route contracts, delegates to Queue |
+| Task Queue | Serializes background work; enforces the single-slot invariant |
+| AI Agent (ToolLoopAgent) | Drives task execution by invoking MCP tools in a loop until done or stuck |
+| MCP Tool Layer | Provides all agent capabilities (Todoist read/write, file access, etc.) as pluggable tools |
+
+### System Boundary
+
+| Dimension | Inside | Outside |
+|-----------|--------|---------|
+| Responsibility | HTTP routing, task serialization, AI execution loop, progress reporting | Scheduling heartbeats, Todoist project structure, AI model selection |
+| Interaction | Receives `POST /heartbeat` and `GET /health`; returns JSON responses | Caller's scheduling mechanism; Todoist API; AI provider endpoint |
+| Control | Task state transitions (Backlog → In Progress → Done), comment posting | Todoist data model; AI model behavior; MCP tool implementations |
+
+### Component Dependencies
+
+| Library | Role |
+|---------|------|
+| Hono | HTTP framework; defines routes and response contracts |
+| tsyringe | Dependency injection container; wires all components at startup |
+| AI SDK | Abstraction over AI provider APIs; drives the ToolLoopAgent execution loop |
+| MCP (Model Context Protocol) | Extension mechanism; all agent tools are MCP tools |
+| dotenv | Loads runtime configuration (API keys, board ID) from environment |
+| tsdown | Bundles the service for production deployment |
+| vitest | Test runner |
+
+### Request Flow
+
+Each heartbeat traverses the following component chain:
+
+```
+POST /heartbeat
+  → Hono route handler
+  → Task Queue (enqueue; drop if busy)
+    → Queue worker: select task via MCP Todoist tools
+    → AI Agent (ToolLoopAgent): execute task via MCP tools in a loop
+      → MCP Todoist tools: post comment, move task to Done
+    → Queue worker: release slot
+```
+
+`GET /health` is handled entirely within the Hono layer; it does not touch the queue or agent.
+
+### Extension Model
+
+MCP is the sole mechanism for extending agent capabilities. Built-in tools cover Todoist task selection, comment posting, and status updates. Additional tools (file access, web search, code execution) are added by registering new MCP servers; no changes to the agent or queue are required.
