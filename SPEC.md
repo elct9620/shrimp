@@ -179,7 +179,7 @@ Shrimp is a single-process service composed of four collaborating components. ts
 |-----------|---------------|
 | HTTP Layer (Hono) | Accepts inbound requests, validates route contracts, delegates to Queue |
 | Task Queue | Serializes background work; enforces the single-slot invariant |
-| AI Agent (Main Agent) | Drives task execution by invoking built-in and MCP tools in a loop until done or stuck |
+| Main Agent | Drives task execution by invoking built-in and MCP tools in a loop until done or stuck |
 | Tool Layer | Built-in Todoist tools for core operations; MCP servers for extensible capabilities |
 
 ### System Boundary
