@@ -59,16 +59,28 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
     pretty: process.env.NODE_ENV !== 'production' && !overrides.logDestination,
     destination: overrides.logDestination,
   })
-  logger.info('composing application', { logLevel: env.logLevel })
+  logger.info('env config loaded', {
+    logLevel: env.logLevel,
+    port: env.port,
+    aiMaxSteps: env.aiMaxSteps,
+  })
 
   // 2. Load MCP config — absent file is explicitly allowed per SPEC §Deployment §Rules
   let mcpConfig: McpConfig = { mcpServers: {} }
   if (!overrides.mcpToolLoader) {
     try {
       mcpConfig = loadMcpConfig('.mcp.json')
+      logger.info('mcp config loaded', {
+        serverCount: Object.keys(mcpConfig.mcpServers).length,
+      })
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
-      // Absent file is fine; empty config already assigned above
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.error('failed to load mcp config', {
+          error: err instanceof Error ? err.message : String(err),
+        })
+        throw err
+      }
+      logger.debug('no .mcp.json found — continuing without mcp servers')
     }
   }
 

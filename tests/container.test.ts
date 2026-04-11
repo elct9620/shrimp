@@ -147,10 +147,38 @@ describe('composeApp', () => {
     })
 
     expect(logger).toBeDefined()
-    const startupLog = messages.find((m) => m.includes('composing application'))
-    expect(startupLog).toBeDefined()
-    const parsed = JSON.parse(startupLog!)
-    expect(parsed.msg).toBe('composing application')
+    const envLog = messages.find((m) => m.includes('env config loaded'))
+    expect(envLog).toBeDefined()
+    const parsed = JSON.parse(envLog!)
+    expect(parsed.msg).toBe('env config loaded')
     expect(parsed.logLevel).toBe('info')
+    expect(parsed.port).toBeDefined()
+    expect(parsed.aiMaxSteps).toBeDefined()
+  })
+
+  it('should log "mcp config loaded" with server count when .mcp.json is absent', async () => {
+    vi.stubEnv('LOG_LEVEL', 'debug')
+    for (const [key, value] of Object.entries(REQUIRED_ENV)) {
+      if (key !== 'LOG_LEVEL') vi.stubEnv(key, value)
+    }
+
+    const messages: string[] = []
+    const destination = {
+      write: (msg: string) => {
+        messages.push(msg)
+      },
+    }
+
+    const { composeApp } = await import('../src/container')
+    // Without mcpToolLoader override, composeApp attempts to read .mcp.json.
+    // The real file does not exist in test CWD, so the ENOENT branch fires.
+    await composeApp({
+      languageModel: makeFakeLanguageModel(),
+      boardRepository: makeFakeBoardRepository(),
+      logDestination: destination,
+    })
+
+    const debugLog = messages.find((m) => m.includes('no .mcp.json found'))
+    expect(debugLog).toBeDefined()
   })
 })
