@@ -3,6 +3,7 @@ import type { LanguageModel } from 'ai'
 import { EnvConfigError } from '../src/infrastructure/config/env-config'
 import type { McpToolLoader } from '../src/infrastructure/mcp/mcp-tool-loader'
 import type { BoardRepository } from '../src/use-cases/ports/board-repository'
+import type { LoggerPort } from '../src/use-cases/ports/logger'
 
 // ---------------------------------------------------------------------------
 // Shared test doubles
@@ -43,6 +44,21 @@ function makeFakeMcpToolLoader(): McpToolLoader {
   } as unknown as McpToolLoader
 }
 
+function makeFakeLogger(): LoggerPort {
+  const child = vi.fn()
+  const logger: LoggerPort = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: child,
+  }
+  child.mockReturnValue(logger)
+  return logger
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -62,6 +78,7 @@ describe('composeApp', () => {
       languageModel: makeFakeLanguageModel(),
       boardRepository: makeFakeBoardRepository(),
       mcpToolLoader: makeFakeMcpToolLoader(),
+      logger: makeFakeLogger(),
     })
 
     const res = await app.request('/health', { method: 'GET' })
@@ -80,6 +97,7 @@ describe('composeApp', () => {
       languageModel: makeFakeLanguageModel(),
       boardRepository: makeFakeBoardRepository(),
       mcpToolLoader: makeFakeMcpToolLoader(),
+      logger: makeFakeLogger(),
     })
 
     const res = await app.request('/heartbeat', { method: 'POST' })
@@ -98,6 +116,7 @@ describe('composeApp', () => {
         languageModel: makeFakeLanguageModel(),
         boardRepository: makeFakeBoardRepository(),
         mcpToolLoader: makeFakeMcpToolLoader(),
+        logger: makeFakeLogger(),
       })
     ).rejects.toThrow(EnvConfigError)
   })
@@ -115,6 +134,7 @@ describe('composeApp', () => {
         languageModel: makeFakeLanguageModel(),
         boardRepository: makeFakeBoardRepository(),
         mcpToolLoader: makeFakeMcpToolLoader(),
+        logger: makeFakeLogger(),
       })
     ).resolves.toBeDefined()
   })
@@ -130,8 +150,26 @@ describe('composeApp', () => {
       languageModel: makeFakeLanguageModel(),
       boardRepository: makeFakeBoardRepository(),
       mcpToolLoader: fakeMcpToolLoader,
+      logger: makeFakeLogger(),
     })
 
     await expect(mcpToolLoader.close()).resolves.toBeUndefined()
+  })
+
+  it('should return the injected logger instance in the composed result', async () => {
+    for (const [key, value] of Object.entries(REQUIRED_ENV)) {
+      vi.stubEnv(key, value)
+    }
+
+    const fakeLogger = makeFakeLogger()
+    const { composeApp } = await import('../src/container')
+    const { logger } = await composeApp({
+      languageModel: makeFakeLanguageModel(),
+      boardRepository: makeFakeBoardRepository(),
+      mcpToolLoader: makeFakeMcpToolLoader(),
+      logger: fakeLogger,
+    })
+
+    expect(logger).toBe(fakeLogger)
   })
 })

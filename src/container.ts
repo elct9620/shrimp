@@ -1,4 +1,7 @@
+import pino from 'pino'
 import { Hono } from 'hono'
+import { requestId } from 'hono/request-id'
+import { pinoHttp } from 'pino-http'
 import type { LanguageModel } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { loadEnvConfig } from './infrastructure/config/env-config'
@@ -12,8 +15,11 @@ import { ToolRegistry } from './adapters/tools/tool-registry'
 import { createBuiltInTools, createBuiltInToolDescriptions } from './adapters/tools/built-in/index'
 import { createHealthRoute } from './adapters/http/routes/health'
 import { createHeartbeatRoute } from './adapters/http/routes/heartbeat'
+import type { AppEnv } from './adapters/http/context-variables'
 import { ProcessingCycle } from './use-cases/processing-cycle'
+import { PinoLogger } from './infrastructure/logger/pino-logger'
 import type { BoardRepository } from './use-cases/ports/board-repository'
+import type { LoggerPort } from './use-cases/ports/logger'
 import type { ToolDescription } from './use-cases/ports/tool-description'
 
 // ---------------------------------------------------------------------------
@@ -21,9 +27,10 @@ import type { ToolDescription } from './use-cases/ports/tool-description'
 // ---------------------------------------------------------------------------
 
 export type ComposedApp = {
-  app: Hono
+  app: Hono<AppEnv>
   mcpToolLoader: McpToolLoader
   port: number
+  logger: LoggerPort
 }
 
 /**
@@ -34,6 +41,7 @@ export type ComposeOverrides = {
   languageModel?: LanguageModel
   boardRepository?: BoardRepository
   mcpToolLoader?: McpToolLoader
+  logger?: LoggerPort
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +51,16 @@ export type ComposeOverrides = {
 export async function composeApp(overrides: ComposeOverrides = {}): Promise<ComposedApp> {
   // 1. Load and validate environment — fails fast with EnvConfigError if required vars are missing
   const env = loadEnvConfig()
+
+  // 1a. Root logger — shared pino instance used by both LoggerPort and pino-http middleware
+  const pinoInstance = overrides.logger
+    ? pino({ level: 'silent' })
+    : pino({
+        level: env.logLevel,
+        transport: process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty' } : undefined,
+      })
+  const logger: LoggerPort = overrides.logger ?? new PinoLogger(pinoInstance)
+  logger.info('composing application', { logLevel: env.logLevel })
 
   // 2. Load MCP config — absent file is explicitly allowed per SPEC §Deployment §Rules
   let mcpConfig: McpConfig = { mcpServers: {} }
@@ -114,10 +132,25 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
   // 10. TaskQueue
   const taskQueue = new InMemoryTaskQueue()
 
-  // 11. Hono app
-  const app = new Hono()
+  // 11. Hono app — wires request-id and pino-http per the official pino+Hono recipe.
+  // The pino-http bridge relies on @hono/node-server bindings (c.env.incoming/outgoing)
+  // which are only populated at runtime via serve(); Hono's in-process app.request()
+  // used by tests leaves c.env empty, so the bridge is only wired in real deployments.
+  const app = new Hono<AppEnv>()
+  if (!overrides.logger) {
+    const httpLogger = pinoHttp({ logger: pinoInstance })
+    app.use(requestId())
+    app.use(async (c, next) => {
+      c.env.incoming.id = c.var.requestId
+      await new Promise<void>((resolve) =>
+        httpLogger(c.env.incoming, c.env.outgoing, () => resolve())
+      )
+      c.set('logger', c.env.incoming.log)
+      await next()
+    })
+  }
   app.route('/', createHealthRoute())
   app.route('/', createHeartbeatRoute({ taskQueue, processingCycle }))
 
-  return { app, mcpToolLoader, port: env.port }
+  return { app, mcpToolLoader, port: env.port, logger }
 }
