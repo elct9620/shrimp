@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createHeartbeatRoute } from '../../../../src/adapters/http/routes/heartbeat'
 import type { TaskQueue } from '../../../../src/use-cases/ports/task-queue'
 import type { ProcessingCycle } from '../../../../src/use-cases/processing-cycle'
+import type { LoggerPort } from '../../../../src/use-cases/ports/logger'
 
 function makeTaskQueue(slotFree = true): TaskQueue {
   return {
@@ -14,11 +15,24 @@ function makeProcessingCycle(runImpl?: () => Promise<void>): ProcessingCycle {
   return { run: vi.fn().mockImplementation(impl) } as unknown as ProcessingCycle
 }
 
+function makeFakeLogger(): LoggerPort {
+  const logger: LoggerPort = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+  }
+  return logger
+}
+
 describe('POST /heartbeat', () => {
   it('should return 202 with accepted status when queue slot is free', async () => {
     const taskQueue = makeTaskQueue(true)
     const processingCycle = makeProcessingCycle()
-    const app = createHeartbeatRoute({ taskQueue, processingCycle })
+    const app = createHeartbeatRoute({ taskQueue, processingCycle, logger: makeFakeLogger() })
 
     const res = await app.request('/heartbeat', { method: 'POST' })
 
@@ -29,7 +43,7 @@ describe('POST /heartbeat', () => {
   it('should return 202 with accepted status when queue slot is busy', async () => {
     const taskQueue = makeTaskQueue(false)
     const processingCycle = makeProcessingCycle()
-    const app = createHeartbeatRoute({ taskQueue, processingCycle })
+    const app = createHeartbeatRoute({ taskQueue, processingCycle, logger: makeFakeLogger() })
 
     const res = await app.request('/heartbeat', { method: 'POST' })
 
@@ -40,7 +54,7 @@ describe('POST /heartbeat', () => {
   it('should call tryEnqueue exactly once per request', async () => {
     const taskQueue = makeTaskQueue()
     const processingCycle = makeProcessingCycle()
-    const app = createHeartbeatRoute({ taskQueue, processingCycle })
+    const app = createHeartbeatRoute({ taskQueue, processingCycle, logger: makeFakeLogger() })
 
     await app.request('/heartbeat', { method: 'POST' })
 
@@ -56,7 +70,7 @@ describe('POST /heartbeat', () => {
       }),
     }
     const processingCycle = makeProcessingCycle()
-    const app = createHeartbeatRoute({ taskQueue, processingCycle })
+    const app = createHeartbeatRoute({ taskQueue, processingCycle, logger: makeFakeLogger() })
 
     await app.request('/heartbeat', { method: 'POST' })
 
@@ -75,7 +89,7 @@ describe('POST /heartbeat', () => {
     }
     // A run() that never resolves
     const processingCycle = makeProcessingCycle(() => new Promise<void>(() => {}))
-    const app = createHeartbeatRoute({ taskQueue, processingCycle })
+    const app = createHeartbeatRoute({ taskQueue, processingCycle, logger: makeFakeLogger() })
 
     const res = await app.request('/heartbeat', { method: 'POST' })
 
@@ -88,7 +102,7 @@ describe('POST /heartbeat', () => {
   it('should accept and ignore an arbitrary request body', async () => {
     const taskQueue = makeTaskQueue()
     const processingCycle = makeProcessingCycle()
-    const app = createHeartbeatRoute({ taskQueue, processingCycle })
+    const app = createHeartbeatRoute({ taskQueue, processingCycle, logger: makeFakeLogger() })
 
     const res = await app.request('/heartbeat', {
       method: 'POST',
@@ -103,10 +117,51 @@ describe('POST /heartbeat', () => {
   it('should not handle GET /heartbeat (returns 404 or 405)', async () => {
     const taskQueue = makeTaskQueue()
     const processingCycle = makeProcessingCycle()
-    const app = createHeartbeatRoute({ taskQueue, processingCycle })
+    const app = createHeartbeatRoute({ taskQueue, processingCycle, logger: makeFakeLogger() })
 
     const res = await app.request('/heartbeat', { method: 'GET' })
 
     expect([404, 405]).toContain(res.status)
+  })
+
+  describe('logging', () => {
+    it('should log info "heartbeat received" on every POST', async () => {
+      const taskQueue = makeTaskQueue(true)
+      const processingCycle = makeProcessingCycle()
+      const logger = makeFakeLogger()
+      const app = createHeartbeatRoute({ taskQueue, processingCycle, logger })
+
+      await app.request('/heartbeat', { method: 'POST' })
+
+      expect(logger.info).toHaveBeenCalledWith('heartbeat received')
+    })
+
+    it('should log info "heartbeat enqueued" with accepted=true when queue accepts', async () => {
+      const taskQueue = makeTaskQueue(true)
+      const processingCycle = makeProcessingCycle()
+      const logger = makeFakeLogger()
+      const app = createHeartbeatRoute({ taskQueue, processingCycle, logger })
+
+      await app.request('/heartbeat', { method: 'POST' })
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'heartbeat enqueued',
+        expect.objectContaining({ accepted: true }),
+      )
+    })
+
+    it('should log info "heartbeat enqueued" with accepted=false when queue rejects', async () => {
+      const taskQueue = makeTaskQueue(false)
+      const processingCycle = makeProcessingCycle()
+      const logger = makeFakeLogger()
+      const app = createHeartbeatRoute({ taskQueue, processingCycle, logger })
+
+      await app.request('/heartbeat', { method: 'POST' })
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'heartbeat enqueued',
+        expect.objectContaining({ accepted: false }),
+      )
+    })
   })
 })

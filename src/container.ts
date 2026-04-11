@@ -170,7 +170,14 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
     await next()
   })
   app.route('/', createHealthRoute())
-  app.route('/', createHeartbeatRoute({ taskQueue, processingCycle }))
+  app.route(
+    '/',
+    createHeartbeatRoute({
+      taskQueue,
+      processingCycle,
+      logger: logger.child({ module: 'http.heartbeat' }),
+    }),
+  )
 
   return { app, mcpToolLoader, port: env.port, logger }
 }
