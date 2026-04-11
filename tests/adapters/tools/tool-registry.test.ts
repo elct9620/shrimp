@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { ToolRegistry } from '../../../src/adapters/tools/tool-registry'
 import type { ToolProvider } from '../../../src/use-cases/ports/tool-provider'
 import type { ToolSet } from '../../../src/use-cases/ports/tool-set'
 import type { ToolDescription } from '../../../src/use-cases/ports/tool-description'
+import type { LoggerPort } from '../../../src/use-cases/ports/logger'
 
 function makeTools(...names: string[]): ToolSet {
   return Object.fromEntries(names.map((n) => [n, { fake: n }]))
@@ -12,6 +13,19 @@ function makeDescriptions(...names: string[]): ToolDescription[] {
   return names.map((name) => ({ name, description: `desc for ${name}` }))
 }
 
+function makeFakeLogger(): LoggerPort {
+  const logger: LoggerPort = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+  }
+  return logger
+}
+
 describe('ToolRegistry', () => {
   it('implements ToolProvider interface', () => {
     const registry: ToolProvider = new ToolRegistry({
@@ -19,7 +33,7 @@ describe('ToolRegistry', () => {
       builtInDescriptions: [],
       mcpTools: {},
       mcpDescriptions: [],
-    })
+    }, makeFakeLogger())
     expect(typeof registry.getTools).toBe('function')
     expect(typeof registry.getToolDescriptions).toBe('function')
   })
@@ -30,7 +44,7 @@ describe('ToolRegistry', () => {
       builtInDescriptions: makeDescriptions('getTasks', 'postComment'),
       mcpTools: makeTools('searchWeb', 'readPage'),
       mcpDescriptions: makeDescriptions('searchWeb', 'readPage'),
-    })
+    }, makeFakeLogger())
 
     const tools = registry.getTools()
     expect(Object.keys(tools)).toEqual(
@@ -45,7 +59,7 @@ describe('ToolRegistry', () => {
       builtInDescriptions: makeDescriptions('getTasks'),
       mcpTools: makeTools('searchWeb'),
       mcpDescriptions: makeDescriptions('searchWeb'),
-    })
+    }, makeFakeLogger())
 
     const descriptions = registry.getToolDescriptions()
     expect(descriptions[0].name).toBe('getTasks')
@@ -58,7 +72,7 @@ describe('ToolRegistry', () => {
       builtInDescriptions: makeDescriptions('getTasks', 'postComment'),
       mcpTools: {},
       mcpDescriptions: [],
-    })
+    }, makeFakeLogger())
 
     const tools = registry.getTools()
     expect(Object.keys(tools)).toEqual(expect.arrayContaining(['getTasks', 'postComment']))
@@ -77,7 +91,7 @@ describe('ToolRegistry', () => {
       builtInDescriptions: [{ name: 'collision', description: 'built-in version' }],
       mcpTools: { collision: mcpValue },
       mcpDescriptions: [{ name: 'collision', description: 'mcp version' }],
-    })
+    }, makeFakeLogger())
 
     const tools = registry.getTools()
     expect(tools['collision']).toBe(builtInValue)
@@ -89,7 +103,7 @@ describe('ToolRegistry', () => {
       builtInDescriptions: [{ name: 'collision', description: 'built-in version' }],
       mcpTools: { collision: {} },
       mcpDescriptions: [{ name: 'collision', description: 'mcp version' }],
-    })
+    }, makeFakeLogger())
 
     const descriptions = registry.getToolDescriptions()
     expect(descriptions).toHaveLength(1)
@@ -102,9 +116,72 @@ describe('ToolRegistry', () => {
       builtInDescriptions: [],
       mcpTools: {},
       mcpDescriptions: [],
-    })
+    }, makeFakeLogger())
 
     expect(registry.getTools()).toEqual({})
     expect(registry.getToolDescriptions()).toEqual([])
+  })
+
+  describe('logging', () => {
+    it('should log info with builtInCount, mcpCount and totalCount at construction', () => {
+      const logger = makeFakeLogger()
+
+      new ToolRegistry({
+        builtInTools: makeTools('getTasks', 'postComment'),
+        builtInDescriptions: makeDescriptions('getTasks', 'postComment'),
+        mcpTools: makeTools('searchWeb', 'readPage', 'runCode'),
+        mcpDescriptions: makeDescriptions('searchWeb', 'readPage', 'runCode'),
+      }, logger)
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'tool registry assembled',
+        expect.objectContaining({ builtInCount: 2, mcpCount: 3, totalCount: 5 }),
+      )
+    })
+
+    it('should log warn listing the colliding names when built-in and MCP share names', () => {
+      const logger = makeFakeLogger()
+
+      new ToolRegistry({
+        builtInTools: makeTools('getTasks', 'postComment'),
+        builtInDescriptions: makeDescriptions('getTasks', 'postComment'),
+        mcpTools: makeTools('getTasks', 'searchWeb'),
+        mcpDescriptions: makeDescriptions('getTasks', 'searchWeb'),
+      }, logger)
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'tool name collision — built-in wins',
+        expect.objectContaining({ collisions: ['getTasks'] }),
+      )
+    })
+
+    it('should subtract collisions from totalCount in the info log', () => {
+      const logger = makeFakeLogger()
+
+      new ToolRegistry({
+        builtInTools: makeTools('a', 'b'),
+        builtInDescriptions: makeDescriptions('a', 'b'),
+        mcpTools: makeTools('a', 'c'),
+        mcpDescriptions: makeDescriptions('a', 'c'),
+      }, logger)
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'tool registry assembled',
+        expect.objectContaining({ builtInCount: 2, mcpCount: 2, totalCount: 3 }),
+      )
+    })
+
+    it('should not log warn when there are no collisions', () => {
+      const logger = makeFakeLogger()
+
+      new ToolRegistry({
+        builtInTools: makeTools('a'),
+        builtInDescriptions: makeDescriptions('a'),
+        mcpTools: makeTools('b'),
+        mcpDescriptions: makeDescriptions('b'),
+      }, logger)
+
+      expect(logger.warn).not.toHaveBeenCalled()
+    })
   })
 })

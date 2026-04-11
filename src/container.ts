@@ -128,12 +128,15 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
   const builtInDescriptions = createBuiltInToolDescriptions()
 
   // 7. ToolRegistry — merges built-in + MCP tools
-  const toolProvider = new ToolRegistry({
-    builtInTools,
-    builtInDescriptions,
-    mcpTools,
-    mcpDescriptions,
-  })
+  const toolProvider = new ToolRegistry(
+    {
+      builtInTools,
+      builtInDescriptions,
+      mcpTools,
+      mcpDescriptions,
+    },
+    logger.child({ module: 'ToolRegistry' }),
+  )
 
   // 8. MainAgent (AI execution engine)
   const mainAgent = new AiSdkMainAgent(model, logger.child({ module: 'AiSdkMainAgent' }))
