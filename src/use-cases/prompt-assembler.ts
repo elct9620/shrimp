@@ -1,10 +1,8 @@
 import { Task } from '../entities/task'
 import { Comment } from '../entities/comment'
+import type { ToolDescription } from './ports/tool-description'
 
-export type ToolDescription = {
-  name: string
-  description: string
-}
+export type { ToolDescription }
 
 export type AssembleInput = {
   task: Task

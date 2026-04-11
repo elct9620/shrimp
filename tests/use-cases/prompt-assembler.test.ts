@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { assemble, type ToolDescription } from '../../src/use-cases/prompt-assembler'
+import { assemble } from '../../src/use-cases/prompt-assembler'
+import type { ToolDescription } from '../../src/use-cases/ports/tool-description'
 import { Task } from '../../src/entities/task'
 import { Comment } from '../../src/entities/comment'
 import { Section } from '../../src/entities/section'
