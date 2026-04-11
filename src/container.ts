@@ -124,7 +124,10 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
   }
 
   // 6. Built-in tools
-  const builtInTools = createBuiltInTools(boardRepository)
+  const builtInTools = createBuiltInTools(
+    boardRepository,
+    logger.child({ module: 'built-in-tools' }),
+  )
   const builtInDescriptions = createBuiltInToolDescriptions()
 
   // 7. ToolRegistry — merges built-in + MCP tools

@@ -1,16 +1,17 @@
 import type { BoardRepository } from '../../../use-cases/ports/board-repository'
+import type { LoggerPort } from '../../../use-cases/ports/logger'
 import type { ToolDescription } from '../../../use-cases/ports/tool-description'
 import { createGetTasksTool, GET_TASKS_TOOL_NAME } from './get-tasks'
 import { createGetCommentsTool, GET_COMMENTS_TOOL_NAME } from './get-comments'
 import { createPostCommentTool, POST_COMMENT_TOOL_NAME } from './post-comment'
 import { createMoveTaskTool, MOVE_TASK_TOOL_NAME } from './move-task'
 
-export function createBuiltInTools(repo: BoardRepository) {
+export function createBuiltInTools(repo: BoardRepository, logger: LoggerPort) {
   return {
-    getTasks: createGetTasksTool(repo),
-    getComments: createGetCommentsTool(repo),
-    postComment: createPostCommentTool(repo),
-    moveTask: createMoveTaskTool(repo),
+    getTasks: createGetTasksTool(repo, logger.child({ tool: GET_TASKS_TOOL_NAME })),
+    getComments: createGetCommentsTool(repo, logger.child({ tool: GET_COMMENTS_TOOL_NAME })),
+    postComment: createPostCommentTool(repo, logger.child({ tool: POST_COMMENT_TOOL_NAME })),
+    moveTask: createMoveTaskTool(repo, logger.child({ tool: MOVE_TASK_TOOL_NAME })),
   }
 }
 
