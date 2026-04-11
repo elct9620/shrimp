@@ -1,9 +1,23 @@
 import 'dotenv/config'
 import { serve } from '@hono/node-server'
-import { app } from './app'
+import { composeApp } from './container'
 
-const port = Number(process.env.PORT ?? 3000)
+async function main() {
+  const { app, mcpToolLoader, port } = await composeApp()
 
-serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`Shrimp listening on http://localhost:${info.port}`)
+  const server = serve({ fetch: app.fetch, port })
+
+  const shutdown = async () => {
+    server.close()
+    await mcpToolLoader.close()
+    process.exit(0)
+  }
+
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
+}
+
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
 })
