@@ -1,13 +1,30 @@
 {
   "name": "@aotoki/autonoe-shrimp",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Event-driven background agent for Todoist tasks",
+  "type": "module",
+  "main": "dist/server.mjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsdown --watch --onSuccess \"node dist/server.mjs\"",
+    "build": "tsdown",
+    "start": "node dist/server.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "Aotokitsuruya",
   "license": "Apache-2.0",
-  "packageManager": "pnpm@10.28.0"
+  "packageManager": "pnpm@10.28.0",
+  "dependencies": {
+    "@hono/node-server": "^1.19.13",
+    "dotenv": "^17.4.1",
+    "hono": "^4.12.12"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsdown": "^0.21.7",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
+  }
 }
