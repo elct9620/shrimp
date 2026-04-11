@@ -1,10 +1,20 @@
 import { ToolLoopAgent, stepCountIs, type LanguageModel, type ToolSet as AiToolSet } from 'ai'
 import type { MainAgent, MainAgentInput, MainAgentResult, MainAgentTerminationReason } from '../../use-cases/ports/main-agent'
+import type { LoggerPort } from '../../use-cases/ports/logger'
 
 export class AiSdkMainAgent implements MainAgent {
-  constructor(private readonly model: LanguageModel) {}
+  constructor(
+    private readonly model: LanguageModel,
+    private readonly logger: LoggerPort,
+  ) {}
 
   async run(input: MainAgentInput): Promise<MainAgentResult> {
+    const toolCount = Object.keys(input.tools).length
+    this.logger.debug('main agent run started', {
+      maxSteps: input.maxSteps,
+      toolCount,
+    })
+
     const agent = new ToolLoopAgent({
       model: this.model,
       tools: input.tools as AiToolSet,
@@ -12,11 +22,23 @@ export class AiSdkMainAgent implements MainAgent {
       stopWhen: stepCountIs(input.maxSteps),
     })
 
-    const result = await agent.generate({ prompt: input.userPrompt })
-
-    return {
-      reason: mapFinishReason(result.finishReason),
+    let result
+    try {
+      result = await agent.generate({ prompt: input.userPrompt })
+    } catch (err) {
+      this.logger.error('main agent run failed', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+      throw err
     }
+
+    const reason = mapFinishReason(result.finishReason)
+    this.logger.info('main agent run finished', {
+      finishReason: result.finishReason,
+      reason,
+    })
+
+    return { reason }
   }
 }
 

@@ -135,7 +135,7 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
   })
 
   // 8. MainAgent (AI execution engine)
-  const mainAgent = new AiSdkMainAgent(model)
+  const mainAgent = new AiSdkMainAgent(model, logger.child({ module: 'AiSdkMainAgent' }))
 
   // 9. ProcessingCycle (orchestrates one heartbeat-triggered unit of work)
   const processingCycle = new ProcessingCycle({
