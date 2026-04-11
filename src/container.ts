@@ -94,6 +94,7 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
         logger.child({ module: 'TodoistClient' }),
       ),
       env.todoistProjectId,
+      logger.child({ module: 'TodoistBoardRepository' }),
     )
 
   // 4. LanguageModel — OpenAI-compatible provider

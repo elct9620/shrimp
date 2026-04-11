@@ -10,6 +10,20 @@ import type {
   TodoistComment,
   TodoistSection,
 } from '../../../src/infrastructure/todoist/todoist-client'
+import type { LoggerPort } from '../../../src/use-cases/ports/logger'
+
+function makeFakeLogger(): LoggerPort {
+  const logger: LoggerPort = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+  }
+  return logger
+}
 
 // ─── Fake Client ─────────────────────────────────────────────────────────────
 
@@ -58,7 +72,7 @@ describe('TodoistBoardRepository.getTasks', () => {
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
       listTasks: vi.fn().mockResolvedValue(rawTasks),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     const tasks = await repo.getTasks(Section.InProgress)
 
@@ -87,7 +101,7 @@ describe('TodoistBoardRepository.getTasks', () => {
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
       listTasks: vi.fn().mockResolvedValue(rawTasks),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     const tasks = await repo.getTasks(Section.InProgress)
 
@@ -109,7 +123,7 @@ describe('TodoistBoardRepository.getTasks', () => {
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
       listTasks: vi.fn().mockResolvedValue(rawTasks),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     const tasks = await repo.getTasks(Section.InProgress)
 
@@ -131,7 +145,7 @@ describe('TodoistBoardRepository.getTasks', () => {
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
       listTasks: vi.fn().mockResolvedValue(rawTasks),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     const tasks = await repo.getTasks(Section.Backlog)
 
@@ -143,7 +157,7 @@ describe('TodoistBoardRepository.getTasks', () => {
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
       listTasks: vi.fn().mockResolvedValue([]),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     const tasks = await repo.getTasks(Section.InProgress)
 
@@ -154,7 +168,7 @@ describe('TodoistBoardRepository.getTasks', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await repo.getTasks(Section.Backlog)
 
@@ -165,7 +179,7 @@ describe('TodoistBoardRepository.getTasks', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await repo.getTasks(Section.Backlog)
 
@@ -179,7 +193,7 @@ describe('TodoistBoardRepository.getTasks', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await repo.getTasks(Section.InProgress)
 
@@ -194,7 +208,7 @@ describe('TodoistBoardRepository.getTasks', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(sectionsWithoutBacklog),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await expect(repo.getTasks(Section.Backlog)).rejects.toThrow(BoardSectionMissingError)
   })
@@ -204,7 +218,7 @@ describe('TodoistBoardRepository.getTasks', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(sectionsWithoutInProgress),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await expect(repo.getTasks(Section.InProgress)).rejects.toThrow(BoardSectionMissingError)
   })
@@ -214,7 +228,7 @@ describe('TodoistBoardRepository.getTasks', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(sectionsWithoutDone),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await expect(repo.getTasks(Section.Done)).rejects.toThrow(BoardSectionMissingError)
   })
@@ -228,7 +242,7 @@ describe('TodoistBoardRepository.getTasks', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(sectionsWithWrongCase),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await expect(repo.getTasks(Section.InProgress)).rejects.toThrow(BoardSectionMissingError)
   })
@@ -249,7 +263,7 @@ describe('TodoistBoardRepository.getComments', () => {
     const client = makeFakeClient({
       listComments: vi.fn().mockResolvedValue(rawComments),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     const comments = await repo.getComments('task-1')
 
@@ -261,7 +275,7 @@ describe('TodoistBoardRepository.getComments', () => {
 
   it('should call listComments with the given taskId', async () => {
     const client = makeFakeClient()
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await repo.getComments('task-42')
 
@@ -272,7 +286,7 @@ describe('TodoistBoardRepository.getComments', () => {
     const client = makeFakeClient({
       listComments: vi.fn().mockResolvedValue([]),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     const comments = await repo.getComments('task-1')
 
@@ -285,7 +299,7 @@ describe('TodoistBoardRepository.getComments', () => {
 describe('TodoistBoardRepository.postComment', () => {
   it('should delegate to client.postComment with correct params', async () => {
     const client = makeFakeClient()
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await repo.postComment('task-1', 'Hello world')
 
@@ -297,7 +311,7 @@ describe('TodoistBoardRepository.postComment', () => {
 
   it('should return void on success', async () => {
     const client = makeFakeClient()
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     const result = await repo.postComment('task-1', 'Done')
 
@@ -312,7 +326,7 @@ describe('TodoistBoardRepository.moveTask', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await repo.moveTask('task-1', Section.Done)
 
@@ -326,7 +340,7 @@ describe('TodoistBoardRepository.moveTask', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await repo.moveTask('task-2', Section.InProgress)
 
@@ -341,7 +355,7 @@ describe('TodoistBoardRepository.moveTask', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(sectionsWithoutDone),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     await expect(repo.moveTask('task-1', Section.Done)).rejects.toThrow(BoardSectionMissingError)
   })
@@ -350,10 +364,81 @@ describe('TodoistBoardRepository.moveTask', () => {
     const client = makeFakeClient({
       listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
     })
-    const repo = new TodoistBoardRepository(client as never, PROJECT_ID)
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, makeFakeLogger())
 
     const result = await repo.moveTask('task-1', Section.Backlog)
 
     expect(result).toBeUndefined()
+  })
+})
+
+// ─── Logging ──────────────────────────────────────────────────────────────────
+
+describe('TodoistBoardRepository logging', () => {
+  it('should log debug with section and count when tasks are loaded', async () => {
+    const rawTasks: TodoistTask[] = [
+      { id: 't1', content: 'A', description: null, project_id: PROJECT_ID, section_id: 'sec-backlog', priority: 1 },
+      { id: 't2', content: 'B', description: null, project_id: PROJECT_ID, section_id: 'sec-backlog', priority: 2 },
+    ]
+    const client = makeFakeClient({
+      listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
+      listTasks: vi.fn().mockResolvedValue(rawTasks),
+    })
+    const logger = makeFakeLogger()
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, logger)
+
+    await repo.getTasks(Section.Backlog)
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      'board tasks loaded',
+      expect.objectContaining({ section: Section.Backlog, count: 2 }),
+    )
+  })
+
+  it('should log info with taskId and section after a successful moveTask', async () => {
+    const client = makeFakeClient({
+      listSections: vi.fn().mockResolvedValue(ALL_SECTIONS),
+    })
+    const logger = makeFakeLogger()
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, logger)
+
+    await repo.moveTask('task-42', Section.Done)
+
+    expect(logger.info).toHaveBeenCalledWith(
+      'task moved',
+      expect.objectContaining({ taskId: 'task-42', section: Section.Done }),
+    )
+  })
+
+  it('should log error with targetName and available sections when section is missing', async () => {
+    const sectionsWithoutDone = ALL_SECTIONS.filter((s) => s.name !== 'Done')
+    const client = makeFakeClient({
+      listSections: vi.fn().mockResolvedValue(sectionsWithoutDone),
+    })
+    const logger = makeFakeLogger()
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, logger)
+
+    await expect(repo.getTasks(Section.Done)).rejects.toThrow(BoardSectionMissingError)
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'board section missing',
+      expect.objectContaining({
+        targetName: 'Done',
+        availableSections: ['Backlog', 'In Progress'],
+      }),
+    )
+  })
+
+  it('should not log info when moveTask throws because section is missing', async () => {
+    const sectionsWithoutDone = ALL_SECTIONS.filter((s) => s.name !== 'Done')
+    const client = makeFakeClient({
+      listSections: vi.fn().mockResolvedValue(sectionsWithoutDone),
+    })
+    const logger = makeFakeLogger()
+    const repo = new TodoistBoardRepository(client as never, PROJECT_ID, logger)
+
+    await expect(repo.moveTask('task-1', Section.Done)).rejects.toThrow(BoardSectionMissingError)
+
+    expect(logger.info).not.toHaveBeenCalled()
   })
 })
