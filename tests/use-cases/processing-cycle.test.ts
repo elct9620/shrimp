@@ -5,6 +5,7 @@ import type { BoardRepository } from '../../src/use-cases/ports/board-repository
 import type { MainAgent, MainAgentInput, MainAgentResult } from '../../src/use-cases/ports/main-agent'
 import type { ToolProvider } from '../../src/use-cases/ports/tool-provider'
 import type { ToolDescription } from '../../src/use-cases/ports/tool-description'
+import type { LoggerPort } from '../../src/use-cases/ports/logger'
 import { Section } from '../../src/entities/section'
 import { Priority } from '../../src/entities/priority'
 import type { Task } from '../../src/entities/task'
@@ -58,19 +59,34 @@ function makeToolProvider(): ToolProvider {
   }
 }
 
+function makeFakeLogger(): LoggerPort {
+  const logger: LoggerPort = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+  }
+  return logger
+}
+
 // --- Tests ---
 
 describe('ProcessingCycle.run', () => {
   let board: ReturnType<typeof makeBoardRepository>
   let mainAgent: ReturnType<typeof makeMainAgent>
   let toolProvider: ReturnType<typeof makeToolProvider>
+  let logger: LoggerPort
   let cycle: ProcessingCycle
 
   beforeEach(() => {
     board = makeBoardRepository()
     mainAgent = makeMainAgent()
     toolProvider = makeToolProvider()
-    cycle = new ProcessingCycle({ board, mainAgent, toolProvider, maxSteps: 10 })
+    logger = makeFakeLogger()
+    cycle = new ProcessingCycle({ board, mainAgent, toolProvider, maxSteps: 10, logger })
   })
 
   describe('when no tasks exist in either section', () => {
@@ -239,6 +255,101 @@ describe('ProcessingCycle.run', () => {
       await cycle.run()
 
       expect(mainAgent.capturedInput?.systemPrompt).toContain('special_tool')
+    })
+  })
+
+  describe('logging', () => {
+    it('should log info "cycle started" at the top of every run', async () => {
+      await cycle.run()
+
+      expect(logger.info).toHaveBeenCalledWith('cycle started')
+    })
+
+    it('should log info "cycle idle" with task counts when no task is selectable', async () => {
+      board.getTasks = vi.fn().mockResolvedValue([])
+
+      await cycle.run()
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'cycle idle',
+        expect.objectContaining({
+          reason: 'no tasks available',
+          inProgressCount: 0,
+          backlogCount: 0,
+        }),
+      )
+    })
+
+    it('should log warn "cycle skipped" with missingSection when BoardSectionMissingError is thrown', async () => {
+      board.getTasks = vi.fn().mockRejectedValue(new BoardSectionMissingError('In Progress'))
+
+      await cycle.run()
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'cycle skipped — board section missing',
+        expect.objectContaining({ missingSection: expect.stringContaining('In Progress') }),
+      )
+    })
+
+    it('should log info "cycle task selected" with taskId, section and priority', async () => {
+      const task = makeTask({ id: 'task-x', section: Section.InProgress, priority: Priority.p2 })
+      board.getTasks = vi.fn().mockImplementation(async (section: Section) => {
+        if (section === Section.InProgress) return [task]
+        return []
+      })
+
+      await cycle.run()
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'cycle task selected',
+        expect.objectContaining({
+          taskId: 'task-x',
+          section: Section.InProgress,
+          priority: Priority.p2,
+        }),
+      )
+    })
+
+    it('should log debug "cycle task promoted" when a backlog task is moved to In Progress', async () => {
+      const task = makeTask({ id: 'bl-1', section: Section.Backlog })
+      board.getTasks = vi.fn().mockImplementation(async (section: Section) => {
+        if (section === Section.Backlog) return [task]
+        return []
+      })
+
+      await cycle.run()
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        'cycle task promoted',
+        expect.objectContaining({ taskId: 'bl-1' }),
+      )
+    })
+
+    it('should log info "cycle finished" with taskId and reason after main agent completes', async () => {
+      const task = makeTask({ id: 'task-x', section: Section.InProgress })
+      board.getTasks = vi.fn().mockImplementation(async (section: Section) => {
+        if (section === Section.InProgress) return [task]
+        return []
+      })
+      mainAgent.run = vi.fn().mockResolvedValue({ reason: 'maxStepsReached' })
+
+      await cycle.run()
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'cycle finished',
+        expect.objectContaining({ taskId: 'task-x', reason: 'maxStepsReached' }),
+      )
+    })
+
+    it('should not log "cycle finished" when an unexpected error propagates', async () => {
+      board.getTasks = vi.fn().mockRejectedValue(new Error('unexpected'))
+
+      await expect(cycle.run()).rejects.toThrow()
+
+      const finishedCalls = (logger.info as ReturnType<typeof vi.fn>).mock.calls.filter(
+        (call) => call[0] === 'cycle finished',
+      )
+      expect(finishedCalls).toHaveLength(0)
     })
   })
 })

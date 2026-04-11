@@ -150,6 +150,7 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
     mainAgent,
     toolProvider,
     maxSteps: env.aiMaxSteps,
+    logger: logger.child({ module: 'ProcessingCycle' }),
   })
 
   // 10. TaskQueue
