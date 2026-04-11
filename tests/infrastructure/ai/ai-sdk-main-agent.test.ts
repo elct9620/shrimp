@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { LanguageModel } from 'ai'
-import { AiSdkAgentLoop } from '../../../src/infrastructure/ai/ai-sdk-agent-loop'
-import type { AgentLoopInput } from '../../../src/use-cases/ports/agent-loop'
+import { AiSdkMainAgent } from '../../../src/infrastructure/ai/ai-sdk-main-agent'
+import type { MainAgentInput } from '../../../src/use-cases/ports/main-agent'
 
 type FinishReason = 'stop' | 'length' | 'content-filter' | 'tool-calls' | 'error' | 'other'
 
@@ -28,18 +28,18 @@ function makeModel(finishReason: FinishReason = 'stop') {
   return { model, doGenerate }
 }
 
-const baseInput: AgentLoopInput = {
+const baseInput: MainAgentInput = {
   systemPrompt: 'You are a helpful assistant.',
   userPrompt: 'Complete the task.',
   tools: { my_tool: {} },
   maxSteps: 3,
 }
 
-describe('AiSdkAgentLoop.run', () => {
+describe('AiSdkMainAgent.run', () => {
   describe('termination reason mapping', () => {
     it('should return finished when model returns stop', async () => {
       const { model } = makeModel('stop')
-      const loop = new AiSdkAgentLoop(model)
+      const loop = new AiSdkMainAgent(model)
 
       const result = await loop.run(baseInput)
 
@@ -48,7 +48,7 @@ describe('AiSdkAgentLoop.run', () => {
 
     it('should return finished when model returns tool-calls', async () => {
       const { model } = makeModel('tool-calls')
-      const loop = new AiSdkAgentLoop(model)
+      const loop = new AiSdkMainAgent(model)
 
       const result = await loop.run(baseInput)
 
@@ -57,7 +57,7 @@ describe('AiSdkAgentLoop.run', () => {
 
     it('should return maxStepsReached when model returns length', async () => {
       const { model } = makeModel('length')
-      const loop = new AiSdkAgentLoop(model)
+      const loop = new AiSdkMainAgent(model)
 
       const result = await loop.run(baseInput)
 
@@ -66,7 +66,7 @@ describe('AiSdkAgentLoop.run', () => {
 
     it('should return error when model returns error', async () => {
       const { model } = makeModel('error')
-      const loop = new AiSdkAgentLoop(model)
+      const loop = new AiSdkMainAgent(model)
 
       const result = await loop.run(baseInput)
 
@@ -75,7 +75,7 @@ describe('AiSdkAgentLoop.run', () => {
 
     it('should return error when model returns content-filter', async () => {
       const { model } = makeModel('content-filter')
-      const loop = new AiSdkAgentLoop(model)
+      const loop = new AiSdkMainAgent(model)
 
       const result = await loop.run(baseInput)
 
@@ -84,7 +84,7 @@ describe('AiSdkAgentLoop.run', () => {
 
     it('should return error when model returns other', async () => {
       const { model } = makeModel('other')
-      const loop = new AiSdkAgentLoop(model)
+      const loop = new AiSdkMainAgent(model)
 
       const result = await loop.run(baseInput)
 
@@ -95,7 +95,7 @@ describe('AiSdkAgentLoop.run', () => {
   describe('input passthrough', () => {
     it('should pass systemPrompt as instructions to ToolLoopAgent', async () => {
       const { model, doGenerate } = makeModel('stop')
-      const loop = new AiSdkAgentLoop(model)
+      const loop = new AiSdkMainAgent(model)
 
       await loop.run({ ...baseInput, systemPrompt: 'System instruction here.' })
 
@@ -107,7 +107,7 @@ describe('AiSdkAgentLoop.run', () => {
 
     it('should pass userPrompt as the user message to ToolLoopAgent', async () => {
       const { model, doGenerate } = makeModel('stop')
-      const loop = new AiSdkAgentLoop(model)
+      const loop = new AiSdkMainAgent(model)
 
       await loop.run({ ...baseInput, userPrompt: 'Do the thing now.' })
 
@@ -121,7 +121,7 @@ describe('AiSdkAgentLoop.run', () => {
 
     it('should pass tools from input to ToolLoopAgent', async () => {
       const { model, doGenerate } = makeModel('stop')
-      const loop = new AiSdkAgentLoop(model)
+      const loop = new AiSdkMainAgent(model)
       const tools = { special_tool: { description: 'does special things', parameters: {} } }
 
       await loop.run({ ...baseInput, tools })
@@ -135,7 +135,7 @@ describe('AiSdkAgentLoop.run', () => {
   describe('independence across calls', () => {
     it('should work correctly when called multiple times', async () => {
       const { model } = makeModel('stop')
-      const loop = new AiSdkAgentLoop(model)
+      const loop = new AiSdkMainAgent(model)
 
       const result1 = await loop.run(baseInput)
       const result2 = await loop.run({ ...baseInput, userPrompt: 'Second call.' })

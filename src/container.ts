@@ -5,14 +5,14 @@ import { loadEnvConfig } from './infrastructure/config/env-config'
 import { loadMcpConfig, type McpConfig } from './infrastructure/config/mcp-config'
 import { TodoistClient } from './infrastructure/todoist/todoist-client'
 import { TodoistBoardRepository } from './infrastructure/todoist/todoist-board-repository'
-import { AiSdkAgentLoop } from './infrastructure/ai/ai-sdk-agent-loop'
+import { AiSdkMainAgent } from './infrastructure/ai/ai-sdk-main-agent'
 import { McpToolLoader } from './infrastructure/mcp/mcp-tool-loader'
 import { InMemoryTaskQueue } from './infrastructure/queue/in-memory-task-queue'
 import { ToolRegistry } from './adapters/tools/tool-registry'
 import { createBuiltInTools, createBuiltInToolDescriptions } from './adapters/tools/built-in/index'
 import { createHealthRoute } from './adapters/http/routes/health'
 import { createHeartbeatRoute } from './adapters/http/routes/heartbeat'
-import { MainAgent } from './use-cases/main-agent'
+import { ProcessingCycle } from './use-cases/processing-cycle'
 import type { BoardRepository } from './use-cases/ports/board-repository'
 import type { ToolDescription } from './use-cases/ports/tool-description'
 
@@ -100,13 +100,13 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
     mcpDescriptions,
   })
 
-  // 8. AgentLoop
-  const agentLoop = new AiSdkAgentLoop(model)
+  // 8. MainAgent (AI execution engine)
+  const mainAgent = new AiSdkMainAgent(model)
 
-  // 9. MainAgent
-  const mainAgent = new MainAgent({
+  // 9. ProcessingCycle (orchestrates one heartbeat-triggered unit of work)
+  const processingCycle = new ProcessingCycle({
     board: boardRepository,
-    agentLoop,
+    mainAgent,
     toolProvider,
     maxSteps: env.aiMaxSteps,
   })
@@ -117,7 +117,7 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
   // 11. Hono app
   const app = new Hono()
   app.route('/', createHealthRoute())
-  app.route('/', createHeartbeatRoute({ taskQueue, mainAgent }))
+  app.route('/', createHeartbeatRoute({ taskQueue, processingCycle }))
 
   return { app, mcpToolLoader, port: env.port }
 }

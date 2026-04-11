@@ -19,8 +19,9 @@ Two documents are authoritative:
 - `SPEC.md` — behavior, contracts, and success criteria. Consult before changing any endpoint, failure mode, or configuration contract.
 - `docs/architecture.md` — code structure: four-layer Clean Architecture (`entities/`, `use-cases/`, `adapters/`, `infrastructure/`), dependency rules, key ports, and SPEC-component-to-module mapping.
 
-Two facts worth internalizing before touching Main Agent code:
-- **The agent loop is a black box.** Shrimp invokes `AgentLoop` exactly once per Processing Cycle; iterations cannot be driven from outside. `MainAgent` stays a thin entry point.
+Three facts worth internalizing before touching Processing Cycle or Main Agent code:
+- **Shrimp (the process) IS the Supervisor.** No class named `Supervisor` exists; Shrimp itself receives heartbeats and runs Processing Cycles.
+- **The Main Agent is a black box executor.** `ProcessingCycle` invokes the `MainAgent` port exactly once per heartbeat; iterations inside the loop cannot be driven from outside. `AiSdkMainAgent` implements this port via AI SDK's `ToolLoopAgent`.
 - **Built-in Todoist tools are inbound adapters**, not use cases. They live in `adapters/tools/built-in/` and call `BoardRepository` directly. Do not create per-operation use-case classes for them.
 
 ## Tech Stack
@@ -47,4 +48,4 @@ Two facts worth internalizing before touching Main Agent code:
 
 - `.env` supplies environment variables locally; `.mcp.json` configures supplementary MCP servers. Both files are not committed to source control.
 - Tests must not depend on live external services (Todoist API, AI provider); use mocks or stubs.
-- Class and port names follow SPEC terminology (`MainAgent`, `Board`, `Processing Cycle`), not implementation-derived names.
+- Class and port names follow SPEC terminology (`ProcessingCycle`, `MainAgent`, `Board`), not implementation-derived names.

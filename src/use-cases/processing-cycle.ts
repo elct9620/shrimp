@@ -3,25 +3,25 @@ import { Section } from '../entities/section'
 import { assemble } from './prompt-assembler'
 import { BoardSectionMissingError } from './ports/board-repository'
 import type { BoardRepository } from './ports/board-repository'
-import type { AgentLoop } from './ports/agent-loop'
+import type { MainAgent } from './ports/main-agent'
 import type { ToolProvider } from './ports/tool-provider'
 
-export type MainAgentConfig = {
+export type ProcessingCycleConfig = {
   board: BoardRepository
-  agentLoop: AgentLoop
+  mainAgent: MainAgent
   toolProvider: ToolProvider
   maxSteps: number
 }
 
-export class MainAgent {
+export class ProcessingCycle {
   private readonly board: BoardRepository
-  private readonly agentLoop: AgentLoop
+  private readonly mainAgent: MainAgent
   private readonly toolProvider: ToolProvider
   private readonly maxSteps: number
 
-  constructor({ board, agentLoop, toolProvider, maxSteps }: MainAgentConfig) {
+  constructor({ board, mainAgent, toolProvider, maxSteps }: ProcessingCycleConfig) {
     this.board = board
-    this.agentLoop = agentLoop
+    this.mainAgent = mainAgent
     this.toolProvider = toolProvider
     this.maxSteps = maxSteps
   }
@@ -49,7 +49,7 @@ export class MainAgent {
 
     const { systemPrompt, userPrompt } = assemble({ task, comments, tools })
 
-    await this.agentLoop.run({
+    await this.mainAgent.run({
       systemPrompt,
       userPrompt,
       tools: this.toolProvider.getTools(),

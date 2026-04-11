@@ -1,10 +1,10 @@
 import { ToolLoopAgent, stepCountIs, type LanguageModel, type ToolSet as AiToolSet } from 'ai'
-import type { AgentLoop, AgentLoopInput, AgentLoopResult, AgentLoopTerminationReason } from '../../use-cases/ports/agent-loop'
+import type { MainAgent, MainAgentInput, MainAgentResult, MainAgentTerminationReason } from '../../use-cases/ports/main-agent'
 
-export class AiSdkAgentLoop implements AgentLoop {
+export class AiSdkMainAgent implements MainAgent {
   constructor(private readonly model: LanguageModel) {}
 
-  async run(input: AgentLoopInput): Promise<AgentLoopResult> {
+  async run(input: MainAgentInput): Promise<MainAgentResult> {
     const agent = new ToolLoopAgent({
       model: this.model,
       tools: input.tools as AiToolSet,
@@ -20,7 +20,7 @@ export class AiSdkAgentLoop implements AgentLoop {
   }
 }
 
-function mapFinishReason(reason: string): AgentLoopTerminationReason {
+function mapFinishReason(reason: string): MainAgentTerminationReason {
   switch (reason) {
     case 'stop':
     case 'tool-calls':

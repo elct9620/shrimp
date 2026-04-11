@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { MainAgent } from '../../src/use-cases/main-agent'
+import { ProcessingCycle } from '../../src/use-cases/processing-cycle'
 import { BoardSectionMissingError } from '../../src/use-cases/ports/board-repository'
 import type { BoardRepository } from '../../src/use-cases/ports/board-repository'
-import type { AgentLoop, AgentLoopInput, AgentLoopResult } from '../../src/use-cases/ports/agent-loop'
+import type { MainAgent, MainAgentInput, MainAgentResult } from '../../src/use-cases/ports/main-agent'
 import type { ToolProvider } from '../../src/use-cases/ports/tool-provider'
 import type { ToolDescription } from '../../src/use-cases/ports/tool-description'
 import { Section } from '../../src/entities/section'
@@ -35,14 +35,14 @@ function makeBoardRepository(overrides: Partial<BoardRepository> = {}): BoardRep
   }
 }
 
-function makeAgentLoop(result: AgentLoopResult = { reason: 'finished' }): AgentLoop & { capturedInput?: AgentLoopInput } {
-  const loop: AgentLoop & { capturedInput?: AgentLoopInput } = {
-    run: vi.fn().mockImplementation(async (input: AgentLoopInput) => {
-      loop.capturedInput = input
+function makeMainAgent(result: MainAgentResult = { reason: 'finished' }): MainAgent & { capturedInput?: MainAgentInput } {
+  const agent: MainAgent & { capturedInput?: MainAgentInput } = {
+    run: vi.fn().mockImplementation(async (input: MainAgentInput) => {
+      agent.capturedInput = input
       return result
     }),
   }
-  return loop
+  return agent
 }
 
 const toolDescriptions: ToolDescription[] = [
@@ -60,32 +60,32 @@ function makeToolProvider(): ToolProvider {
 
 // --- Tests ---
 
-describe('MainAgent.run', () => {
+describe('ProcessingCycle.run', () => {
   let board: ReturnType<typeof makeBoardRepository>
-  let agentLoop: ReturnType<typeof makeAgentLoop>
+  let mainAgent: ReturnType<typeof makeMainAgent>
   let toolProvider: ReturnType<typeof makeToolProvider>
-  let agent: MainAgent
+  let cycle: ProcessingCycle
 
   beforeEach(() => {
     board = makeBoardRepository()
-    agentLoop = makeAgentLoop()
+    mainAgent = makeMainAgent()
     toolProvider = makeToolProvider()
-    agent = new MainAgent({ board, agentLoop, toolProvider, maxSteps: 10 })
+    cycle = new ProcessingCycle({ board, mainAgent, toolProvider, maxSteps: 10 })
   })
 
   describe('when no tasks exist in either section', () => {
-    it('should end immediately without calling agent loop', async () => {
+    it('should end immediately without calling main agent', async () => {
       board.getTasks = vi.fn().mockResolvedValue([])
 
-      await agent.run()
+      await cycle.run()
 
-      expect(agentLoop.run).not.toHaveBeenCalled()
+      expect(mainAgent.run).not.toHaveBeenCalled()
     })
 
     it('should end immediately without moving any task', async () => {
       board.getTasks = vi.fn().mockResolvedValue([])
 
-      await agent.run()
+      await cycle.run()
 
       expect(board.moveTask).not.toHaveBeenCalled()
     })
@@ -101,54 +101,54 @@ describe('MainAgent.run', () => {
       })
     })
 
-    it('should call agent loop exactly once', async () => {
-      await agent.run()
+    it('should call main agent exactly once', async () => {
+      await cycle.run()
 
-      expect(agentLoop.run).toHaveBeenCalledTimes(1)
+      expect(mainAgent.run).toHaveBeenCalledTimes(1)
     })
 
     it('should not move the In Progress task before execution', async () => {
-      await agent.run()
+      await cycle.run()
 
       expect(board.moveTask).not.toHaveBeenCalled()
     })
 
     it('should retrieve comments for the selected task', async () => {
-      await agent.run()
+      await cycle.run()
 
       expect(board.getComments).toHaveBeenCalledWith('ip-1')
     })
 
-    it('should pass tool set to agent loop', async () => {
-      await agent.run()
+    it('should pass tool set to main agent', async () => {
+      await cycle.run()
 
-      expect(agentLoop.capturedInput?.tools).toBe(toolSet)
+      expect(mainAgent.capturedInput?.tools).toBe(toolSet)
     })
 
-    it('should pass maxSteps to agent loop', async () => {
-      await agent.run()
+    it('should pass maxSteps to main agent', async () => {
+      await cycle.run()
 
-      expect(agentLoop.capturedInput?.maxSteps).toBe(10)
+      expect(mainAgent.capturedInput?.maxSteps).toBe(10)
     })
 
-    it('should pass non-empty systemPrompt to agent loop', async () => {
-      await agent.run()
+    it('should pass non-empty systemPrompt to main agent', async () => {
+      await cycle.run()
 
-      expect(agentLoop.capturedInput?.systemPrompt).toBeTruthy()
+      expect(mainAgent.capturedInput?.systemPrompt).toBeTruthy()
     })
 
     it('should include task id in user prompt', async () => {
-      await agent.run()
+      await cycle.run()
 
-      expect(agentLoop.capturedInput?.userPrompt).toContain('ip-1')
+      expect(mainAgent.capturedInput?.userPrompt).toContain('ip-1')
     })
 
     it('should include comment text in user prompt', async () => {
       board.getComments = vi.fn().mockResolvedValue([makeComment('prior progress note')])
 
-      await agent.run()
+      await cycle.run()
 
-      expect(agentLoop.capturedInput?.userPrompt).toContain('prior progress note')
+      expect(mainAgent.capturedInput?.userPrompt).toContain('prior progress note')
     })
   })
 
@@ -162,48 +162,48 @@ describe('MainAgent.run', () => {
       })
     })
 
-    it('should move the Backlog task to In Progress before calling agent loop', async () => {
+    it('should move the Backlog task to In Progress before calling main agent', async () => {
       const callOrder: string[] = []
       board.moveTask = vi.fn().mockImplementation(async () => { callOrder.push('move') })
-      agentLoop.run = vi.fn().mockImplementation(async () => { callOrder.push('agent'); return { reason: 'finished' } })
+      mainAgent.run = vi.fn().mockImplementation(async () => { callOrder.push('agent'); return { reason: 'finished' } })
 
-      await agent.run()
+      await cycle.run()
 
       expect(callOrder).toEqual(['move', 'agent'])
     })
 
     it('should move the task to In Progress section', async () => {
-      await agent.run()
+      await cycle.run()
 
       expect(board.moveTask).toHaveBeenCalledWith('bl-1', Section.InProgress)
     })
 
-    it('should call agent loop exactly once', async () => {
-      await agent.run()
+    it('should call main agent exactly once', async () => {
+      await cycle.run()
 
-      expect(agentLoop.run).toHaveBeenCalledTimes(1)
+      expect(mainAgent.run).toHaveBeenCalledTimes(1)
     })
   })
 
   describe('when BoardSectionMissingError is thrown', () => {
-    it('should end the cycle cleanly without calling agent loop', async () => {
+    it('should end the cycle cleanly without calling main agent', async () => {
       board.getTasks = vi.fn().mockRejectedValue(new BoardSectionMissingError('In Progress'))
 
-      await agent.run()
+      await cycle.run()
 
-      expect(agentLoop.run).not.toHaveBeenCalled()
+      expect(mainAgent.run).not.toHaveBeenCalled()
     })
 
     it('should not throw', async () => {
       board.getTasks = vi.fn().mockRejectedValue(new BoardSectionMissingError('Backlog'))
 
-      await expect(agent.run()).resolves.toBeUndefined()
+      await expect(cycle.run()).resolves.toBeUndefined()
     })
 
     it('should not move any task', async () => {
       board.getTasks = vi.fn().mockRejectedValue(new BoardSectionMissingError('Done'))
 
-      await agent.run()
+      await cycle.run()
 
       expect(board.moveTask).not.toHaveBeenCalled()
     })
@@ -214,14 +214,14 @@ describe('MainAgent.run', () => {
       const unexpectedError = new Error('network failure')
       board.getTasks = vi.fn().mockRejectedValue(unexpectedError)
 
-      await expect(agent.run()).rejects.toThrow('network failure')
+      await expect(cycle.run()).rejects.toThrow('network failure')
     })
 
-    it('should not call agent loop', async () => {
+    it('should not call main agent', async () => {
       board.getTasks = vi.fn().mockRejectedValue(new Error('unexpected'))
 
-      await expect(agent.run()).rejects.toThrow()
-      expect(agentLoop.run).not.toHaveBeenCalled()
+      await expect(cycle.run()).rejects.toThrow()
+      expect(mainAgent.run).not.toHaveBeenCalled()
     })
   })
 
@@ -236,9 +236,9 @@ describe('MainAgent.run', () => {
         { name: 'special_tool', description: 'Does special things' },
       ])
 
-      await agent.run()
+      await cycle.run()
 
-      expect(agentLoop.capturedInput?.systemPrompt).toContain('special_tool')
+      expect(mainAgent.capturedInput?.systemPrompt).toContain('special_tool')
     })
   })
 })

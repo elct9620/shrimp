@@ -4,7 +4,7 @@ An ultra-minimal background agent that automatically processes Todoist tasks in 
 
 ## Purpose
 
-Shrimp keeps a Todoist task board moving forward without human supervision: each time it is woken by a Heartbeat, the Main Agent selects the highest-priority task, executes it, and reports progress back as task comments.
+Shrimp keeps a Todoist task board moving forward without human supervision: each time it is woken by a Heartbeat, a Processing Cycle selects the highest-priority task, dispatches it to the Main Agent for execution, and reports progress back as task comments.
 
 ## Users
 
@@ -33,9 +33,10 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Term | Definition |
 |------|------------|
 | Board | The designated Todoist project configured as a Kanban board; the single task source for this Shrimp instance |
-| Heartbeat | An external `POST /heartbeat` call that triggers a processing cycle |
-| Processing Cycle | One complete run of the Main Agent: select a task, execute it, report progress, update task status |
-| Main Agent | The AI execution engine that owns the entire task processing lifecycle — from task selection through completion |
+| Heartbeat | An external `POST /heartbeat` call that triggers a Processing Cycle |
+| Supervisor | Shrimp itself — the running process that owns the heartbeat-triggered lifecycle: receives heartbeats, manages the Task Queue, and runs Processing Cycles |
+| Processing Cycle | One complete orchestration unit triggered by a heartbeat: select one task (In Progress first, then Backlog), promote a Backlog task to In Progress if needed, retrieve comment history, assemble prompts, dispatch to the Main Agent, and release the queue slot when done |
+| Main Agent | The AI execution engine invoked once per Processing Cycle. Given a system prompt, a user prompt, and a tool set, it runs the tool-calling loop against the configured AI provider until the task is done, the maximum step limit is reached, or an error occurs. It does not select tasks or assemble prompts — those belong to the Processing Cycle |
 | Task Queue | Concurrency gate that limits how many Processing Cycles run simultaneously (currently one) |
 | Built-in Tools | Todoist tools compiled into the agent: Get tasks, Get comments, Post comment, Move task |
 | MCP Tools | Supplementary tools provided by external MCP servers, discovered from `.mcp.json` at startup |
@@ -49,7 +50,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 |---------|-------------|
 | In-memory task queue | A single-slot in-memory queue that serializes task processing; one task at a time |
 | Heartbeat-triggered task selection | On `/heartbeat`, enqueue a processing cycle: select one task (In Progress first, then Backlog) |
-| AI-driven task execution | The Main Agent executes the selected task via built-in and MCP tools until the task is complete or no further progress is possible |
+| AI-driven task execution | The Main Agent executes the selected task via built-in and MCP tools until the task is complete, max steps reached, or an error occurs |
 | Progress reporting via comments | Agent posts a Todoist comment with status after each execution |
 | Task completion | Agent marks the task Done when it determines the task is finished |
 | Health check endpoint | `/health` returns a liveness signal for Docker health check |
@@ -87,20 +88,20 @@ Enqueues one task-processing cycle in the background.
 
 - Always returns `202 Accepted` immediately, regardless of whether the background cycle was enqueued or dropped. The caller cannot distinguish the two cases; this is intentional fire-and-forget semantics.
 - Returns immediately after enqueuing; does not wait for task processing to complete.
-- The Main Agent selects at most one task per Processing Cycle: an In Progress task takes priority over a Backlog task.
+- Each Processing Cycle selects at most one task: an In Progress task takes priority over a Backlog task.
 - If no actionable task is found, the cycle ends immediately with no side effects.
 - Task progress reporting and status updates happen asynchronously within the background Processing Cycle.
 
 ### In-Memory Task Queue
 
-Concurrency gate that ensures only one Processing Cycle runs at a time. The queue does not select tasks, execute them, or report progress — all of that is the Main Agent's responsibility.
+Concurrency gate that ensures only one Processing Cycle runs at a time. The queue does not select tasks, execute them, or report progress — all of that belongs to the Processing Cycle and Main Agent.
 
 **Behavior rules:**
 
 - The queue holds at most one pending job. If a heartbeat arrives while a Processing Cycle is already running, the new request is silently dropped (no error, no queuing).
-- The slot is occupied from the moment a job is accepted until the Main Agent's Processing Cycle completes or fails. Any heartbeat arriving during this window is dropped.
-- On acceptance, the queue starts the Main Agent; on completion or failure, it releases the slot. The queue has no knowledge of what the Main Agent does during the cycle.
-- If the Main Agent fails for any reason, Fail-Open Recovery applies.
+- The slot is occupied from the moment a job is accepted until the Processing Cycle completes or fails. Any heartbeat arriving during this window is dropped.
+- On acceptance, the queue starts a Processing Cycle; on completion or failure, it releases the slot. The queue has no knowledge of what happens during the cycle.
+- If the Processing Cycle fails for any reason, Fail-Open Recovery applies.
 - The queue lives in process memory. On container restart, any in-flight work is lost; Todoist remains the source of truth and the task will be picked up again on the next heartbeat.
 - No retry logic inside the queue. A failed cycle is retried naturally on the next heartbeat.
 
@@ -112,9 +113,9 @@ End-to-end sequence from external trigger to task completion. Each step referenc
 |------|-------|--------|---------|
 | 1 | External caller | `POST /heartbeat` | Request accepted; see [`POST /heartbeat`](#post-heartbeat) for response rules |
 | 2 | Task Queue | Accept or drop the heartbeat | If queue slot is free, start a Processing Cycle; if busy, silently drop; see [In-Memory Task Queue](#in-memory-task-queue) |
-| 3 | Main Agent | Select one task | Check for an In Progress task first; if none, take one Backlog task; if no actionable task exists, cycle ends immediately |
-| 4 | Main Agent | Execute the task | Agent runs via built-in and MCP tools until the task is complete or no further progress is possible |
-| 5 | Main Agent | Report progress and update status | Agent posts a comment on the Todoist task and, if task is complete, moves it to Done; otherwise leaves it in current section |
+| 3 | Processing Cycle | Select one task | Check for an In Progress task first; if none, take one Backlog task; if no actionable task exists, cycle ends immediately |
+| 4 | Processing Cycle | Promote task and assemble prompts | If task is in Backlog, move to In Progress; retrieve comment history; assemble system prompt and user prompt |
+| 5 | Main Agent | Execute the task | Runs the tool-calling loop with the assembled prompts and full tool set; continues until task is done, max steps reached, or error; posts progress comment and moves task to Done if complete |
 | 6 | Task Queue | Release queue slot | Processing Cycle is finished; queue is ready to accept the next heartbeat |
 
 **Flow invariants:**
@@ -123,6 +124,7 @@ End-to-end sequence from external trigger to task completion. Each step referenc
 - Steps 3–6 run entirely in the background; the external caller at step 1 never waits for them.
 - A task not completed in one cycle is retried naturally when the next heartbeat triggers step 3 again.
 - The queue slot (step 6) is released regardless of whether steps 3–5 succeed or fail; Fail-Open Recovery ensures no failure path can leave the slot occupied.
+- Steps 3–4 are the Processing Cycle's orchestration responsibility; step 5 is the Main Agent's execution responsibility. The Main Agent is not involved in task selection or prompt assembly.
 
 ### Todoist Integration
 
@@ -160,12 +162,12 @@ Multiple tasks may exist in the In Progress section (e.g., due to manual user mo
 **Progress reporting:**
 
 - After each execution attempt, the Main Agent posts a comment on the selected Todoist task summarizing what was done and what remains. The comment content and format are determined by the AI model; no fixed template is imposed.
-- The comment is always posted, whether the task completed or not.
+- The comment is always posted by the Main Agent during its tool-calling loop, whether the task completed or not.
 - If the Post Comment call itself fails, the cycle continues; Fail-Open Recovery applies after the cycle ends. The missing comment does not block task processing.
 
 **Task completion:**
 
-- When the Main Agent determines the task is done, it moves the task to the Done section.
+- When the Main Agent determines the task is done, it moves the task to the Done section via the Move Task tool.
 - Shrimp does not delete tasks; it only moves them to Done.
 
 **Source of truth:**
@@ -192,13 +194,14 @@ Liveness check used by Docker `HEALTHCHECK`.
 
 ### Architecture Overview
 
-Shrimp is a single-process service composed of four collaborating components. tsyringe wires them together at startup; no component constructs its own dependencies.
+Shrimp is a single-process service composed of five collaborating components. Shrimp itself (the running process) acts as the Supervisor: it receives heartbeats, manages the Task Queue, and runs Processing Cycles. tsyringe wires all components together at startup; no component constructs its own dependencies.
 
 | Component | Responsibility |
 |-----------|---------------|
 | HTTP Layer (Hono) | Accepts inbound requests, validates route contracts, delegates to Task Queue |
 | Task Queue | Concurrency gate; limits simultaneous Processing Cycles to one |
-| Main Agent | Owns the entire Processing Cycle: selects a task, executes it via built-in and MCP tools, reports progress, and updates task status |
+| Processing Cycle | Orchestrates one heartbeat-triggered unit of work: selects a task, promotes Backlog→In Progress, retrieves comment history, assembles prompts, and dispatches to the Main Agent |
+| Main Agent | AI execution engine: given prompts and a tool set, runs the tool-calling loop until the task is done, max steps reached, or an error occurs; posts progress comments and moves the task to Done when complete |
 | Tool Layer | Built-in Todoist tools for core operations; MCP servers for extensible capabilities |
 
 ### System Boundary
@@ -221,8 +224,9 @@ Each heartbeat traverses the following component chain:
 POST /heartbeat
   → Hono route handler
   → Task Queue (accept or drop)
-    → Main Agent: select task, execute, report progress, update status
-      → Built-in Tools + MCP Tools
+    → Processing Cycle: select task, promote Backlog→InProgress, assemble prompts
+      → Main Agent: run tool-calling loop (execute, report progress, update status)
+        → Built-in Tools + MCP Tools
     → Task Queue: release slot
 ```
 
@@ -238,35 +242,35 @@ The agent has two categories of tools: built-in tools for core Todoist operation
 - **MCP server connection failure at startup**: the failed MCP server is excluded; the agent continues startup with the remaining servers. If no MCP servers connect successfully, the agent runs with Built-in Tools only.
 - **Runtime AI/MCP failure during task processing**: Fail-Open Recovery applies.
 
-### Main Agent
+### Processing Cycle
 
-The Main Agent is the AI execution engine that owns the entire Processing Cycle. It is intentionally minimal: a single tool-calling loop against the configured AI provider, with no orchestration layers, planning steps, or internal retry logic beyond what the loop itself provides. The agent autonomously selects a task, executes it, reports progress, and updates task status. The loop runs until the task is done, the maximum step limit is reached, or an error occurs.
+The Processing Cycle is the orchestration unit triggered by each heartbeat. It runs inside the Task Queue's single slot and is responsible for everything that happens before and after the Main Agent executes.
 
 **Role contract:**
 
 | Contract | Description |
 |----------|-------------|
-| Input | The Board's project ID and access to Built-in Tools and MCP Tools |
-| Output | Processing Cycle complete; the agent is responsible for posting progress comments and updating task status before returning |
-| Completion | The agent determines task completion when the model invokes the Move Task tool to move the task to Done. If the model's final response contains no tool calls and the task was not moved to Done, the task is considered incomplete. If the loop terminates for any reason and the task has not been moved to Done, the task is considered incomplete. |
-| Maximum steps | Configurable via `AI_MAX_STEPS` environment variable (default: `50`). When reached, the tool loop terminates. The agent is responsible for completing its work within the step limit, including posting progress comments. |
-| Error | Any error during the tool loop halts the loop immediately. Fail-Open Recovery applies. |
-| Failure | On failure, comments already posted remain in Todoist. Fail-Open Recovery applies. |
+| Trigger | Started by the Task Queue when a heartbeat is accepted |
+| Task selection | Selects one task: In Progress first by priority, then Backlog by priority; if none, cycle ends immediately |
+| Backlog promotion | If the selected task is in Backlog, moves it to In Progress before proceeding |
+| Comment retrieval | Fetches the task's comment history via the Built-in Get Comments tool to provide execution context |
+| Prompt assembly | Assembles the system prompt (goal + tool descriptions) and user prompt (task context + comment history) |
+| Main Agent dispatch | Invokes the Main Agent exactly once with the assembled prompts and the full tool set (Built-in + MCP) |
+| Completion | The cycle ends when the Main Agent returns. The Task Queue releases the slot regardless of success or failure |
 
-**Provider abstraction:**
+**Execution lifecycle:**
 
-The agent uses AI SDK's provider interface with OpenAI-compatible conventions (`OPENAI_BASE_URL`, `OPENAI_API_KEY`). A different provider is used by pointing these variables to another OpenAI-compatible endpoint. The agent has no knowledge of which provider is active — it calls AI SDK, and AI SDK calls the provider. The configured model must support tool calling (function calling); if it does not, the agent cannot execute tasks.
+| Step | Actor | Action |
+|------|-------|--------|
+| 1 | Processing Cycle | Select one task: In Progress first by priority, then Backlog by priority; if none, cycle ends immediately |
+| 2 | Processing Cycle | If task is in Backlog, move to In Progress via Built-in Move Task tool |
+| 3 | Processing Cycle | Retrieve task comments via Built-in Get Comments tool |
+| 4 | Processing Cycle | Assemble system prompt (goal + tools) and user prompt (task context + comment history) |
+| 5 | Main Agent | Run the tool-calling loop with the assembled prompts and all available tools; loop continues until done, max steps reached, or error; posts progress comment; moves task to Done if complete |
 
-| Dimension | Inside the agent | Outside the agent |
-|-----------|-----------------|------------------|
-| Model selection | No — reads from configuration | Provider endpoint and model name are environment configuration |
-| Prompt construction | Yes — assembles task context into the system and user prompts | Task content originates in Todoist |
-| Tool execution | Yes — invokes tool calls returned by the model | Built-in tools are internal; MCP tools live in external servers |
-| Result interpretation | Yes — decides whether the task is done based on model output | Model judgment drives the decision |
+The Task Queue only starts the cycle and releases the slot when the cycle returns.
 
 **Prompt structure:**
-
-The Main Agent assembles two prompts before invoking the AI SDK tool loop.
 
 | Prompt | Assembly | Content |
 |--------|----------|---------|
@@ -277,24 +281,36 @@ The Main Agent assembles two prompts before invoking the AI SDK tool loop.
 
 - The system prompt is assembled at each task execution. It describes the agent's goal and lists available tools (names and capabilities) so the model understands what actions it can take. Tool definitions for function calling are provided separately via AI SDK's tools parameter; the system prompt provides the human-readable context that guides tool usage.
 - The user prompt uses a fixed template to present Todoist task content in a structured format. It includes the task's comment history to provide execution context — this allows the agent to understand prior progress and avoid repeating work.
-- Comments are retrieved via the built-in Get Comments tool before prompt assembly.
 
-**Execution lifecycle per Processing Cycle:**
+### Main Agent
 
-| Step | Action |
-|------|--------|
-| 1 | Select one task: In Progress first by priority, then Backlog by priority; if none, cycle ends immediately |
-| 2 | If task is in Backlog, move to In Progress via Built-in Move Task tool |
-| 3 | Retrieve task comments via Built-in Get Comments tool for execution context |
-| 4 | Assemble system prompt (goal + tools) and user prompt (task context + comment history) |
-| 5 | Invoke the AI SDK tool loop with the assembled prompt and all available tools (Built-in + MCP); loop continues until done, max steps reached, or error |
-| 6 | Post a progress comment via Built-in Post Comment tool; if task is complete (moved to Done by model), leave it in Done; otherwise leave it in current section |
+The Main Agent is the AI execution engine invoked once per Processing Cycle. It is intentionally minimal: a single tool-calling loop against the configured AI provider, with no orchestration layers, planning steps, or internal retry logic beyond what the loop itself provides. The loop runs until the task is done, the maximum step limit is reached, or an error occurs.
 
-All steps are performed by the Main Agent. The Task Queue only starts the cycle and releases the slot when the agent returns.
+**Role contract:**
+
+| Contract | Description |
+|----------|-------------|
+| Input | Assembled system prompt, assembled user prompt, and the full available tool set (Built-in + MCP) |
+| Output | Loop terminated; the agent is responsible for posting progress comments and moving the task to Done (if complete) via tool calls during the loop |
+| Completion | The agent determines task completion when the model invokes the Move Task tool to move the task to Done. If the loop terminates for any reason and the task has not been moved to Done, the task is considered incomplete. |
+| Maximum steps | Configurable via `AI_MAX_STEPS` environment variable (default: `50`). When reached, the tool loop terminates. The agent is responsible for completing its work within the step limit, including posting progress comments. |
+| Error | Any error during the tool loop halts the loop immediately. Fail-Open Recovery applies. |
+| Failure | On failure, comments already posted remain in Todoist. Fail-Open Recovery applies. |
+
+**Provider abstraction:**
+
+The Main Agent uses AI SDK's provider interface with OpenAI-compatible conventions (`OPENAI_BASE_URL`, `OPENAI_API_KEY`). A different provider is used by pointing these variables to another OpenAI-compatible endpoint. The agent has no knowledge of which provider is active — it calls AI SDK, and AI SDK calls the provider. The configured model must support tool calling (function calling); if it does not, the agent cannot execute tasks.
+
+| Dimension | Inside the Main Agent | Outside the Main Agent |
+|-----------|----------------------|----------------------|
+| Model selection | No — reads from configuration | Provider endpoint and model name are environment configuration |
+| Prompt construction | No — prompts are assembled by the Processing Cycle and passed in | Task content originates in Todoist |
+| Tool execution | Yes — invokes tool calls returned by the model | Built-in tools are internal; MCP tools live in external servers |
+| Result interpretation | Yes — decides whether the task is done based on model output | Model judgment drives the decision |
 
 **Tool integration:**
 
-The agent uses two categories of tools:
+The Main Agent uses two categories of tools:
 
 | Category | Tools | Source |
 |----------|-------|--------|
