@@ -147,7 +147,7 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
   })
 
   // 10. TaskQueue
-  const taskQueue = new InMemoryTaskQueue()
+  const taskQueue = new InMemoryTaskQueue(logger.child({ module: 'InMemoryTaskQueue' }))
 
   // 11. Hono app — wires request-id and pino-http per the official pino+Hono recipe.
   // The pino-http bridge relies on @hono/node-server bindings (c.env.incoming/outgoing)

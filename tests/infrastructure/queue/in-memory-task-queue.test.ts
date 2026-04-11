@@ -1,9 +1,23 @@
 import { describe, expect, it, vi } from 'vitest'
 import { InMemoryTaskQueue } from '../../../src/infrastructure/queue/in-memory-task-queue'
+import type { LoggerPort } from '../../../src/use-cases/ports/logger'
+
+function makeFakeLogger(): LoggerPort {
+  const logger: LoggerPort = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+  }
+  return logger
+}
 
 describe('InMemoryTaskQueue', () => {
   it('should return true when slot is free', () => {
-    const queue = new InMemoryTaskQueue()
+    const queue = new InMemoryTaskQueue(makeFakeLogger())
     const job = vi.fn().mockResolvedValue(undefined)
 
     const result = queue.tryEnqueue(job)
@@ -12,7 +26,7 @@ describe('InMemoryTaskQueue', () => {
   })
 
   it('should return false when a job is already in-flight', () => {
-    const queue = new InMemoryTaskQueue()
+    const queue = new InMemoryTaskQueue(makeFakeLogger())
     let resolveFirst: () => void
     const firstJob = () => new Promise<void>((resolve) => { resolveFirst = resolve })
 
@@ -26,7 +40,7 @@ describe('InMemoryTaskQueue', () => {
   })
 
   it('should return false for multiple consecutive enqueue attempts while busy', () => {
-    const queue = new InMemoryTaskQueue()
+    const queue = new InMemoryTaskQueue(makeFakeLogger())
     let resolveFirst: () => void
     const firstJob = () => new Promise<void>((resolve) => { resolveFirst = resolve })
 
@@ -45,7 +59,7 @@ describe('InMemoryTaskQueue', () => {
   })
 
   it('should release slot after successful job completion', async () => {
-    const queue = new InMemoryTaskQueue()
+    const queue = new InMemoryTaskQueue(makeFakeLogger())
     let resolveFirst: () => void
     const firstJob = () => new Promise<void>((resolve) => { resolveFirst = resolve })
 
@@ -62,7 +76,7 @@ describe('InMemoryTaskQueue', () => {
   })
 
   it('should release slot after job throws', async () => {
-    const queue = new InMemoryTaskQueue()
+    const queue = new InMemoryTaskQueue(makeFakeLogger())
     let rejectFirst: (err: Error) => void
     const failingJob = () => new Promise<void>((_resolve, reject) => { rejectFirst = reject })
 
@@ -79,7 +93,7 @@ describe('InMemoryTaskQueue', () => {
   })
 
   it('should not propagate errors from the job out of tryEnqueue', async () => {
-    const queue = new InMemoryTaskQueue()
+    const queue = new InMemoryTaskQueue(makeFakeLogger())
     const failingJob = vi.fn().mockRejectedValue(new Error('boom'))
 
     // tryEnqueue is fire-and-forget; errors must not surface here
@@ -87,5 +101,62 @@ describe('InMemoryTaskQueue', () => {
 
     // let the promise settle without unhandled rejection
     await Promise.resolve()
+  })
+
+  describe('logging', () => {
+    it('should log debug "queue job accepted" when enqueue succeeds', () => {
+      const logger = makeFakeLogger()
+      const queue = new InMemoryTaskQueue(logger)
+
+      queue.tryEnqueue(vi.fn().mockResolvedValue(undefined))
+
+      expect(logger.debug).toHaveBeenCalledWith('queue job accepted')
+    })
+
+    it('should log debug "queue job rejected" with reason busy when slot is taken', () => {
+      const logger = makeFakeLogger()
+      const queue = new InMemoryTaskQueue(logger)
+      let resolveFirst: () => void
+      const firstJob = () => new Promise<void>((resolve) => { resolveFirst = resolve })
+
+      queue.tryEnqueue(firstJob)
+      queue.tryEnqueue(vi.fn().mockResolvedValue(undefined))
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        'queue job rejected',
+        expect.objectContaining({ reason: 'busy' }),
+      )
+
+      resolveFirst!()
+    })
+
+    it('should log debug "queue job completed" after successful run', async () => {
+      const logger = makeFakeLogger()
+      const queue = new InMemoryTaskQueue(logger)
+
+      queue.tryEnqueue(vi.fn().mockResolvedValue(undefined))
+
+      // Wait for both the resolved job and the subsequent finally block
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(logger.debug).toHaveBeenCalledWith('queue job completed')
+    })
+
+    it('should log warn "queue job failed" with the error message when job rejects', async () => {
+      const logger = makeFakeLogger()
+      const queue = new InMemoryTaskQueue(logger)
+      const failingJob = vi.fn().mockRejectedValue(new Error('boom'))
+
+      queue.tryEnqueue(failingJob)
+
+      await Promise.resolve()
+      await Promise.resolve()
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'queue job failed',
+        expect.objectContaining({ error: 'boom' }),
+      )
+    })
   })
 })
