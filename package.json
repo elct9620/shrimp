@@ -18,8 +18,10 @@
   "packageManager": "pnpm@10.28.0",
   "dependencies": {
     "@hono/node-server": "^1.19.13",
+    "ai": "^6.0.158",
     "dotenv": "^17.4.1",
-    "hono": "^4.12.12"
+    "hono": "^4.12.12",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
