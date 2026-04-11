@@ -110,7 +110,8 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
     })()
 
   // 5. McpToolLoader — load MCP tools; on failure fall back to empty
-  const mcpToolLoader: McpToolLoader = overrides.mcpToolLoader ?? new McpToolLoader()
+  const mcpToolLoader: McpToolLoader =
+    overrides.mcpToolLoader ?? new McpToolLoader(logger.child({ module: 'McpToolLoader' }))
 
   let mcpTools = {}
   let mcpDescriptions: ToolDescription[] = []

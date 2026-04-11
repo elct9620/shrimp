@@ -4,6 +4,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import type { McpConfig, McpServerDefinition } from '../config/mcp-config'
 import type { ToolSet } from '../../use-cases/ports/tool-set'
 import type { ToolDescription } from '../../use-cases/ports/tool-description'
+import type { LoggerPort } from '../../use-cases/ports/logger'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,7 +75,10 @@ const defaultFactory: McpClientFactory = async (
 export class McpToolLoader {
   private clients: McpClient[] = []
 
-  constructor(private readonly factory: McpClientFactory = defaultFactory) {}
+  constructor(
+    private readonly logger: LoggerPort,
+    private readonly factory: McpClientFactory = defaultFactory,
+  ) {}
 
   async load(config: McpConfig): Promise<McpLoadResult> {
     const mergedTools: ToolSet = {}
@@ -84,25 +88,39 @@ export class McpToolLoader {
       let client: McpClient
       try {
         client = await this.factory(serverName, definition)
-      } catch {
+      } catch (err) {
         // Per SPEC §Failure Handling: exclude failed server, continue with others
+        this.logger.warn('mcp server failed to start', {
+          serverName,
+          command: definition.command,
+          error: err instanceof Error ? err.message : String(err),
+        })
         continue
       }
 
       this.clients.push(client)
 
       const serverTools = await client.tools()
+      const toolNames: string[] = []
       for (const [name, toolDef] of Object.entries(serverTools)) {
         mergedTools[name] = toolDef
         const desc = (toolDef as { description?: string }).description ?? ''
         descriptions.push({ name, description: desc })
+        toolNames.push(name)
       }
+
+      this.logger.info('mcp server connected', {
+        serverName,
+        toolCount: toolNames.length,
+        toolNames,
+      })
     }
 
     return { tools: mergedTools, descriptions }
   }
 
   async close(): Promise<void> {
+    this.logger.debug('mcp close', { clientCount: this.clients.length })
     await Promise.allSettled(this.clients.map((c) => c.close()))
   }
 }

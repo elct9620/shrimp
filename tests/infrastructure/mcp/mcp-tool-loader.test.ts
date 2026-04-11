@@ -2,7 +2,21 @@ import { describe, it, expect, vi } from 'vitest'
 import type { McpClient, McpClientFactory } from '../../../src/infrastructure/mcp/mcp-tool-loader'
 import { McpToolLoader } from '../../../src/infrastructure/mcp/mcp-tool-loader'
 import type { McpConfig } from '../../../src/infrastructure/config/mcp-config'
+import type { LoggerPort } from '../../../src/use-cases/ports/logger'
 import { jsonSchema, tool } from 'ai'
+
+function makeFakeLogger(): LoggerPort {
+  const logger: LoggerPort = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+  }
+  return logger
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,7 +52,7 @@ describe('McpToolLoader', () => {
   describe('load()', () => {
     it('should return empty result when mcpServers is empty', async () => {
       const factory: McpClientFactory = vi.fn()
-      const loader = new McpToolLoader(factory)
+      const loader = new McpToolLoader(makeFakeLogger(), factory)
       const config = makeConfig({})
 
       const result = await loader.load(config)
@@ -54,7 +68,7 @@ describe('McpToolLoader', () => {
         { name: 'writeFile', description: 'Write a file' },
       ])
       const factory: McpClientFactory = vi.fn().mockResolvedValue(client)
-      const loader = new McpToolLoader(factory)
+      const loader = new McpToolLoader(makeFakeLogger(), factory)
       const config = makeConfig({ fs: { command: 'node', args: ['fs-server.js'] } })
 
       const result = await loader.load(config)
@@ -76,7 +90,7 @@ describe('McpToolLoader', () => {
         .fn()
         .mockResolvedValueOnce(clientA)
         .mockResolvedValueOnce(clientB)
-      const loader = new McpToolLoader(factory)
+      const loader = new McpToolLoader(makeFakeLogger(), factory)
       const config = makeConfig({
         search: { command: 'node', args: ['search.js'] },
         runner: { command: 'node', args: ['runner.js'] },
@@ -94,7 +108,7 @@ describe('McpToolLoader', () => {
         .fn()
         .mockRejectedValueOnce(new Error('connection refused'))
         .mockResolvedValueOnce(goodClient)
-      const loader = new McpToolLoader(factory)
+      const loader = new McpToolLoader(makeFakeLogger(), factory)
       const config = makeConfig({
         bad: { command: 'bad-server' },
         good: { command: 'good-server' },
@@ -110,7 +124,7 @@ describe('McpToolLoader', () => {
 
     it('should return empty result when all servers fail to start', async () => {
       const factory: McpClientFactory = vi.fn().mockRejectedValue(new Error('all down'))
-      const loader = new McpToolLoader(factory)
+      const loader = new McpToolLoader(makeFakeLogger(), factory)
       const config = makeConfig({
         serverA: { command: 'a' },
         serverB: { command: 'b' },
@@ -125,7 +139,7 @@ describe('McpToolLoader', () => {
     it('should call the factory with the server name and its definition', async () => {
       const client = makeClient([{ name: 'tool1', description: 'Tool one' }])
       const factory: McpClientFactory = vi.fn().mockResolvedValue(client)
-      const loader = new McpToolLoader(factory)
+      const loader = new McpToolLoader(makeFakeLogger(), factory)
       const config = makeConfig({ myServer: { command: 'myCmd', args: ['--flag'] } })
 
       await loader.load(config)
@@ -142,7 +156,7 @@ describe('McpToolLoader', () => {
         .fn()
         .mockResolvedValueOnce(clientA)
         .mockResolvedValueOnce(clientB)
-      const loader = new McpToolLoader(factory)
+      const loader = new McpToolLoader(makeFakeLogger(), factory)
       const config = makeConfig({
         serverA: { command: 'a' },
         serverB: { command: 'b' },
@@ -159,7 +173,7 @@ describe('McpToolLoader', () => {
       const client = makeClient([{ name: 'tool1', description: 'Tool' }])
       ;(client.close as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('close failed'))
       const factory: McpClientFactory = vi.fn().mockResolvedValue(client)
-      const loader = new McpToolLoader(factory)
+      const loader = new McpToolLoader(makeFakeLogger(), factory)
       const config = makeConfig({ server: { command: 'cmd' } })
 
       await loader.load(config)
@@ -169,9 +183,78 @@ describe('McpToolLoader', () => {
 
     it('should resolve immediately if no clients were loaded', async () => {
       const factory: McpClientFactory = vi.fn()
-      const loader = new McpToolLoader(factory)
+      const loader = new McpToolLoader(makeFakeLogger(), factory)
 
       await expect(loader.close()).resolves.toBeUndefined()
+    })
+  })
+
+  describe('logging', () => {
+    it('should log info with serverName, toolCount and toolNames when a server connects', async () => {
+      const client = makeClient([
+        { name: 'readFile', description: 'Read a file' },
+        { name: 'writeFile', description: 'Write a file' },
+      ])
+      const factory: McpClientFactory = vi.fn().mockResolvedValue(client)
+      const logger = makeFakeLogger()
+      const loader = new McpToolLoader(logger, factory)
+      const config = makeConfig({ fs: { command: 'node', args: ['fs-server.js'] } })
+
+      await loader.load(config)
+
+      expect(logger.info).toHaveBeenCalledWith(
+        'mcp server connected',
+        expect.objectContaining({
+          serverName: 'fs',
+          toolCount: 2,
+          toolNames: expect.arrayContaining(['readFile', 'writeFile']),
+        }),
+      )
+    })
+
+    it('should log warn with serverName, command and error when a server fails to start', async () => {
+      const factory: McpClientFactory = vi.fn().mockRejectedValue(new Error('connection refused'))
+      const logger = makeFakeLogger()
+      const loader = new McpToolLoader(logger, factory)
+      const config = makeConfig({ bad: { command: 'bad-server', args: ['--x'] } })
+
+      await loader.load(config)
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'mcp server failed to start',
+        expect.objectContaining({
+          serverName: 'bad',
+          command: 'bad-server',
+          error: 'connection refused',
+        }),
+      )
+    })
+
+    it('should not log info for a server that failed to start', async () => {
+      const factory: McpClientFactory = vi.fn().mockRejectedValue(new Error('nope'))
+      const logger = makeFakeLogger()
+      const loader = new McpToolLoader(logger, factory)
+      const config = makeConfig({ bad: { command: 'x' } })
+
+      await loader.load(config)
+
+      expect(logger.info).not.toHaveBeenCalled()
+    })
+
+    it('should log debug with clientCount when close is called', async () => {
+      const client = makeClient([{ name: 'toolA', description: 'A' }])
+      const factory: McpClientFactory = vi.fn().mockResolvedValue(client)
+      const logger = makeFakeLogger()
+      const loader = new McpToolLoader(logger, factory)
+      const config = makeConfig({ serverA: { command: 'a' } })
+
+      await loader.load(config)
+      await loader.close()
+
+      expect(logger.debug).toHaveBeenCalledWith(
+        'mcp close',
+        expect.objectContaining({ clientCount: 1 }),
+      )
     })
   })
 })
