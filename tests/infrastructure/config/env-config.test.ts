@@ -22,6 +22,7 @@ describe('loadEnvConfig', () => {
         todoistApiToken: 'todoist-token',
         todoistProjectId: 'project-123',
         port: 3000,
+        logLevel: 'info',
       })
     })
 
@@ -129,6 +130,28 @@ describe('loadEnvConfig', () => {
       const config1 = loadEnvConfig(env)
       const config2 = loadEnvConfig(env)
       expect(config1).toEqual(config2)
+    })
+  })
+
+  describe('LOG_LEVEL', () => {
+    it('should default to "info" when LOG_LEVEL is absent', () => {
+      const config = loadEnvConfig(REQUIRED_ENV)
+      expect(config.logLevel).toBe('info')
+    })
+
+    it('should accept "debug" as a valid log level', () => {
+      const config = loadEnvConfig({ ...REQUIRED_ENV, LOG_LEVEL: 'debug' })
+      expect(config.logLevel).toBe('debug')
+    })
+
+    it('should accept "warn" as a valid log level', () => {
+      const config = loadEnvConfig({ ...REQUIRED_ENV, LOG_LEVEL: 'warn' })
+      expect(config.logLevel).toBe('warn')
+    })
+
+    it('should throw EnvConfigError for an invalid log level', () => {
+      expect(() => loadEnvConfig({ ...REQUIRED_ENV, LOG_LEVEL: 'verbose' })).toThrow(EnvConfigError)
+      expect(() => loadEnvConfig({ ...REQUIRED_ENV, LOG_LEVEL: 'verbose' })).toThrow('verbose')
     })
   })
 
