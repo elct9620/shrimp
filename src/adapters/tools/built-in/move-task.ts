@@ -1,15 +1,9 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import type { BoardRepository } from '../../../use-cases/ports/board-repository'
-import { Section } from '../../../entities/section'
+import { sectionMap } from './section-map'
 
 export const MOVE_TASK_TOOL_NAME = 'moveTask'
-
-const sectionMap = {
-  Backlog: Section.Backlog,
-  InProgress: Section.InProgress,
-  Done: Section.Done,
-} as const
 
 export function createMoveTaskTool(repo: BoardRepository) {
   return tool({

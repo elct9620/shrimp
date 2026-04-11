@@ -2,17 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createMoveTaskTool } from '../../../../src/adapters/tools/built-in/move-task'
 import type { BoardRepository } from '../../../../src/use-cases/ports/board-repository'
 import { Section } from '../../../../src/entities/section'
+import { makeFakeRepo } from './helpers'
 
 type ParseableSchema = { safeParse: (data: unknown) => { success: boolean } }
-
-function makeFakeRepo(): BoardRepository {
-  return {
-    getTasks: vi.fn(),
-    getComments: vi.fn(),
-    postComment: vi.fn(),
-    moveTask: vi.fn(),
-  }
-}
 
 describe('createMoveTaskTool', () => {
   let repo: BoardRepository

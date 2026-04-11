@@ -1,17 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createGetCommentsTool } from '../../../../src/adapters/tools/built-in/get-comments'
 import type { BoardRepository } from '../../../../src/use-cases/ports/board-repository'
+import { makeFakeRepo } from './helpers'
 
 type ParseableSchema = { safeParse: (data: unknown) => { success: boolean } }
-
-function makeFakeRepo(): BoardRepository {
-  return {
-    getTasks: vi.fn(),
-    getComments: vi.fn(),
-    postComment: vi.fn(),
-    moveTask: vi.fn(),
-  }
-}
 
 const sampleComments = [
   { text: 'Did some work', timestamp: new Date('2025-01-01') },

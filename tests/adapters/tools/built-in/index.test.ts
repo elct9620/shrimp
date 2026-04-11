@@ -1,15 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createBuiltInTools } from '../../../../src/adapters/tools/built-in/index'
-import type { BoardRepository } from '../../../../src/use-cases/ports/board-repository'
-
-function makeFakeRepo(): BoardRepository {
-  return {
-    getTasks: vi.fn(),
-    getComments: vi.fn(),
-    postComment: vi.fn(),
-    moveTask: vi.fn(),
-  }
-}
+import { createBuiltInTools, createBuiltInToolDescriptions } from '../../../../src/adapters/tools/built-in/index'
+import { makeFakeRepo } from './helpers'
 
 describe('createBuiltInTools', () => {
   it('should return an object with all four tool keys', () => {
@@ -53,5 +44,34 @@ describe('createBuiltInTools', () => {
     const tools = createBuiltInTools(repo)
     await tools.getTasks.execute!({ section: 'Backlog' }, { toolCallId: 'test', messages: [] })
     expect(repo.getTasks).toHaveBeenCalled()
+  })
+})
+
+describe('createBuiltInToolDescriptions', () => {
+  it('should return an array of ToolDescriptions', () => {
+    const descriptions = createBuiltInToolDescriptions()
+    expect(Array.isArray(descriptions)).toBe(true)
+  })
+
+  it('should return exactly 4 descriptions', () => {
+    const descriptions = createBuiltInToolDescriptions()
+    expect(descriptions).toHaveLength(4)
+  })
+
+  it('should have a non-empty name and description on each entry', () => {
+    const descriptions = createBuiltInToolDescriptions()
+    for (const d of descriptions) {
+      expect(typeof d.name).toBe('string')
+      expect(d.name.length).toBeGreaterThan(0)
+      expect(typeof d.description).toBe('string')
+      expect(d.description.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('should have names that match the keys returned by createBuiltInTools', () => {
+    const toolKeys = Object.keys(createBuiltInTools(makeFakeRepo()))
+    const descriptionNames = createBuiltInToolDescriptions().map((d) => d.name)
+    expect(descriptionNames).toEqual(expect.arrayContaining(toolKeys))
+    expect(toolKeys).toEqual(expect.arrayContaining(descriptionNames))
   })
 })

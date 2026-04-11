@@ -3,17 +3,9 @@ import { createGetTasksTool } from '../../../../src/adapters/tools/built-in/get-
 import type { BoardRepository } from '../../../../src/use-cases/ports/board-repository'
 import { Section } from '../../../../src/entities/section'
 import { Priority } from '../../../../src/entities/priority'
+import { makeFakeRepo } from './helpers'
 
 type ParseableSchema = { safeParse: (data: unknown) => { success: boolean } }
-
-function makeFakeRepo(): BoardRepository {
-  return {
-    getTasks: vi.fn(),
-    getComments: vi.fn(),
-    postComment: vi.fn(),
-    moveTask: vi.fn(),
-  }
-}
 
 const sampleTasks = [
   { id: '1', title: 'Task A', priority: Priority.p1, section: Section.Backlog },
