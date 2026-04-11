@@ -100,7 +100,17 @@ export class McpToolLoader {
 
       this.clients.push(client)
 
-      const serverTools = await client.tools()
+      let serverTools: ToolSet
+      try {
+        serverTools = await client.tools()
+      } catch (err) {
+        this.logger.warn('mcp server failed to list tools', {
+          serverName,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        continue
+      }
+
       const toolNames: string[] = []
       for (const [name, toolDef] of Object.entries(serverTools)) {
         mergedTools[name] = toolDef
@@ -121,6 +131,14 @@ export class McpToolLoader {
 
   async close(): Promise<void> {
     this.logger.debug('mcp close', { clientCount: this.clients.length })
-    await Promise.allSettled(this.clients.map((c) => c.close()))
+    const results = await Promise.allSettled(this.clients.map((c) => c.close()))
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        this.logger.warn('mcp client failed to close', {
+          clientIndex: i,
+          error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+        })
+      }
+    })
   }
 }

@@ -136,6 +136,27 @@ describe('McpToolLoader', () => {
       expect(result.descriptions).toEqual([])
     })
 
+    it('should skip a server when its tools() call fails and continue with others', async () => {
+      const failingClient: McpClient = {
+        tools: vi.fn().mockRejectedValue(new Error('tools listing failed')),
+        close: vi.fn().mockResolvedValue(undefined),
+      }
+      const goodClient = makeClient([{ name: 'goodTool', description: 'works' }])
+      const factory = vi.fn()
+        .mockResolvedValueOnce(failingClient)
+        .mockResolvedValueOnce(goodClient)
+      const loader = new McpToolLoader(makeFakeLogger(), factory)
+      const config = makeConfig({
+        broken: { command: 'x' },
+        ok: { command: 'y' },
+      })
+
+      const result = await loader.load(config)
+
+      expect(result.tools).toHaveProperty('goodTool')
+      expect(Object.keys(result.tools)).not.toContain('toolThatFails')
+    })
+
     it('should call the factory with the server name and its definition', async () => {
       const client = makeClient([{ name: 'tool1', description: 'Tool one' }])
       const factory: McpClientFactory = vi.fn().mockResolvedValue(client)
@@ -230,6 +251,27 @@ describe('McpToolLoader', () => {
       )
     })
 
+    it('should log warn "mcp server failed to list tools" with serverName and error', async () => {
+      const failingClient: McpClient = {
+        tools: vi.fn().mockRejectedValue(new Error('listTools timeout')),
+        close: vi.fn().mockResolvedValue(undefined),
+      }
+      const factory = vi.fn().mockResolvedValue(failingClient)
+      const logger = makeFakeLogger()
+      const loader = new McpToolLoader(logger, factory)
+      const config = makeConfig({ broken: { command: 'x' } })
+
+      await loader.load(config)
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'mcp server failed to list tools',
+        expect.objectContaining({
+          serverName: 'broken',
+          error: 'listTools timeout',
+        }),
+      )
+    })
+
     it('should not log info for a server that failed to start', async () => {
       const factory: McpClientFactory = vi.fn().mockRejectedValue(new Error('nope'))
       const logger = makeFakeLogger()
@@ -239,6 +281,26 @@ describe('McpToolLoader', () => {
       await loader.load(config)
 
       expect(logger.info).not.toHaveBeenCalled()
+    })
+
+    it('should log warn "mcp client failed to close" for each failing client during close()', async () => {
+      const failingClient = makeClient([{ name: 't1', description: 'a' }])
+      ;(failingClient.close as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('close timeout'))
+      const goodClient = makeClient([{ name: 't2', description: 'b' }])
+      const factory = vi.fn()
+        .mockResolvedValueOnce(failingClient)
+        .mockResolvedValueOnce(goodClient)
+      const logger = makeFakeLogger()
+      const loader = new McpToolLoader(logger, factory)
+      const config = makeConfig({ a: { command: 'x' }, b: { command: 'y' } })
+
+      await loader.load(config)
+      await loader.close()
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        'mcp client failed to close',
+        expect.objectContaining({ error: 'close timeout' }),
+      )
     })
 
     it('should log debug with clientCount when close is called', async () => {
