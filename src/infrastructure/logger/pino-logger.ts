@@ -1,4 +1,4 @@
-import pino, { type Logger } from 'pino'
+import pino, { type Logger, type DestinationStream } from 'pino'
 import type { LogLevel } from '../config/env-config'
 import type { LoggerPort } from '../../use-cases/ports/logger'
 
@@ -44,17 +44,34 @@ export class PinoLogger implements LoggerPort {
   }
 }
 
-export function createPinoLogger(options: { level: LogLevel; pretty?: boolean }): LoggerPort {
+export type CreatePinoLoggerOptions = {
+  level: LogLevel
+  pretty?: boolean
+  destination?: DestinationStream
+}
+
+export type CreatePinoLoggerResult = {
+  logger: LoggerPort
+  pino: Logger
+}
+
+export function createPinoLogger(options: CreatePinoLoggerOptions): CreatePinoLoggerResult {
   const pinoOptions: pino.LoggerOptions = { level: options.level }
 
-  if (options.pretty) {
-    return new PinoLogger(
-      pino({
-        ...pinoOptions,
-        transport: { target: 'pino-pretty' },
-      })
-    )
+  let pinoInstance: Logger
+  if (options.destination) {
+    pinoInstance = pino(pinoOptions, options.destination)
+  } else if (options.pretty) {
+    pinoInstance = pino({
+      ...pinoOptions,
+      transport: { target: 'pino-pretty' },
+    })
+  } else {
+    pinoInstance = pino(pinoOptions)
   }
 
-  return new PinoLogger(pino(pinoOptions))
+  return {
+    logger: new PinoLogger(pinoInstance),
+    pino: pinoInstance,
+  }
 }

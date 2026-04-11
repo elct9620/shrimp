@@ -87,14 +87,14 @@ describe('PinoLogger', () => {
 
   describe('createPinoLogger factory', () => {
     it('should create a logger that accepts log calls without throwing when pretty is false', () => {
-      const logger = createPinoLogger({ level: 'silent', pretty: false })
+      const { logger } = createPinoLogger({ level: 'silent', pretty: false })
 
       expect(() => logger.info('test message')).not.toThrow()
       expect(() => logger.debug('debug', { key: 'value' })).not.toThrow()
     })
 
     it('should create a logger whose child is a distinct PinoLogger instance', () => {
-      const logger = createPinoLogger({ level: 'silent', pretty: false })
+      const { logger } = createPinoLogger({ level: 'silent', pretty: false })
       const child = logger.child({ service: 'test' })
 
       expect(child).toBeInstanceOf(PinoLogger)
@@ -102,9 +102,35 @@ describe('PinoLogger', () => {
     })
 
     it('should create a logger with default pretty (undefined) that still accepts log calls', () => {
-      const logger = createPinoLogger({ level: 'silent' })
+      const { logger } = createPinoLogger({ level: 'silent' })
 
       expect(() => logger.warn('test')).not.toThrow()
+    })
+
+    it('should expose the underlying pino instance so HTTP middleware can share it', () => {
+      const { pino } = createPinoLogger({ level: 'silent' })
+
+      expect(pino).toBeDefined()
+      expect(typeof pino.info).toBe('function')
+      expect(typeof pino.child).toBe('function')
+    })
+
+    it('should route log output through a custom destination when provided', () => {
+      const messages: string[] = []
+      const destination = {
+        write: (msg: string) => {
+          messages.push(msg)
+        },
+      }
+
+      const { logger } = createPinoLogger({ level: 'info', destination })
+      logger.info('captured message', { requestId: 'abc-123' })
+
+      expect(messages).toHaveLength(1)
+      const parsed = JSON.parse(messages[0]!)
+      expect(parsed.msg).toBe('captured message')
+      expect(parsed.requestId).toBe('abc-123')
+      expect(parsed.level).toBe(30)
     })
   })
 })

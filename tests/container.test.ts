@@ -3,11 +3,6 @@ import type { LanguageModel } from 'ai'
 import { EnvConfigError } from '../src/infrastructure/config/env-config'
 import type { McpToolLoader } from '../src/infrastructure/mcp/mcp-tool-loader'
 import type { BoardRepository } from '../src/use-cases/ports/board-repository'
-import type { LoggerPort } from '../src/use-cases/ports/logger'
-
-// ---------------------------------------------------------------------------
-// Shared test doubles
-// ---------------------------------------------------------------------------
 
 const REQUIRED_ENV = {
   OPENAI_BASE_URL: 'http://localhost:11434/v1',
@@ -15,6 +10,7 @@ const REQUIRED_ENV = {
   AI_MODEL: 'test-model',
   TODOIST_API_TOKEN: 'todoist-token',
   TODOIST_PROJECT_ID: 'project-123',
+  LOG_LEVEL: 'silent',
 }
 
 function makeFakeLanguageModel(): LanguageModel {
@@ -44,24 +40,11 @@ function makeFakeMcpToolLoader(): McpToolLoader {
   } as unknown as McpToolLoader
 }
 
-function makeFakeLogger(): LoggerPort {
-  const child = vi.fn()
-  const logger: LoggerPort = {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: child,
+function stubRequiredEnv(): void {
+  for (const [key, value] of Object.entries(REQUIRED_ENV)) {
+    vi.stubEnv(key, value)
   }
-  child.mockReturnValue(logger)
-  return logger
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('composeApp', () => {
   afterEach(() => {
@@ -69,16 +52,13 @@ describe('composeApp', () => {
   })
 
   it('should return an app that responds 200 to GET /health when all env vars are set', async () => {
-    for (const [key, value] of Object.entries(REQUIRED_ENV)) {
-      vi.stubEnv(key, value)
-    }
+    stubRequiredEnv()
 
     const { composeApp } = await import('../src/container')
     const { app } = await composeApp({
       languageModel: makeFakeLanguageModel(),
       boardRepository: makeFakeBoardRepository(),
       mcpToolLoader: makeFakeMcpToolLoader(),
-      logger: makeFakeLogger(),
     })
 
     const res = await app.request('/health', { method: 'GET' })
@@ -88,16 +68,13 @@ describe('composeApp', () => {
   })
 
   it('should return an app that responds 202 to POST /heartbeat when all env vars are set', async () => {
-    for (const [key, value] of Object.entries(REQUIRED_ENV)) {
-      vi.stubEnv(key, value)
-    }
+    stubRequiredEnv()
 
     const { composeApp } = await import('../src/container')
     const { app } = await composeApp({
       languageModel: makeFakeLanguageModel(),
       boardRepository: makeFakeBoardRepository(),
       mcpToolLoader: makeFakeMcpToolLoader(),
-      logger: makeFakeLogger(),
     })
 
     const res = await app.request('/heartbeat', { method: 'POST' })
@@ -116,33 +93,26 @@ describe('composeApp', () => {
         languageModel: makeFakeLanguageModel(),
         boardRepository: makeFakeBoardRepository(),
         mcpToolLoader: makeFakeMcpToolLoader(),
-        logger: makeFakeLogger(),
       })
     ).rejects.toThrow(EnvConfigError)
   })
 
   it('should succeed when .mcp.json is absent (tolerates missing file)', async () => {
-    for (const [key, value] of Object.entries(REQUIRED_ENV)) {
-      vi.stubEnv(key, value)
-    }
+    stubRequiredEnv()
 
     const { composeApp } = await import('../src/container')
 
-    // mcpToolLoader override skips actual file loading — composition must still succeed
     await expect(
       composeApp({
         languageModel: makeFakeLanguageModel(),
         boardRepository: makeFakeBoardRepository(),
         mcpToolLoader: makeFakeMcpToolLoader(),
-        logger: makeFakeLogger(),
       })
     ).resolves.toBeDefined()
   })
 
   it('should return an mcpToolLoader whose close() can be called without throwing', async () => {
-    for (const [key, value] of Object.entries(REQUIRED_ENV)) {
-      vi.stubEnv(key, value)
-    }
+    stubRequiredEnv()
 
     const fakeMcpToolLoader = makeFakeMcpToolLoader()
     const { composeApp } = await import('../src/container')
@@ -150,26 +120,37 @@ describe('composeApp', () => {
       languageModel: makeFakeLanguageModel(),
       boardRepository: makeFakeBoardRepository(),
       mcpToolLoader: fakeMcpToolLoader,
-      logger: makeFakeLogger(),
     })
 
     await expect(mcpToolLoader.close()).resolves.toBeUndefined()
   })
 
-  it('should return the injected logger instance in the composed result', async () => {
+  it('should emit the composition startup log through the injected destination', async () => {
+    vi.stubEnv('LOG_LEVEL', 'info')
     for (const [key, value] of Object.entries(REQUIRED_ENV)) {
-      vi.stubEnv(key, value)
+      if (key !== 'LOG_LEVEL') vi.stubEnv(key, value)
     }
 
-    const fakeLogger = makeFakeLogger()
+    const messages: string[] = []
+    const destination = {
+      write: (msg: string) => {
+        messages.push(msg)
+      },
+    }
+
     const { composeApp } = await import('../src/container')
     const { logger } = await composeApp({
       languageModel: makeFakeLanguageModel(),
       boardRepository: makeFakeBoardRepository(),
       mcpToolLoader: makeFakeMcpToolLoader(),
-      logger: fakeLogger,
+      logDestination: destination,
     })
 
-    expect(logger).toBe(fakeLogger)
+    expect(logger).toBeDefined()
+    const startupLog = messages.find((m) => m.includes('composing application'))
+    expect(startupLog).toBeDefined()
+    const parsed = JSON.parse(startupLog!)
+    expect(parsed.msg).toBe('composing application')
+    expect(parsed.logLevel).toBe('info')
   })
 })
