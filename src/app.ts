@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
-import { health } from './routes/health'
+import { createHealthRoute } from './adapters/http/routes/health'
 
 export const app = new Hono()
 
-app.route('/', health)
+app.route('/', createHealthRoute())
