@@ -7,9 +7,23 @@ import {
   type TodoistComment,
   type TodoistSection,
 } from '../../../src/infrastructure/todoist/todoist-client'
+import type { LoggerPort } from '../../../src/use-cases/ports/logger'
 
 const BASE_URL = 'https://api.todoist.com/rest/v2'
 const TOKEN = 'test-token-abc123'
+
+function makeFakeLogger(): LoggerPort {
+  const logger: LoggerPort = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+  }
+  return logger
+}
 
 function makeOkResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -50,7 +64,7 @@ describe('TodoistClient.listTasks', () => {
 
   it('should call correct URL with project_id and section_id query params', async () => {
     const fetchFn = stubFetch(makeOkResponse(tasks))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.listTasks({ projectId: 'proj-1', sectionId: 'sec-1' })
 
@@ -60,7 +74,7 @@ describe('TodoistClient.listTasks', () => {
 
   it('should set Authorization header with Bearer token', async () => {
     const fetchFn = stubFetch(makeOkResponse(tasks))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.listTasks({ projectId: 'proj-1', sectionId: 'sec-1' })
 
@@ -70,7 +84,7 @@ describe('TodoistClient.listTasks', () => {
 
   it('should return parsed JSON array of tasks', async () => {
     const fetchFn = stubFetch(makeOkResponse(tasks))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     const result = await client.listTasks({ projectId: 'proj-1', sectionId: 'sec-1' })
 
@@ -79,7 +93,7 @@ describe('TodoistClient.listTasks', () => {
 
   it('should use GET method', async () => {
     const fetchFn = stubFetch(makeOkResponse(tasks))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.listTasks({ projectId: 'proj-1', sectionId: 'sec-1' })
 
@@ -97,7 +111,7 @@ describe('TodoistClient.listComments', () => {
 
   it('should call correct URL with task_id query param', async () => {
     const fetchFn = stubFetch(makeOkResponse(comments))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.listComments({ taskId: 't1' })
 
@@ -107,7 +121,7 @@ describe('TodoistClient.listComments', () => {
 
   it('should return parsed JSON array of comments', async () => {
     const fetchFn = stubFetch(makeOkResponse(comments))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     const result = await client.listComments({ taskId: 't1' })
 
@@ -116,7 +130,7 @@ describe('TodoistClient.listComments', () => {
 
   it('should set Authorization header', async () => {
     const fetchFn = stubFetch(makeOkResponse(comments))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.listComments({ taskId: 't1' })
 
@@ -130,7 +144,7 @@ describe('TodoistClient.listComments', () => {
 describe('TodoistClient.postComment', () => {
   it('should POST to /comments with correct JSON body', async () => {
     const fetchFn = stubFetch(makeOkResponse({ id: 'c2', task_id: 't1', content: 'Done', posted_at: '2024-01-01T00:00:00Z' }))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.postComment({ taskId: 't1', content: 'Done' })
 
@@ -142,7 +156,7 @@ describe('TodoistClient.postComment', () => {
 
   it('should return void on success', async () => {
     const fetchFn = stubFetch(makeNoContentResponse())
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     const result = await client.postComment({ taskId: 't1', content: 'Done' })
 
@@ -151,7 +165,7 @@ describe('TodoistClient.postComment', () => {
 
   it('should set Authorization header', async () => {
     const fetchFn = stubFetch(makeNoContentResponse())
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.postComment({ taskId: 't1', content: 'Done' })
 
@@ -161,7 +175,7 @@ describe('TodoistClient.postComment', () => {
 
   it('should set Content-Type to application/json', async () => {
     const fetchFn = stubFetch(makeNoContentResponse())
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.postComment({ taskId: 't1', content: 'Done' })
 
@@ -175,7 +189,7 @@ describe('TodoistClient.postComment', () => {
 describe('TodoistClient.moveTask', () => {
   it('should POST to /tasks/{taskId}/move with section_id body', async () => {
     const fetchFn = stubFetch(makeOkResponse({}))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.moveTask({ taskId: 'task-42', sectionId: 'sec-done' })
 
@@ -187,7 +201,7 @@ describe('TodoistClient.moveTask', () => {
 
   it('should return void on success', async () => {
     const fetchFn = stubFetch(makeOkResponse({}))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     const result = await client.moveTask({ taskId: 'task-42', sectionId: 'sec-done' })
 
@@ -196,7 +210,7 @@ describe('TodoistClient.moveTask', () => {
 
   it('should set Authorization header', async () => {
     const fetchFn = stubFetch(makeOkResponse({}))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.moveTask({ taskId: 'task-42', sectionId: 'sec-done' })
 
@@ -216,7 +230,7 @@ describe('TodoistClient.listSections', () => {
 
   it('should call correct URL with project_id query param', async () => {
     const fetchFn = stubFetch(makeOkResponse(sections))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.listSections({ projectId: 'proj-1' })
 
@@ -226,7 +240,7 @@ describe('TodoistClient.listSections', () => {
 
   it('should return parsed array of sections', async () => {
     const fetchFn = stubFetch(makeOkResponse(sections))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     const result = await client.listSections({ projectId: 'proj-1' })
 
@@ -235,7 +249,7 @@ describe('TodoistClient.listSections', () => {
 
   it('should set Authorization header', async () => {
     const fetchFn = stubFetch(makeOkResponse(sections))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.listSections({ projectId: 'proj-1' })
 
@@ -245,7 +259,7 @@ describe('TodoistClient.listSections', () => {
 
   it('should use GET method', async () => {
     const fetchFn = stubFetch(makeOkResponse(sections))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.listSections({ projectId: 'proj-1' })
 
@@ -259,21 +273,21 @@ describe('TodoistClient.listSections', () => {
 describe('TodoistClient error handling', () => {
   it('should throw TodoistApiError when response is 4xx', async () => {
     const fetchFn = stubFetch(makeErrorResponse(404, 'Not Found'))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await expect(client.listTasks({ projectId: 'p', sectionId: 's' })).rejects.toThrow(TodoistApiError)
   })
 
   it('should throw TodoistApiError when response is 5xx', async () => {
     const fetchFn = stubFetch(makeErrorResponse(500, 'Internal Server Error'))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await expect(client.listComments({ taskId: 't1' })).rejects.toThrow(TodoistApiError)
   })
 
   it('should include status and URL in TodoistApiError', async () => {
     const fetchFn = stubFetch(makeErrorResponse(401, 'Unauthorized'))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     let caught: TodoistApiError | undefined
     try {
@@ -291,7 +305,7 @@ describe('TodoistClient error handling', () => {
 
   it('should have name "TodoistApiError"', async () => {
     const fetchFn = stubFetch(makeErrorResponse(403, 'Forbidden'))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     let caught: TodoistApiError | undefined
     try {
@@ -305,16 +319,87 @@ describe('TodoistClient error handling', () => {
 
   it('should throw TodoistApiError for moveTask on non-2xx', async () => {
     const fetchFn = stubFetch(makeErrorResponse(400, 'Bad Request'))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await expect(client.moveTask({ taskId: 't1', sectionId: 's1' })).rejects.toThrow(TodoistApiError)
   })
 
   it('should throw TodoistApiError for postComment on non-2xx', async () => {
     const fetchFn = stubFetch(makeErrorResponse(422, 'Unprocessable Entity'))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await expect(client.postComment({ taskId: 't1', content: 'x' })).rejects.toThrow(TodoistApiError)
+  })
+})
+
+// ─── Logging ──────────────────────────────────────────────────────────────────
+
+describe('TodoistClient logging', () => {
+  it('should log debug on request and response for GET', async () => {
+    const fetchFn = stubFetch(makeOkResponse([]))
+    const logger = makeFakeLogger()
+    const client = new TodoistClient(BASE_URL, TOKEN, logger, fetchFn)
+
+    await client.listTasks({ projectId: 'p', sectionId: 's' })
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      'todoist request',
+      expect.objectContaining({ method: 'GET', url: expect.stringContaining('/tasks') }),
+    )
+    expect(logger.debug).toHaveBeenCalledWith(
+      'todoist response',
+      expect.objectContaining({ method: 'GET', status: 200 }),
+    )
+  })
+
+  it('should log debug on request and response for POST', async () => {
+    const fetchFn = stubFetch(makeNoContentResponse())
+    const logger = makeFakeLogger()
+    const client = new TodoistClient(BASE_URL, TOKEN, logger, fetchFn)
+
+    await client.postComment({ taskId: 't1', content: 'x' })
+
+    expect(logger.debug).toHaveBeenCalledWith(
+      'todoist request',
+      expect.objectContaining({ method: 'POST', url: expect.stringContaining('/comments') }),
+    )
+    expect(logger.debug).toHaveBeenCalledWith(
+      'todoist response',
+      expect.objectContaining({ method: 'POST', status: 204 }),
+    )
+  })
+
+  it('should log error with status and truncated body when the API returns non-2xx', async () => {
+    const longBody = 'a'.repeat(1000)
+    const fetchFn = stubFetch(makeErrorResponse(500, longBody))
+    const logger = makeFakeLogger()
+    const client = new TodoistClient(BASE_URL, TOKEN, logger, fetchFn)
+
+    await expect(client.listTasks({ projectId: 'p', sectionId: 's' })).rejects.toThrow(TodoistApiError)
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'todoist api error',
+      expect.objectContaining({
+        method: 'GET',
+        status: 500,
+        url: expect.stringContaining('/tasks'),
+        body: expect.any(String),
+      }),
+    )
+    const errorCall = (logger.error as ReturnType<typeof vi.fn>).mock.calls[0]!
+    expect((errorCall[1] as { body: string }).body.length).toBeLessThanOrEqual(500)
+  })
+
+  it('should not emit response debug when the request fails', async () => {
+    const fetchFn = stubFetch(makeErrorResponse(404, 'Not Found'))
+    const logger = makeFakeLogger()
+    const client = new TodoistClient(BASE_URL, TOKEN, logger, fetchFn)
+
+    await expect(client.listComments({ taskId: 't1' })).rejects.toThrow(TodoistApiError)
+
+    const debugCalls = (logger.debug as ReturnType<typeof vi.fn>).mock.calls
+    const responseDebugCalls = debugCalls.filter((call) => call[0] === 'todoist response')
+    expect(responseDebugCalls).toHaveLength(0)
   })
 })
 
@@ -323,7 +408,7 @@ describe('TodoistClient error handling', () => {
 describe('TodoistClient URL composition', () => {
   it('should not produce double slashes when baseUrl has no trailing slash', async () => {
     const fetchFn = stubFetch(makeOkResponse([]))
-    const client = new TodoistClient('https://api.todoist.com/rest/v2', TOKEN, fetchFn)
+    const client = new TodoistClient('https://api.todoist.com/rest/v2', TOKEN, makeFakeLogger(), fetchFn)
 
     await client.listSections({ projectId: 'p' })
 
@@ -334,7 +419,7 @@ describe('TodoistClient URL composition', () => {
 
   it('should construct moveTask URL with taskId embedded in path', async () => {
     const fetchFn = stubFetch(makeOkResponse({}))
-    const client = new TodoistClient(BASE_URL, TOKEN, fetchFn)
+    const client = new TodoistClient(BASE_URL, TOKEN, makeFakeLogger(), fetchFn)
 
     await client.moveTask({ taskId: 'abc-123', sectionId: 'sec-x' })
 

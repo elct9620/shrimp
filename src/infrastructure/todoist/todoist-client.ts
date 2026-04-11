@@ -1,3 +1,5 @@
+import type { LoggerPort } from '../../use-cases/ports/logger'
+
 export type TodoistTask = {
   id: string
   content: string
@@ -39,6 +41,7 @@ export class TodoistClient {
   constructor(
     private readonly baseUrl: string,
     private readonly token: string,
+    private readonly logger: LoggerPort,
     private readonly fetchFn: FetchLike = globalThis.fetch,
   ) {}
 
@@ -68,6 +71,7 @@ export class TodoistClient {
   }
 
   private async get<T>(url: string): Promise<T> {
+    this.logger.debug('todoist request', { method: 'GET', url })
     const response = await this.fetchFn(url, {
       method: 'GET',
       headers: {
@@ -75,11 +79,13 @@ export class TodoistClient {
         'Accept': 'application/json',
       },
     })
-    await this.assertOk(response, url)
+    await this.assertOk(response, 'GET', url)
+    this.logger.debug('todoist response', { method: 'GET', url, status: response.status })
     return response.json() as Promise<T>
   }
 
   private async post(url: string, body: unknown): Promise<void> {
+    this.logger.debug('todoist request', { method: 'POST', url })
     const response = await this.fetchFn(url, {
       method: 'POST',
       headers: {
@@ -89,12 +95,19 @@ export class TodoistClient {
       },
       body: JSON.stringify(body),
     })
-    await this.assertOk(response, url)
+    await this.assertOk(response, 'POST', url)
+    this.logger.debug('todoist response', { method: 'POST', url, status: response.status })
   }
 
-  private async assertOk(response: Response, url: string): Promise<void> {
+  private async assertOk(response: Response, method: string, url: string): Promise<void> {
     if (!response.ok) {
       const body = await response.text()
+      this.logger.error('todoist api error', {
+        method,
+        url,
+        status: response.status,
+        body: body.slice(0, 500),
+      })
       throw new TodoistApiError(response.status, url, body)
     }
   }

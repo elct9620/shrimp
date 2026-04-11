@@ -88,7 +88,11 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
   const boardRepository: BoardRepository =
     overrides.boardRepository ??
     new TodoistBoardRepository(
-      new TodoistClient('https://api.todoist.com/rest/v2', env.todoistApiToken),
+      new TodoistClient(
+        'https://api.todoist.com/rest/v2',
+        env.todoistApiToken,
+        logger.child({ module: 'TodoistClient' }),
+      ),
       env.todoistProjectId,
     )
 
