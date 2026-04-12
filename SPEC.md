@@ -40,6 +40,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Task Queue | Concurrency gate that limits how many Processing Cycles run simultaneously (currently one) |
 | Built-in Tools | Todoist tools compiled into the agent: Get tasks, Get comments, Post comment, Move task |
 | MCP Tools | Supplementary tools provided by external MCP servers, discovered from `.mcp.json` at startup |
+| Comment Tag | A prefix marker (`[Shrimp]`) prepended to every comment posted by the agent, used to distinguish bot-authored comments from user-authored comments |
 | Fail-Open Recovery | The standard failure pattern: release the queue slot, leave the task in its current Todoist section, and let the next heartbeat retry it |
 
 ## Scope
@@ -165,6 +166,12 @@ Multiple tasks may exist in the In Progress section (e.g., due to manual user mo
 - The comment is always posted by the Main Agent during its tool-calling loop, whether the task completed or not.
 - If the Post Comment call itself fails, the cycle continues; Fail-Open Recovery applies after the cycle ends. The missing comment does not block task processing.
 
+**Comment tagging:**
+
+- Every comment posted through the Post Comment tool is automatically prefixed with the Comment Tag (`[Shrimp]`) by the tool itself. The AI model does not add the tag; it is applied at the tool boundary.
+- The tag is a structural marker, not part of the AI-generated content.
+- Comments without the Comment Tag are treated as user-authored when reading comment history.
+
 **Task completion:**
 
 - When the Main Agent determines the task is done, it moves the task to the Done section via the Move Task tool.
@@ -281,6 +288,7 @@ The Task Queue only starts the cycle and releases the slot when the cycle return
 
 - The system prompt is assembled at each task execution. It describes the agent's goal and lists available tools (names and capabilities) so the model understands what actions it can take. Tool definitions for function calling are provided separately via AI SDK's tools parameter; the system prompt provides the human-readable context that guides tool usage.
 - The user prompt uses a fixed template to present Todoist task content in a structured format. It includes the task's comment history to provide execution context — this allows the agent to understand prior progress and avoid repeating work.
+- When assembling comment history, comments prefixed with the Comment Tag are labeled as bot-authored; all other comments are labeled as user-authored. The Comment Tag prefix is stripped from the display text so the AI model sees only the original content.
 
 ### Main Agent
 
@@ -318,6 +326,8 @@ The Main Agent uses two categories of tools:
 | MCP | Any tools from registered MCP servers | Discovered from `.mcp.json` at process startup |
 
 Built-in tools handle core Todoist operations. MCP tools extend the agent's capabilities without code changes.
+
+The Post Comment tool is responsible for prepending the Comment Tag to every comment. The AI model's text input is preserved as-is; the tag is added at the tool boundary before the Todoist API call.
 
 ## Deployment & Configuration
 
