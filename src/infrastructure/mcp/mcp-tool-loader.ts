@@ -31,7 +31,7 @@ export type McpLoadResult = {
 // Default factory: uses @modelcontextprotocol/sdk with stdio transport
 // ---------------------------------------------------------------------------
 
-const defaultFactory: McpClientFactory = async (
+export const defaultFactory: McpClientFactory = async (
   _serverName: string,
   definition: McpServerDefinition
 ): Promise<McpClient> => {
@@ -81,7 +81,7 @@ export class McpToolLoader {
 
   constructor(
     @inject(TOKENS.Logger) logger: LoggerPort,
-    private readonly factory: McpClientFactory = defaultFactory,
+    @inject(TOKENS.McpClientFactory) private readonly factory: McpClientFactory,
   ) {
     this.logger = logger.child({ module: 'McpToolLoader' })
   }

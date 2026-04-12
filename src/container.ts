@@ -6,7 +6,7 @@ import { loadMcpConfig, type McpConfig } from './infrastructure/config/mcp-confi
 import { TodoistApi } from '@doist/todoist-sdk'
 import { TodoistBoardRepository } from './infrastructure/todoist/todoist-board-repository'
 import { AiSdkMainAgent } from './infrastructure/ai/ai-sdk-main-agent'
-import { McpToolLoader } from './infrastructure/mcp/mcp-tool-loader'
+import { McpToolLoader, defaultFactory as mcpDefaultFactory } from './infrastructure/mcp/mcp-tool-loader'
 import { InMemoryTaskQueue } from './infrastructure/queue/in-memory-task-queue'
 import { BuiltInToolFactory } from './adapters/tools/built-in-tool-factory'
 import { ToolProviderFactoryImpl } from './adapters/tools/tool-provider-factory-impl'
@@ -85,7 +85,10 @@ export async function bootstrap(): Promise<void> {
   })
   container.registerInstance(TOKENS.LanguageModel, provider.chatModel(env.aiModel))
 
-  // 4. MCP config — absent file is explicitly allowed per SPEC §Deployment §Rules
+  // 4. MCP client factory
+  container.registerInstance(TOKENS.McpClientFactory, mcpDefaultFactory)
+
+  // 5. MCP config — absent file is explicitly allowed per SPEC §Deployment §Rules
   let mcpConfig: McpConfig = { mcpServers: {} }
   try {
     mcpConfig = loadMcpConfig('.mcp.json')

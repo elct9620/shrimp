@@ -7,6 +7,7 @@ import type { TaskQueue } from '../../use-cases/ports/task-queue'
 import type { ToolProviderFactory } from '../../use-cases/ports/tool-provider-factory'
 import type { EnvConfig } from '../config/env-config'
 import type { McpConfig } from '../config/mcp-config'
+import type { McpClientFactory } from '../mcp/mcp-tool-loader'
 
 export const TOKENS = {
   Logger: Symbol.for('shrimp.LoggerPort'),
@@ -18,6 +19,7 @@ export const TOKENS = {
   LanguageModel: Symbol.for('shrimp.LanguageModel'),
   EnvConfig: Symbol.for('shrimp.EnvConfig'),
   McpConfig: Symbol.for('shrimp.McpConfig'),
+  McpClientFactory: Symbol.for('shrimp.McpClientFactory'),
 } as const
 
 export type TokenRegistry = {
@@ -30,4 +32,5 @@ export type TokenRegistry = {
   [TOKENS.LanguageModel]: LanguageModel
   [TOKENS.EnvConfig]: EnvConfig
   [TOKENS.McpConfig]: McpConfig
+  [TOKENS.McpClientFactory]: McpClientFactory
 }

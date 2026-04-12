@@ -6,10 +6,9 @@ import { setupServer } from 'msw/node'
 import { TOKENS } from '../src/infrastructure/container/tokens'
 import { EnvConfigError, loadEnvConfig } from '../src/infrastructure/config/env-config'
 import { McpToolLoader } from '../src/infrastructure/mcp/mcp-tool-loader'
+import type { McpClientFactory } from '../src/infrastructure/mcp/mcp-tool-loader'
 import { ProcessingCycle } from '../src/use-cases/processing-cycle'
 import type { LoggerPort } from '../src/use-cases/ports/logger'
-// Note: BoardRepository is no longer mocked — the real useFactory wires TodoistClient + TodoistBoardRepository
-import type { McpToolLoader as McpToolLoaderType } from '../src/infrastructure/mcp/mcp-tool-loader'
 import { createApp } from '../src/adapters/http/app'
 import type { EnvConfig } from '../src/infrastructure/config/env-config'
 import { BuiltInToolFactory } from '../src/adapters/tools/built-in-tool-factory'
@@ -51,12 +50,6 @@ function makeFakeLanguageModel(): LanguageModel {
   } as unknown as LanguageModel
 }
 
-function makeFakeMcpToolLoader(): McpToolLoaderType {
-  return {
-    load: vi.fn().mockResolvedValue({ tools: {}, descriptions: [] }),
-    close: vi.fn().mockResolvedValue(undefined),
-  } as unknown as McpToolLoaderType
-}
 
 function makeFakeLogger(): LoggerPort {
   const logger: LoggerPort = {
@@ -101,7 +94,8 @@ function registerMockDeps(child: DependencyContainer): void {
   child.registerInstance(TOKENS.EnvConfig, makeTestEnvConfig())
   child.registerInstance(TOKENS.Logger, makeFakeLogger())
   child.registerInstance(TOKENS.LanguageModel, makeFakeLanguageModel())
-  child.registerInstance(McpToolLoader, makeFakeMcpToolLoader())
+  const stubFactory: McpClientFactory = vi.fn().mockRejectedValue(new Error('stub'))
+  child.registerInstance(TOKENS.McpClientFactory, stubFactory)
   child.registerInstance(TOKENS.McpConfig, { mcpServers: {} })
   // ToolProviderFactory: register a factory using real implementation with empty MCP tools
   child.register(TOKENS.ToolProviderFactory, {
