@@ -4,6 +4,8 @@ import { pinoHttp } from 'pino-http'
 import type { DestinationStream } from 'pino'
 import type { LanguageModel } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { container as rootContainer } from 'tsyringe'
+import { TOKENS } from './infrastructure/container/tokens'
 import { loadEnvConfig } from './infrastructure/config/env-config'
 import { loadMcpConfig, type McpConfig } from './infrastructure/config/mcp-config'
 import { TodoistClient } from './infrastructure/todoist/todoist-client'
@@ -11,8 +13,8 @@ import { TodoistBoardRepository } from './infrastructure/todoist/todoist-board-r
 import { AiSdkMainAgent } from './infrastructure/ai/ai-sdk-main-agent'
 import { McpToolLoader } from './infrastructure/mcp/mcp-tool-loader'
 import { InMemoryTaskQueue } from './infrastructure/queue/in-memory-task-queue'
-import { ToolRegistry } from './adapters/tools/tool-registry'
-import { createBuiltInTools, createBuiltInToolDescriptions } from './adapters/tools/built-in/index'
+import { BuiltInToolFactory } from './adapters/tools/built-in-tool-factory'
+import { ToolProviderFactoryImpl } from './adapters/tools/tool-provider-factory-impl'
 import { createHealthRoute } from './adapters/http/routes/health'
 import { createHeartbeatRoute } from './adapters/http/routes/heartbeat'
 import type { AppEnv } from './adapters/http/context-variables'
@@ -49,71 +51,65 @@ export type ComposeOverrides = {
 // ---------------------------------------------------------------------------
 
 export async function composeApp(overrides: ComposeOverrides = {}): Promise<ComposedApp> {
-  // 1. Load and validate environment — fails fast with EnvConfigError if required vars are missing
+  // 1. Env + logger — fails fast with EnvConfigError if required vars are missing
   const env = loadEnvConfig()
-
-  // 1a. Root logger — single factory call produces both LoggerPort (for non-HTTP
-  // modules) and the underlying pino instance (shared with pino-http middleware).
   const { logger, pino: pinoInstance } = createPinoLogger({
     level: env.logLevel,
     pretty: process.env.NODE_ENV !== 'production' && !overrides.logDestination,
     destination: overrides.logDestination,
   })
-  logger.info('env config loaded', {
-    logLevel: env.logLevel,
-    port: env.port,
-    aiMaxSteps: env.aiMaxSteps,
-  })
+  logger.info('env config loaded', { logLevel: env.logLevel, port: env.port, aiMaxSteps: env.aiMaxSteps })
 
-  // 2. Load MCP config — absent file is explicitly allowed per SPEC §Deployment §Rules
+  // 2. MCP config — absent file is explicitly allowed per SPEC §Deployment §Rules
   let mcpConfig: McpConfig = { mcpServers: {} }
   if (!overrides.mcpToolLoader) {
     try {
       mcpConfig = loadMcpConfig('.mcp.json')
-      logger.info('mcp config loaded', {
-        serverCount: Object.keys(mcpConfig.mcpServers).length,
-      })
+      logger.info('mcp config loaded', { serverCount: Object.keys(mcpConfig.mcpServers).length })
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        logger.error('failed to load mcp config', {
-          error: err instanceof Error ? err.message : String(err),
-        })
+        logger.error('failed to load mcp config', { error: err instanceof Error ? err.message : String(err) })
         throw err
       }
       logger.debug('no .mcp.json found — continuing without mcp servers')
     }
   }
 
-  // 3. BoardRepository — Todoist client + repository
-  const boardRepository: BoardRepository =
-    overrides.boardRepository ??
-    new TodoistBoardRepository(
-      new TodoistClient(
-        'https://api.todoist.com/rest/v2',
-        env.todoistApiToken,
-        logger.child({ module: 'TodoistClient' }),
+  // 3. Child container for isolation per compose call
+  const child = rootContainer.createChildContainer()
+
+  // 4. Register value providers
+  child.registerInstance(TOKENS.EnvConfig, env)
+  child.registerInstance(TOKENS.Logger, logger)
+
+  // 5. Language model
+  child.register(TOKENS.LanguageModel, {
+    useFactory: () =>
+      overrides.languageModel ??
+      createOpenAICompatible({ name: 'shrimp', baseURL: env.openAiBaseUrl, apiKey: env.openAiApiKey })
+        .chatModel(env.aiModel),
+  })
+
+  // 6. BoardRepository — scalar deps prevent decorator-only resolution
+  child.register(TOKENS.BoardRepository, {
+    useFactory: () =>
+      overrides.boardRepository ??
+      new TodoistBoardRepository(
+        new TodoistClient('https://api.todoist.com/rest/v2', env.todoistApiToken, logger.child({ module: 'TodoistClient' })),
+        env.todoistProjectId,
+        logger.child({ module: 'TodoistBoardRepository' }),
       ),
-      env.todoistProjectId,
-      logger.child({ module: 'TodoistBoardRepository' }),
-    )
+  })
 
-  // 4. LanguageModel — OpenAI-compatible provider
-  const model: LanguageModel =
-    overrides.languageModel ??
-    (() => {
-      const provider = createOpenAICompatible({
-        name: 'shrimp',
-        baseURL: env.openAiBaseUrl,
-        apiKey: env.openAiApiKey,
-      })
-      return provider.chatModel(env.aiModel)
-    })()
+  // 7. McpToolLoader — useFactory to preserve logger child-binding
+  child.register(McpToolLoader, {
+    useFactory: () =>
+      overrides.mcpToolLoader ?? new McpToolLoader(logger.child({ module: 'McpToolLoader' })),
+  })
 
-  // 5. McpToolLoader — load MCP tools; on failure fall back to empty
-  const mcpToolLoader: McpToolLoader =
-    overrides.mcpToolLoader ?? new McpToolLoader(logger.child({ module: 'McpToolLoader' }))
-
-  let mcpTools = {}
+  // 8. Load MCP tools eagerly (async result consumed by ToolProviderFactory)
+  const mcpToolLoader = child.resolve(McpToolLoader)
+  let mcpTools: Record<string, unknown> = {}
   let mcpDescriptions: ToolDescription[] = []
   try {
     const result = await mcpToolLoader.load(mcpConfig)
@@ -123,40 +119,41 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
     // Per SPEC §Failure Handling: if loading fails entirely, run with built-in tools only
   }
 
-  // 6. Built-in tools
-  const builtInTools = createBuiltInTools(
-    boardRepository,
-    logger.child({ module: 'built-in-tools' }),
-  )
-  const builtInDescriptions = createBuiltInToolDescriptions()
+  // 9. MainAgent — useFactory to bind logger child
+  child.register(TOKENS.MainAgent, {
+    useFactory: (c) =>
+      new AiSdkMainAgent(
+        c.resolve<LanguageModel>(TOKENS.LanguageModel),
+        logger.child({ module: 'AiSdkMainAgent' }),
+      ),
+  })
 
-  // 7. ToolRegistry — merges built-in + MCP tools
-  const toolProvider = new ToolRegistry(
-    {
-      builtInTools,
-      builtInDescriptions,
-      mcpTools,
-      mcpDescriptions,
-    },
-    logger.child({ module: 'ToolRegistry' }),
-  )
+  // 10. TaskQueue — useFactory to bind logger child
+  child.register(TOKENS.TaskQueue, {
+    useFactory: () => new InMemoryTaskQueue(logger.child({ module: 'InMemoryTaskQueue' })),
+  })
 
-  // 8. MainAgent (AI execution engine)
-  const mainAgent = new AiSdkMainAgent(model, logger.child({ module: 'AiSdkMainAgent' }))
+  // 11. ToolProviderFactory — resolves BuiltInToolFactory from container, injects MCP results
+  child.register(TOKENS.ToolProviderFactory, {
+    useFactory: (c) =>
+      new ToolProviderFactoryImpl(
+        c.resolve(BuiltInToolFactory),
+        mcpTools,
+        mcpDescriptions,
+        logger.child({ module: 'ToolRegistry' }),
+      ),
+  })
 
-  // 9. ProcessingCycle (orchestrates one heartbeat-triggered unit of work)
+  // 12. ProcessingCycle — Use Case: manual construction, no DI decorators
   const processingCycle = new ProcessingCycle({
-    board: boardRepository,
-    mainAgent,
-    toolProviderFactory: { create: () => toolProvider },
+    board: child.resolve<BoardRepository>(TOKENS.BoardRepository),
+    mainAgent: child.resolve(TOKENS.MainAgent),
+    toolProviderFactory: child.resolve(TOKENS.ToolProviderFactory),
     maxSteps: env.aiMaxSteps,
     logger: logger.child({ module: 'ProcessingCycle' }),
   })
 
-  // 10. TaskQueue
-  const taskQueue = new InMemoryTaskQueue(logger.child({ module: 'InMemoryTaskQueue' }))
-
-  // 11. Hono app — wires request-id and pino-http per the official pino+Hono recipe.
+  // 13. Hono app — HTTP framework wiring; manual construction stays here
   // The pino-http bridge relies on @hono/node-server bindings (c.env.incoming/outgoing)
   // that are only populated at runtime via serve(). Hono's in-process app.request()
   // used by tests leaves c.env empty, so the bridge short-circuits there instead of
@@ -180,7 +177,7 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
   app.route(
     '/',
     createHeartbeatRoute({
-      taskQueue,
+      taskQueue: child.resolve(TOKENS.TaskQueue),
       processingCycle,
       logger: logger.child({ module: 'http.heartbeat' }),
     }),
