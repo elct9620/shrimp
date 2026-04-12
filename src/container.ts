@@ -3,7 +3,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { TOKENS } from './infrastructure/container/tokens'
 import { loadEnvConfig, type EnvConfig } from './infrastructure/config/env-config'
 import { loadMcpConfig, type McpConfig } from './infrastructure/config/mcp-config'
-import { TodoistClient } from './infrastructure/todoist/todoist-client'
+import { TodoistApi } from '@doist/todoist-sdk'
 import { TodoistBoardRepository } from './infrastructure/todoist/todoist-board-repository'
 import { AiSdkMainAgent } from './infrastructure/ai/ai-sdk-main-agent'
 import { McpToolLoader } from './infrastructure/mcp/mcp-tool-loader'
@@ -30,11 +30,7 @@ container.register(TOKENS.BoardRepository, {
     const env = c.resolve<EnvConfig>(TOKENS.EnvConfig)
     const logger = c.resolve<LoggerPort>(TOKENS.Logger)
     return new TodoistBoardRepository(
-      new TodoistClient(
-        'https://api.todoist.com/rest/v2',
-        env.todoistApiToken,
-        logger.child({ module: 'TodoistClient' }),
-      ),
+      new TodoistApi(env.todoistApiToken),
       env.todoistProjectId,
       logger.child({ module: 'TodoistBoardRepository' }),
     )
