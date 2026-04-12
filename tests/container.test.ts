@@ -1,22 +1,34 @@
 import { container } from 'tsyringe'
 import type { DependencyContainer } from 'tsyringe'
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from 'vitest'
 import type { LanguageModel } from 'ai'
+import { setupServer } from 'msw/node'
 import { TOKENS } from '../src/infrastructure/container/tokens'
 import { EnvConfigError, loadEnvConfig } from '../src/infrastructure/config/env-config'
 import { McpToolLoader } from '../src/infrastructure/mcp/mcp-tool-loader'
 import { ProcessingCycle } from '../src/use-cases/processing-cycle'
-import type { BoardRepository } from '../src/use-cases/ports/board-repository'
 import type { LoggerPort } from '../src/use-cases/ports/logger'
+// Note: BoardRepository is no longer mocked — the real useFactory wires TodoistClient + TodoistBoardRepository
 import type { McpToolLoader as McpToolLoaderType } from '../src/infrastructure/mcp/mcp-tool-loader'
 import { createApp } from '../src/adapters/http/app'
 import type { EnvConfig } from '../src/infrastructure/config/env-config'
 import { BuiltInToolFactory } from '../src/adapters/tools/built-in-tool-factory'
 import { ToolProviderFactoryImpl } from '../src/adapters/tools/tool-provider-factory-impl'
 import { createPinoLogger } from '../src/infrastructure/logger/pino-logger'
+import { todoistHandlers } from './mocks/todoist-handlers'
 
 // Trigger module-level factory registrations on the root container
 import '../src/container'
+
+// ---------------------------------------------------------------------------
+// MSW server — intercepts Todoist REST API calls at the HTTP boundary
+// ---------------------------------------------------------------------------
+
+const server = setupServer(...todoistHandlers)
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterEach(() => server.resetHandlers())
+afterAll(() => server.close())
 
 // ---------------------------------------------------------------------------
 // Mock factories for external boundaries
@@ -37,15 +49,6 @@ function makeFakeLanguageModel(): LanguageModel {
     }),
     doStream: vi.fn(),
   } as unknown as LanguageModel
-}
-
-function makeFakeBoardRepository(): BoardRepository {
-  return {
-    getTasks: vi.fn().mockResolvedValue([]),
-    getComments: vi.fn().mockResolvedValue([]),
-    postComment: vi.fn().mockResolvedValue(undefined),
-    moveTask: vi.fn().mockResolvedValue(undefined),
-  }
 }
 
 function makeFakeMcpToolLoader(): McpToolLoaderType {
@@ -98,7 +101,6 @@ function registerMockDeps(child: DependencyContainer): void {
   child.registerInstance(TOKENS.EnvConfig, makeTestEnvConfig())
   child.registerInstance(TOKENS.Logger, makeFakeLogger())
   child.registerInstance(TOKENS.LanguageModel, makeFakeLanguageModel())
-  child.registerInstance(TOKENS.BoardRepository, makeFakeBoardRepository())
   child.registerInstance(McpToolLoader, makeFakeMcpToolLoader())
   child.registerInstance(TOKENS.McpConfig, { mcpServers: {} })
   // ToolProviderFactory: register a factory using real implementation with empty MCP tools
