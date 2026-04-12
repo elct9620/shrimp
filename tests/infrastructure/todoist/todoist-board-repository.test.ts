@@ -98,14 +98,6 @@ function makeComment(id: string, taskId: string, content: string, postedAt: stri
 }
 
 /**
- * Returns a full task HTTP response (snake_case) for endpoints that return a task object,
- * such as POST /tasks/:id/move. The SDK validates the response with Zod after camelCaseKeys.
- */
-function makeTaskHttpResponse(taskId: string, sectionId: string) {
-  return makeTask({ id: taskId, content: 'Task', description: '', section_id: sectionId, priority: 1 })
-}
-
-/**
  * Returns a full comment HTTP response (snake_case) for POST /comments.
  * The SDK validates the response with Zod after camelCaseKeys.
  */
