@@ -4,13 +4,13 @@ import { assemble } from './prompt-assembler'
 import { BoardSectionMissingError } from './ports/board-repository'
 import type { BoardRepository } from './ports/board-repository'
 import type { MainAgent } from './ports/main-agent'
-import type { ToolProvider } from './ports/tool-provider'
+import type { ToolProviderFactory } from './ports/tool-provider-factory'
 import type { LoggerPort } from './ports/logger'
 
 export type ProcessingCycleConfig = {
   board: BoardRepository
   mainAgent: MainAgent
-  toolProvider: ToolProvider
+  toolProviderFactory: ToolProviderFactory
   maxSteps: number
   logger: LoggerPort
 }
@@ -18,14 +18,14 @@ export type ProcessingCycleConfig = {
 export class ProcessingCycle {
   private readonly board: BoardRepository
   private readonly mainAgent: MainAgent
-  private readonly toolProvider: ToolProvider
+  private readonly toolProviderFactory: ToolProviderFactory
   private readonly maxSteps: number
   private readonly logger: LoggerPort
 
-  constructor({ board, mainAgent, toolProvider, maxSteps, logger }: ProcessingCycleConfig) {
+  constructor({ board, mainAgent, toolProviderFactory, maxSteps, logger }: ProcessingCycleConfig) {
     this.board = board
     this.mainAgent = mainAgent
-    this.toolProvider = toolProvider
+    this.toolProviderFactory = toolProviderFactory
     this.maxSteps = maxSteps
     this.logger = logger
   }
@@ -70,7 +70,8 @@ export class ProcessingCycle {
     }
 
     const comments = await this.board.getComments(task.id)
-    const tools = this.toolProvider.getToolDescriptions()
+    const toolProvider = this.toolProviderFactory.create()
+    const tools = toolProvider.getToolDescriptions()
 
     const { systemPrompt, userPrompt } = assemble({ task, comments, tools })
 
@@ -78,7 +79,7 @@ export class ProcessingCycle {
     const result = await this.mainAgent.run({
       systemPrompt,
       userPrompt,
-      tools: this.toolProvider.getTools(),
+      tools: toolProvider.getTools(),
       maxSteps: this.maxSteps,
     })
 

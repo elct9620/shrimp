@@ -148,7 +148,7 @@ export async function composeApp(overrides: ComposeOverrides = {}): Promise<Comp
   const processingCycle = new ProcessingCycle({
     board: boardRepository,
     mainAgent,
-    toolProvider,
+    toolProviderFactory: { create: () => toolProvider },
     maxSteps: env.aiMaxSteps,
     logger: logger.child({ module: 'ProcessingCycle' }),
   })

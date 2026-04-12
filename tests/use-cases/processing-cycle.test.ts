@@ -86,7 +86,7 @@ describe('ProcessingCycle.run', () => {
     mainAgent = makeMainAgent()
     toolProvider = makeToolProvider()
     logger = makeFakeLogger()
-    cycle = new ProcessingCycle({ board, mainAgent, toolProvider, maxSteps: 10, logger })
+    cycle = new ProcessingCycle({ board, mainAgent, toolProviderFactory: { create: () => toolProvider }, maxSteps: 10, logger })
   })
 
   describe('when no tasks exist in either section', () => {
