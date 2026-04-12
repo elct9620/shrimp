@@ -11,7 +11,7 @@
 | `pnpm start` | Run the bundled server |
 | `pnpm dev` | Rebuild and restart on file changes |
 
-Run a single test file: `pnpm test tests/health.test.ts`.
+Run a single test file: `pnpm test tests/container.test.ts` (pass any path under `tests/`).
 
 ## Architecture
 
@@ -24,6 +24,11 @@ Three facts worth internalizing before touching Processing Cycle or Main Agent c
 - **The Main Agent is a black box executor.** `ProcessingCycle` invokes the `MainAgent` port exactly once per heartbeat; iterations inside the loop cannot be driven from outside. `AiSdkMainAgent` implements this port via AI SDK's `ToolLoopAgent`.
 - **Built-in Todoist tools are inbound adapters**, not use cases. They live in `adapters/tools/built-in/` and call `BoardRepository` directly. Do not create per-operation use-case classes for them.
 
+Layer layout at a glance:
+- `adapters/http/` — inbound HTTP routes (Hono handlers).
+- `adapters/tools/` — agent tools; `built-in/` are inbound adapters over `BoardRepository`, MCP tools are loaded dynamically.
+- `infrastructure/` — one subfolder per external concern (`ai/`, `logger/`, `mcp/`, `queue/`, `todoist/`, `config/`); each contains the concrete implementation of the port its name implies.
+
 ## Tech Stack
 
 | Library | Role |
@@ -32,6 +37,8 @@ Three facts worth internalizing before touching Processing Cycle or Main Agent c
 | tsyringe | Dependency injection container; wires all components at startup |
 | AI SDK | Abstraction over AI provider APIs; drives the AI Agent execution loop |
 | MCP (Model Context Protocol) | Extension mechanism; supplementary agent tools are provided via MCP servers |
+| pino / pino-http | Structured logging exposed through `LoggerPort`; injected per-component |
+| zod | Runtime schema validation for tool I/O and config |
 | dotenv | Loads environment variables from `.env` in development |
 | tsdown | Bundles the application for production deployment |
 
@@ -47,5 +54,6 @@ Three facts worth internalizing before touching Processing Cycle or Main Agent c
 ### Rules
 
 - `.env` supplies environment variables locally; `.mcp.json` configures supplementary MCP servers. Both files are not committed to source control.
+- `*.local.md` files in the repo root (e.g. `LOGGER.local.md`, `SPEC-IMPL.local.md`, `SPEC-WRITE.local.md`) are personal scratchpads — gitignored and non-authoritative. Do not treat them as spec or design sources; consult `SPEC.md` and `docs/architecture.md` instead.
 - Tests must not depend on live external services (Todoist API, AI provider); use mocks or stubs.
 - Class and port names follow SPEC terminology (`ProcessingCycle`, `MainAgent`, `Board`), not implementation-derived names.
