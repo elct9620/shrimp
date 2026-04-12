@@ -1,3 +1,4 @@
+import type { TodoistApi } from '@doist/todoist-sdk'
 import type { LoggerPort } from '../../use-cases/ports/logger'
 
 export type TodoistTask = {
@@ -23,8 +24,6 @@ export type TodoistSection = {
   order: number
 }
 
-export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>
-
 export class TodoistApiError extends Error {
   readonly name = 'TodoistApiError'
 
@@ -39,76 +38,74 @@ export class TodoistApiError extends Error {
 
 export class TodoistClient {
   constructor(
-    private readonly baseUrl: string,
-    private readonly token: string,
+    private readonly api: TodoistApi,
     private readonly logger: LoggerPort,
-    private readonly fetchFn: FetchLike = globalThis.fetch,
   ) {}
 
   async listTasks(params: { projectId: string; sectionId: string }): Promise<TodoistTask[]> {
-    const url = `${this.baseUrl}/tasks?project_id=${params.projectId}&section_id=${params.sectionId}`
-    return this.get<TodoistTask[]>(url)
+    this.logger.debug('todoist request', { method: 'GET', operation: 'getTasks', params })
+    const response = await this.api.getTasks({
+      projectId: params.projectId,
+      sectionId: params.sectionId,
+    })
+    this.logger.debug('todoist response', {
+      method: 'GET',
+      operation: 'getTasks',
+      count: response.results.length,
+    })
+    return response.results.map((task) => ({
+      id: task.id,
+      content: task.content,
+      description: task.description || null,
+      project_id: task.projectId,
+      section_id: task.sectionId,
+      priority: task.priority,
+    }))
   }
 
   async listComments(params: { taskId: string }): Promise<TodoistComment[]> {
-    const url = `${this.baseUrl}/comments?task_id=${params.taskId}`
-    return this.get<TodoistComment[]>(url)
+    this.logger.debug('todoist request', { method: 'GET', operation: 'getComments', params })
+    const response = await this.api.getComments({ taskId: params.taskId })
+    this.logger.debug('todoist response', {
+      method: 'GET',
+      operation: 'getComments',
+      count: response.results.length,
+    })
+    return response.results.map((comment) => ({
+      id: comment.id,
+      task_id: comment.taskId ?? '',
+      content: comment.content,
+      posted_at: comment.postedAt instanceof Date
+        ? comment.postedAt.toISOString()
+        : String(comment.postedAt),
+    }))
   }
 
   async postComment(params: { taskId: string; content: string }): Promise<void> {
-    const url = `${this.baseUrl}/comments`
-    await this.post(url, { task_id: params.taskId, content: params.content })
+    this.logger.debug('todoist request', { method: 'POST', operation: 'addComment', params: { taskId: params.taskId } })
+    await this.api.addComment({ taskId: params.taskId, content: params.content })
+    this.logger.debug('todoist response', { method: 'POST', operation: 'addComment' })
   }
 
   async moveTask(params: { taskId: string; sectionId: string }): Promise<void> {
-    const url = `${this.baseUrl}/tasks/${params.taskId}/move`
-    await this.post(url, { section_id: params.sectionId })
+    this.logger.debug('todoist request', { method: 'POST', operation: 'moveTask', params: { taskId: params.taskId } })
+    await this.api.moveTask(params.taskId, { sectionId: params.sectionId })
+    this.logger.debug('todoist response', { method: 'POST', operation: 'moveTask' })
   }
 
   async listSections(params: { projectId: string }): Promise<TodoistSection[]> {
-    const url = `${this.baseUrl}/sections?project_id=${params.projectId}`
-    return this.get<TodoistSection[]>(url)
-  }
-
-  private async get<T>(url: string): Promise<T> {
-    this.logger.debug('todoist request', { method: 'GET', url })
-    const response = await this.fetchFn(url, {
+    this.logger.debug('todoist request', { method: 'GET', operation: 'getSections', params })
+    const response = await this.api.getSections({ projectId: params.projectId })
+    this.logger.debug('todoist response', {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Accept': 'application/json',
-      },
+      operation: 'getSections',
+      count: response.results.length,
     })
-    await this.assertOk(response, 'GET', url)
-    this.logger.debug('todoist response', { method: 'GET', url, status: response.status })
-    return response.json() as Promise<T>
-  }
-
-  private async post(url: string, body: unknown): Promise<void> {
-    this.logger.debug('todoist request', { method: 'POST', url })
-    const response = await this.fetchFn(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.token}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify(body),
-    })
-    await this.assertOk(response, 'POST', url)
-    this.logger.debug('todoist response', { method: 'POST', url, status: response.status })
-  }
-
-  private async assertOk(response: Response, method: string, url: string): Promise<void> {
-    if (!response.ok) {
-      const body = await response.text()
-      this.logger.error('todoist api error', {
-        method,
-        url,
-        status: response.status,
-        body: body.slice(0, 500),
-      })
-      throw new TodoistApiError(response.status, url, body)
-    }
+    return response.results.map((section) => ({
+      id: section.id,
+      project_id: section.projectId,
+      name: section.name,
+      order: section.sectionOrder,
+    }))
   }
 }
