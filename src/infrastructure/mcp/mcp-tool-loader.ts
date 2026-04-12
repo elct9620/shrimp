@@ -31,7 +31,7 @@ export type McpLoadResult = {
 // Default factory: uses @modelcontextprotocol/sdk with stdio transport
 // ---------------------------------------------------------------------------
 
-export const defaultFactory: McpClientFactory = async (
+export const createMcpClient: McpClientFactory = async (
   _serverName: string,
   definition: McpServerDefinition
 ): Promise<McpClient> => {

@@ -6,7 +6,7 @@ import { loadMcpConfig, type McpConfig } from './infrastructure/config/mcp-confi
 import { TodoistApi } from '@doist/todoist-sdk'
 import { TodoistBoardRepository } from './infrastructure/todoist/todoist-board-repository'
 import { AiSdkMainAgent } from './infrastructure/ai/ai-sdk-main-agent'
-import { McpToolLoader, defaultFactory as mcpDefaultFactory } from './infrastructure/mcp/mcp-tool-loader'
+import { McpToolLoader, createMcpClient } from './infrastructure/mcp/mcp-tool-loader'
 import { InMemoryTaskQueue } from './infrastructure/queue/in-memory-task-queue'
 import { BuiltInToolFactory } from './adapters/tools/built-in-tool-factory'
 import { ToolProviderFactoryImpl } from './adapters/tools/tool-provider-factory-impl'
@@ -86,7 +86,7 @@ export async function bootstrap(): Promise<void> {
   container.registerInstance(TOKENS.LanguageModel, provider.chatModel(env.aiModel))
 
   // 4. MCP client factory
-  container.registerInstance(TOKENS.McpClientFactory, mcpDefaultFactory)
+  container.registerInstance(TOKENS.McpClientFactory, createMcpClient)
 
   // 5. MCP config — absent file is explicitly allowed per SPEC §Deployment §Rules
   let mcpConfig: McpConfig = { mcpServers: {} }
@@ -104,7 +104,7 @@ export async function bootstrap(): Promise<void> {
   }
   container.registerInstance(TOKENS.McpConfig, mcpConfig)
 
-  // 5. MCP tool loading (async — result consumed by ToolProviderFactory)
+  // 6. MCP tool loading (async — result consumed by ToolProviderFactory)
   const mcpToolLoader = container.resolve(McpToolLoader)
   let mcpTools: Record<string, unknown> = {}
   let mcpDescriptions: ToolDescription[] = []
@@ -116,7 +116,7 @@ export async function bootstrap(): Promise<void> {
     // Per SPEC §Failure Handling: if loading fails entirely, run with built-in tools only
   }
 
-  // 6. ToolProviderFactory — needs async MCP results captured in closure
+  // 7. ToolProviderFactory — needs async MCP results captured in closure
   container.register(TOKENS.ToolProviderFactory, {
     useFactory: (c) =>
       new ToolProviderFactoryImpl(
