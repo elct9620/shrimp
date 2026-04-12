@@ -4,6 +4,7 @@ import { BoardSectionMissingError } from '../../src/use-cases/ports/board-reposi
 import type { BoardRepository } from '../../src/use-cases/ports/board-repository'
 import type { MainAgent, MainAgentInput, MainAgentResult } from '../../src/use-cases/ports/main-agent'
 import type { ToolProvider } from '../../src/use-cases/ports/tool-provider'
+import type { ToolProviderFactory } from '../../src/use-cases/ports/tool-provider-factory'
 import type { ToolDescription } from '../../src/use-cases/ports/tool-description'
 import type { LoggerPort } from '../../src/use-cases/ports/logger'
 import { Section } from '../../src/entities/section'
@@ -59,6 +60,11 @@ function makeToolProvider(): ToolProvider {
   }
 }
 
+function makeToolProviderFactory(provider?: ToolProvider): ToolProviderFactory {
+  const inner = provider ?? makeToolProvider()
+  return { create: vi.fn(() => inner) }
+}
+
 function makeFakeLogger(): LoggerPort {
   const logger: LoggerPort = {
     trace: vi.fn(),
@@ -77,7 +83,8 @@ function makeFakeLogger(): LoggerPort {
 describe('ProcessingCycle.run', () => {
   let board: ReturnType<typeof makeBoardRepository>
   let mainAgent: ReturnType<typeof makeMainAgent>
-  let toolProvider: ReturnType<typeof makeToolProvider>
+  let toolProvider: ToolProvider
+  let toolProviderFactory: ToolProviderFactory
   let logger: LoggerPort
   let cycle: ProcessingCycle
 
@@ -85,8 +92,9 @@ describe('ProcessingCycle.run', () => {
     board = makeBoardRepository()
     mainAgent = makeMainAgent()
     toolProvider = makeToolProvider()
+    toolProviderFactory = makeToolProviderFactory(toolProvider)
     logger = makeFakeLogger()
-    cycle = new ProcessingCycle({ board, mainAgent, toolProviderFactory: { create: () => toolProvider }, maxSteps: 10, logger })
+    cycle = new ProcessingCycle({ board, mainAgent, toolProviderFactory, maxSteps: 10, logger })
   })
 
   describe('when no tasks exist in either section', () => {
