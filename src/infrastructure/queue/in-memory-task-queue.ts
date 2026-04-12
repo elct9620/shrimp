@@ -1,10 +1,13 @@
+import { injectable, inject } from 'tsyringe'
 import type { TaskQueue } from '../../use-cases/ports/task-queue'
 import type { LoggerPort } from '../../use-cases/ports/logger'
+import { TOKENS } from '../container/tokens'
 
+@injectable()
 export class InMemoryTaskQueue implements TaskQueue {
   private busy = false
 
-  constructor(private readonly logger: LoggerPort) {}
+  constructor(@inject(TOKENS.Logger) private readonly logger: LoggerPort) {}
 
   tryEnqueue(job: () => Promise<void>): boolean {
     if (this.busy) {

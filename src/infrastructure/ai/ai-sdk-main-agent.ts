@@ -1,11 +1,14 @@
+import { injectable, inject } from 'tsyringe'
 import { ToolLoopAgent, stepCountIs, type LanguageModel, type ToolSet as AiToolSet } from 'ai'
 import type { MainAgent, MainAgentInput, MainAgentResult, MainAgentTerminationReason } from '../../use-cases/ports/main-agent'
 import type { LoggerPort } from '../../use-cases/ports/logger'
+import { TOKENS } from '../container/tokens'
 
+@injectable()
 export class AiSdkMainAgent implements MainAgent {
   constructor(
-    private readonly model: LanguageModel,
-    private readonly logger: LoggerPort,
+    @inject(TOKENS.LanguageModel) private readonly model: LanguageModel,
+    @inject(TOKENS.Logger) private readonly logger: LoggerPort,
   ) {}
 
   async run(input: MainAgentInput): Promise<MainAgentResult> {

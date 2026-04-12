@@ -1,3 +1,4 @@
+import { injectable, inject } from 'tsyringe'
 import { tool, jsonSchema } from 'ai'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
@@ -5,6 +6,7 @@ import type { McpConfig, McpServerDefinition } from '../config/mcp-config'
 import type { ToolSet } from '../../use-cases/ports/tool-set'
 import type { ToolDescription } from '../../use-cases/ports/tool-description'
 import type { LoggerPort } from '../../use-cases/ports/logger'
+import { TOKENS } from '../container/tokens'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,11 +74,12 @@ const defaultFactory: McpClientFactory = async (
 // McpToolLoader
 // ---------------------------------------------------------------------------
 
+@injectable()
 export class McpToolLoader {
   private clients: McpClient[] = []
 
   constructor(
-    private readonly logger: LoggerPort,
+    @inject(TOKENS.Logger) private readonly logger: LoggerPort,
     private readonly factory: McpClientFactory = defaultFactory,
   ) {}
 
