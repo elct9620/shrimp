@@ -52,13 +52,13 @@ export class TodoistBoardRepository implements BoardRepository {
 
   async getComments(taskId: string): Promise<Comment[]> {
     const response = await this.api.getComments({ taskId })
-    return response.results.map((raw) => {
+    return response.results.map((raw): Comment => {
       const tagged = isTagged(raw.content)
       return {
         text: tagged ? stripTag(raw.content) : raw.content,
         timestamp: raw.postedAt,
         author: tagged ? 'bot' : 'user',
-      } as Comment
+      }
     })
   }
 

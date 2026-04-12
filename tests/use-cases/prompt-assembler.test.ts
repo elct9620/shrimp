@@ -194,6 +194,24 @@ describe('assemble', () => {
       expect(userPrompt).toContain('[User] Please check this')
     })
 
+    it('labels mixed bot and user comments in order', () => {
+      const comments = [
+        makeComment('User question', 'user'),
+        makeComment('Bot response', 'bot'),
+        makeComment('Follow-up', 'user'),
+      ]
+
+      const { userPrompt } = assemble({ task: makeTask(), comments, tools: [] })
+
+      const userIdx = userPrompt.indexOf('[User] User question')
+      const botIdx = userPrompt.indexOf('[Bot] Bot response')
+      const followIdx = userPrompt.indexOf('[User] Follow-up')
+
+      expect(userIdx).toBeGreaterThan(-1)
+      expect(botIdx).toBeGreaterThan(userIdx)
+      expect(followIdx).toBeGreaterThan(botIdx)
+    })
+
     it('handles empty comment history without error', () => {
       expect(() =>
         assemble({ task: makeTask(), comments: [], tools: [] })
