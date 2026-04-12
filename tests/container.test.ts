@@ -1,17 +1,26 @@
-import { describe, expect, it, afterEach, vi } from 'vitest'
+import { container } from 'tsyringe'
+import type { DependencyContainer } from 'tsyringe'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { LanguageModel } from 'ai'
-import { EnvConfigError } from '../src/infrastructure/config/env-config'
-import type { McpToolLoader } from '../src/infrastructure/mcp/mcp-tool-loader'
+import { TOKENS } from '../src/infrastructure/container/tokens'
+import { EnvConfigError, loadEnvConfig } from '../src/infrastructure/config/env-config'
+import { McpToolLoader } from '../src/infrastructure/mcp/mcp-tool-loader'
+import { ProcessingCycle } from '../src/use-cases/processing-cycle'
 import type { BoardRepository } from '../src/use-cases/ports/board-repository'
+import type { LoggerPort } from '../src/use-cases/ports/logger'
+import type { McpToolLoader as McpToolLoaderType } from '../src/infrastructure/mcp/mcp-tool-loader'
+import { createApp } from '../src/adapters/http/app'
+import type { EnvConfig } from '../src/infrastructure/config/env-config'
+import { BuiltInToolFactory } from '../src/adapters/tools/built-in-tool-factory'
+import { ToolProviderFactoryImpl } from '../src/adapters/tools/tool-provider-factory-impl'
+import { createPinoLogger } from '../src/infrastructure/logger/pino-logger'
 
-const REQUIRED_ENV = {
-  OPENAI_BASE_URL: 'http://localhost:11434/v1',
-  OPENAI_API_KEY: 'dummy-key',
-  AI_MODEL: 'test-model',
-  TODOIST_API_TOKEN: 'todoist-token',
-  TODOIST_PROJECT_ID: 'project-123',
-  LOG_LEVEL: 'silent',
-}
+// Trigger module-level factory registrations on the root container
+import '../src/container'
+
+// ---------------------------------------------------------------------------
+// Mock factories for external boundaries
+// ---------------------------------------------------------------------------
 
 function makeFakeLanguageModel(): LanguageModel {
   return {
@@ -19,7 +28,13 @@ function makeFakeLanguageModel(): LanguageModel {
     provider: 'test',
     modelId: 'test-model',
     defaultObjectGenerationMode: undefined,
-    doGenerate: vi.fn().mockResolvedValue({ text: '', usage: {}, finishReason: 'stop', rawResponse: { headers: {} }, warnings: [] }),
+    doGenerate: vi.fn().mockResolvedValue({
+      text: '',
+      usage: {},
+      finishReason: 'stop',
+      rawResponse: { headers: {} },
+      warnings: [],
+    }),
     doStream: vi.fn(),
   } as unknown as LanguageModel
 }
@@ -33,152 +48,162 @@ function makeFakeBoardRepository(): BoardRepository {
   }
 }
 
-function makeFakeMcpToolLoader(): McpToolLoader {
+function makeFakeMcpToolLoader(): McpToolLoaderType {
   return {
     load: vi.fn().mockResolvedValue({ tools: {}, descriptions: [] }),
     close: vi.fn().mockResolvedValue(undefined),
-  } as unknown as McpToolLoader
+  } as unknown as McpToolLoaderType
 }
 
-function stubRequiredEnv(): void {
-  for (const [key, value] of Object.entries(REQUIRED_ENV)) {
-    vi.stubEnv(key, value)
+function makeFakeLogger(): LoggerPort {
+  const logger: LoggerPort = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+  }
+  return logger
+}
+
+function makeSilentPinoInstance() {
+  return createPinoLogger({ level: 'silent', pretty: false }).pino
+}
+
+function makeTestEnvConfig(): EnvConfig {
+  return {
+    openAiBaseUrl: 'http://localhost:11434/v1',
+    openAiApiKey: 'dummy-key',
+    aiModel: 'test-model',
+    aiMaxSteps: 50,
+    todoistApiToken: 'todoist-token',
+    todoistProjectId: 'project-123',
+    port: 3000,
+    logLevel: 'silent',
   }
 }
 
-describe('composeApp', () => {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Register all external-boundary mocks into a child container so that
+ * factory-wired components (BoardRepository, MainAgent, etc.) can resolve
+ * their scalar dependencies from the child.
+ */
+function registerMockDeps(child: DependencyContainer): void {
+  child.registerInstance(TOKENS.EnvConfig, makeTestEnvConfig())
+  child.registerInstance(TOKENS.Logger, makeFakeLogger())
+  child.registerInstance(TOKENS.LanguageModel, makeFakeLanguageModel())
+  child.registerInstance(TOKENS.BoardRepository, makeFakeBoardRepository())
+  child.registerInstance(McpToolLoader, makeFakeMcpToolLoader())
+  child.registerInstance(TOKENS.McpConfig, { mcpServers: {} })
+  // ToolProviderFactory: register a factory using real implementation with empty MCP tools
+  child.register(TOKENS.ToolProviderFactory, {
+    useFactory: (c) =>
+      new ToolProviderFactoryImpl(
+        c.resolve(BuiltInToolFactory),
+        {},
+        [],
+        c.resolve<LoggerPort>(TOKENS.Logger).child({ module: 'ToolRegistry' }),
+      ),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+const REQUIRED_ENV = {
+  OPENAI_BASE_URL: 'http://localhost:11434/v1',
+  OPENAI_API_KEY: 'dummy-key',
+  AI_MODEL: 'test-model',
+  TODOIST_API_TOKEN: 'todoist-token',
+  TODOIST_PROJECT_ID: 'project-123',
+  LOG_LEVEL: 'silent',
+}
+
+describe('container integration', () => {
+  let child: DependencyContainer
+
+  beforeEach(() => {
+    child = container.createChildContainer()
+  })
+
   afterEach(() => {
+    child.dispose()
     vi.unstubAllEnvs()
   })
 
-  it('should return an app that responds 200 to GET /health when all env vars are set', async () => {
-    stubRequiredEnv()
+  describe('HTTP routes', () => {
+    it('should respond 200 to GET /health', async () => {
+      registerMockDeps(child)
 
-    const { composeApp } = await import('../src/container')
-    const { app } = await composeApp({
-      languageModel: makeFakeLanguageModel(),
-      boardRepository: makeFakeBoardRepository(),
-      mcpToolLoader: makeFakeMcpToolLoader(),
-    })
-
-    const res = await app.request('/health', { method: 'GET' })
-
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ status: 'ok' })
-  })
-
-  it('should return an app that responds 202 to POST /heartbeat when all env vars are set', async () => {
-    stubRequiredEnv()
-
-    const { composeApp } = await import('../src/container')
-    const { app } = await composeApp({
-      languageModel: makeFakeLanguageModel(),
-      boardRepository: makeFakeBoardRepository(),
-      mcpToolLoader: makeFakeMcpToolLoader(),
-    })
-
-    const res = await app.request('/heartbeat', { method: 'POST' })
-
-    expect(res.status).toBe(202)
-    expect(await res.json()).toEqual({ status: 'accepted' })
-  })
-
-  it('should throw EnvConfigError when required env vars are missing', async () => {
-    // No env vars stubbed — all missing
-
-    const { composeApp } = await import('../src/container')
-
-    await expect(
-      composeApp({
-        languageModel: makeFakeLanguageModel(),
-        boardRepository: makeFakeBoardRepository(),
-        mcpToolLoader: makeFakeMcpToolLoader(),
+      const taskQueue = child.resolve<import('../src/use-cases/ports/task-queue').TaskQueue>(TOKENS.TaskQueue)
+      const processingCycle = child.resolve(ProcessingCycle)
+      const app = createApp({
+        pinoInstance: makeSilentPinoInstance(),
+        taskQueue,
+        processingCycle,
+        logger: child.resolve<LoggerPort>(TOKENS.Logger),
       })
-    ).rejects.toThrow(EnvConfigError)
-  })
 
-  it('should succeed when .mcp.json is absent (tolerates missing file)', async () => {
-    stubRequiredEnv()
+      const res = await app.request('/health', { method: 'GET' })
 
-    const { composeApp } = await import('../src/container')
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ status: 'ok' })
+    })
 
-    await expect(
-      composeApp({
-        languageModel: makeFakeLanguageModel(),
-        boardRepository: makeFakeBoardRepository(),
-        mcpToolLoader: makeFakeMcpToolLoader(),
+    it('should respond 202 to POST /heartbeat', async () => {
+      registerMockDeps(child)
+
+      const taskQueue = child.resolve<import('../src/use-cases/ports/task-queue').TaskQueue>(TOKENS.TaskQueue)
+      const processingCycle = child.resolve(ProcessingCycle)
+      const app = createApp({
+        pinoInstance: makeSilentPinoInstance(),
+        taskQueue,
+        processingCycle,
+        logger: child.resolve<LoggerPort>(TOKENS.Logger),
       })
-    ).resolves.toBeDefined()
+
+      const res = await app.request('/heartbeat', { method: 'POST' })
+
+      expect(res.status).toBe(202)
+      expect(await res.json()).toEqual({ status: 'accepted' })
+    })
   })
 
-  it('should return an mcpToolLoader whose close() can be called without throwing', async () => {
-    stubRequiredEnv()
+  describe('container wiring', () => {
+    it('should resolve ProcessingCycle with all dependencies satisfied', () => {
+      registerMockDeps(child)
 
-    const fakeMcpToolLoader = makeFakeMcpToolLoader()
-    const { composeApp } = await import('../src/container')
-    const { mcpToolLoader } = await composeApp({
-      languageModel: makeFakeLanguageModel(),
-      boardRepository: makeFakeBoardRepository(),
-      mcpToolLoader: fakeMcpToolLoader,
+      expect(() => child.resolve(ProcessingCycle)).not.toThrow()
     })
 
-    await expect(mcpToolLoader.close()).resolves.toBeUndefined()
+    it('should resolve McpToolLoader whose close() can be called without throwing', async () => {
+      registerMockDeps(child)
+
+      const mcpToolLoader = child.resolve(McpToolLoader)
+
+      await expect(mcpToolLoader.close()).resolves.toBeUndefined()
+    })
   })
 
-  it('should emit the composition startup log through the injected destination', async () => {
-    vi.stubEnv('LOG_LEVEL', 'info')
-    for (const [key, value] of Object.entries(REQUIRED_ENV)) {
-      if (key !== 'LOG_LEVEL') vi.stubEnv(key, value)
-    }
-
-    const messages: string[] = []
-    const destination = {
-      write: (msg: string) => {
-        messages.push(msg)
-      },
-    }
-
-    const { composeApp } = await import('../src/container')
-    const { logger } = await composeApp({
-      languageModel: makeFakeLanguageModel(),
-      boardRepository: makeFakeBoardRepository(),
-      mcpToolLoader: makeFakeMcpToolLoader(),
-      logDestination: destination,
+  describe('env config', () => {
+    it('should throw EnvConfigError when required env vars are missing', () => {
+      // All env vars absent — loadEnvConfig reads process.env
+      expect(() => loadEnvConfig({})).toThrow(EnvConfigError)
     })
 
-    expect(logger).toBeDefined()
-    const envLog = messages.find((m) => m.includes('env config loaded'))
-    expect(envLog).toBeDefined()
-    const parsed = JSON.parse(envLog!)
-    expect(parsed.msg).toBe('env config loaded')
-    expect(parsed.logLevel).toBe('info')
-    expect(parsed.port).toBeDefined()
-    expect(parsed.aiMaxSteps).toBeDefined()
-  })
+    it('should load env config successfully when all required vars are present', () => {
+      for (const [key, value] of Object.entries(REQUIRED_ENV)) {
+        vi.stubEnv(key, value)
+      }
 
-  it('should log "mcp config loaded" with server count when .mcp.json is absent', async () => {
-    vi.stubEnv('LOG_LEVEL', 'debug')
-    for (const [key, value] of Object.entries(REQUIRED_ENV)) {
-      if (key !== 'LOG_LEVEL') vi.stubEnv(key, value)
-    }
-
-    const messages: string[] = []
-    const destination = {
-      write: (msg: string) => {
-        messages.push(msg)
-      },
-    }
-
-    const { composeApp } = await import('../src/container')
-    // Without mcpToolLoader override, composeApp attempts to read .mcp.json.
-    // The real file does not exist in test CWD, so the ENOENT branch fires.
-    await composeApp({
-      languageModel: makeFakeLanguageModel(),
-      boardRepository: makeFakeBoardRepository(),
-      logDestination: destination,
+      expect(() => loadEnvConfig()).not.toThrow()
     })
-
-    const debugLog = messages.find((m) => m.includes('no .mcp.json found'))
-    expect(debugLog).toBeDefined()
   })
 })
