@@ -15,7 +15,7 @@ async function main() {
   const mcpToolLoader = container.resolve(McpToolLoader)
   const processingCycle = container.resolve(ProcessingCycle)
   // Raw pino instance registered during bootstrap for pino-http middleware
-  const pinoInstance = container.resolve<import('pino').Logger>('PinoInstance')
+  const pinoInstance = container.resolve<import('pino').Logger>(TOKENS.PinoInstance)
 
   const app = createApp({
     pinoInstance,

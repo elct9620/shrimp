@@ -96,8 +96,8 @@ export async function bootstrap(): Promise<void> {
     pretty: process.env.NODE_ENV !== 'production',
   })
   container.registerInstance(TOKENS.Logger, logger)
-  // Store raw pino instance for HTTP middleware (string token — internal detail)
-  container.registerInstance('PinoInstance', pinoInstance)
+  // Store raw pino instance for HTTP middleware
+  container.registerInstance(TOKENS.PinoInstance, pinoInstance)
 
   logger.info('env config loaded', { logLevel: env.logLevel, port: env.port, aiMaxSteps: env.aiMaxSteps })
 

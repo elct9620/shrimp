@@ -1,3 +1,4 @@
+import type { Logger } from 'pino'
 import type { LanguageModel } from 'ai'
 import type { BoardRepository } from '../../use-cases/ports/board-repository'
 import type { LoggerPort } from '../../use-cases/ports/logger'
@@ -9,6 +10,7 @@ import type { McpConfig } from '../config/mcp-config'
 
 export const TOKENS = {
   Logger: Symbol.for('shrimp.LoggerPort'),
+  PinoInstance: Symbol.for('shrimp.PinoInstance'),
   BoardRepository: Symbol.for('shrimp.BoardRepository'),
   MainAgent: Symbol.for('shrimp.MainAgent'),
   TaskQueue: Symbol.for('shrimp.TaskQueue'),
@@ -20,6 +22,7 @@ export const TOKENS = {
 
 export type TokenRegistry = {
   [TOKENS.Logger]: LoggerPort
+  [TOKENS.PinoInstance]: Logger
   [TOKENS.BoardRepository]: BoardRepository
   [TOKENS.MainAgent]: MainAgent
   [TOKENS.TaskQueue]: TaskQueue
