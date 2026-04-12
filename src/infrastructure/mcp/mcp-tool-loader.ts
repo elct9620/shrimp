@@ -77,11 +77,14 @@ const defaultFactory: McpClientFactory = async (
 @injectable()
 export class McpToolLoader {
   private clients: McpClient[] = []
+  private readonly logger: LoggerPort
 
   constructor(
-    @inject(TOKENS.Logger) private readonly logger: LoggerPort,
+    @inject(TOKENS.Logger) logger: LoggerPort,
     private readonly factory: McpClientFactory = defaultFactory,
-  ) {}
+  ) {
+    this.logger = logger.child({ module: 'McpToolLoader' })
+  }
 
   async load(config: McpConfig): Promise<McpLoadResult> {
     const mergedTools: ToolSet = {}

@@ -6,10 +6,14 @@ import { TOKENS } from '../container/tokens'
 
 @injectable()
 export class AiSdkMainAgent implements MainAgent {
+  private readonly logger: LoggerPort
+
   constructor(
     @inject(TOKENS.LanguageModel) private readonly model: LanguageModel,
-    @inject(TOKENS.Logger) private readonly logger: LoggerPort,
-  ) {}
+    @inject(TOKENS.Logger) logger: LoggerPort,
+  ) {
+    this.logger = logger.child({ module: 'AiSdkMainAgent' })
+  }
 
   async run(input: MainAgentInput): Promise<MainAgentResult> {
     const toolCount = Object.keys(input.tools).length

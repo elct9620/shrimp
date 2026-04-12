@@ -1,5 +1,4 @@
 import { container } from 'tsyringe'
-import type { LanguageModel } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { TOKENS } from './infrastructure/container/tokens'
 import { loadEnvConfig, type EnvConfig } from './infrastructure/config/env-config'
@@ -43,29 +42,10 @@ container.register(TOKENS.BoardRepository, {
 })
 
 // MainAgent
-container.register(TOKENS.MainAgent, {
-  useFactory: (c) =>
-    new AiSdkMainAgent(
-      c.resolve<LanguageModel>(TOKENS.LanguageModel),
-      c.resolve<LoggerPort>(TOKENS.Logger).child({ module: 'AiSdkMainAgent' }),
-    ),
-})
+container.register(TOKENS.MainAgent, { useClass: AiSdkMainAgent })
 
 // TaskQueue
-container.register(TOKENS.TaskQueue, {
-  useFactory: (c) =>
-    new InMemoryTaskQueue(
-      c.resolve<LoggerPort>(TOKENS.Logger).child({ module: 'InMemoryTaskQueue' }),
-    ),
-})
-
-// McpToolLoader
-container.register(McpToolLoader, {
-  useFactory: (c) =>
-    new McpToolLoader(
-      c.resolve<LoggerPort>(TOKENS.Logger).child({ module: 'McpToolLoader' }),
-    ),
-})
+container.register(TOKENS.TaskQueue, { useClass: InMemoryTaskQueue })
 
 // ProcessingCycle — Use Case: registered via useFactory, no @inject
 container.register(ProcessingCycle, {

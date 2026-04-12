@@ -6,8 +6,11 @@ import { TOKENS } from '../container/tokens'
 @injectable()
 export class InMemoryTaskQueue implements TaskQueue {
   private busy = false
+  private readonly logger: LoggerPort
 
-  constructor(@inject(TOKENS.Logger) private readonly logger: LoggerPort) {}
+  constructor(@inject(TOKENS.Logger) logger: LoggerPort) {
+    this.logger = logger.child({ module: 'InMemoryTaskQueue' })
+  }
 
   tryEnqueue(job: () => Promise<void>): boolean {
     if (this.busy) {
