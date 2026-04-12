@@ -1,5 +1,5 @@
 import type { TodoistApi } from '@doist/todoist-sdk'
-import type { Comment } from '../../entities/comment'
+import { type Comment, isTagged, stripTag } from '../../entities/comment'
 import { Priority } from '../../entities/priority'
 import { Section } from '../../entities/section'
 import type { Task } from '../../entities/task'
@@ -52,10 +52,14 @@ export class TodoistBoardRepository implements BoardRepository {
 
   async getComments(taskId: string): Promise<Comment[]> {
     const response = await this.api.getComments({ taskId })
-    return response.results.map((raw) => ({
-      text: raw.content,
-      timestamp: raw.postedAt,
-    }))
+    return response.results.map((raw) => {
+      const tagged = isTagged(raw.content)
+      return {
+        text: tagged ? stripTag(raw.content) : raw.content,
+        timestamp: raw.postedAt,
+        author: tagged ? 'bot' : 'user',
+      } as Comment
+    })
   }
 
   async postComment(taskId: string, text: string): Promise<void> {

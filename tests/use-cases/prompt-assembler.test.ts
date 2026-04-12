@@ -15,9 +15,14 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   ...overrides,
 })
 
-const makeComment = (text: string, timestamp: Date = new Date('2024-01-01T00:00:00Z')): Comment => ({
+const makeComment = (
+  text: string,
+  author: 'bot' | 'user' = 'user',
+  timestamp: Date = new Date('2024-01-01T00:00:00Z'),
+): Comment => ({
   text,
   timestamp,
+  author,
 })
 
 const makeTools = (...pairs: [string, string][]): ToolDescription[] =>
@@ -171,6 +176,22 @@ describe('assemble', () => {
 
       expect(firstIdx).toBeLessThan(secondIdx)
       expect(secondIdx).toBeLessThan(thirdIdx)
+    })
+
+    it('labels bot-authored comments with [Bot]', () => {
+      const comments = [makeComment('Progress update', 'bot')]
+
+      const { userPrompt } = assemble({ task: makeTask(), comments, tools: [] })
+
+      expect(userPrompt).toContain('[Bot] Progress update')
+    })
+
+    it('labels user-authored comments with [User]', () => {
+      const comments = [makeComment('Please check this', 'user')]
+
+      const { userPrompt } = assemble({ task: makeTask(), comments, tools: [] })
+
+      expect(userPrompt).toContain('[User] Please check this')
     })
 
     it('handles empty comment history without error', () => {

@@ -350,7 +350,7 @@ describe('TodoistBoardRepository.getTasks', () => {
 // ─── getComments ──────────────────────────────────────────────────────────────
 
 describe('TodoistBoardRepository.getComments', () => {
-  it('should return mapped comments with text and timestamp as Date', async () => {
+  it('should return user-authored comment without tag prefix', async () => {
     server.use(
       http.get(`${BASE}/comments`, () =>
         HttpResponse.json({
@@ -366,8 +366,28 @@ describe('TodoistBoardRepository.getComments', () => {
 
     expect(comments).toHaveLength(1)
     expect(comments[0].text).toBe('This is a comment')
+    expect(comments[0].author).toBe('user')
     expect(comments[0].timestamp).toBeInstanceOf(Date)
     expect(comments[0].timestamp.toISOString()).toBe('2024-03-15T10:30:00.000Z')
+  })
+
+  it('should return bot-authored comment with tag stripped from text', async () => {
+    server.use(
+      http.get(`${BASE}/comments`, () =>
+        HttpResponse.json({
+          results: [makeComment('c2', 'task-1', '[Shrimp] Progress update', '2024-03-15T11:00:00Z')],
+          next_cursor: null,
+        }),
+      ),
+    )
+    const api = new TodoistApi('test-token')
+    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger())
+
+    const comments = await repo.getComments('task-1')
+
+    expect(comments).toHaveLength(1)
+    expect(comments[0].text).toBe('Progress update')
+    expect(comments[0].author).toBe('bot')
   })
 
   it('should call comments endpoint with the given taskId', async () => {

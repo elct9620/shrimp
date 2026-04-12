@@ -42,7 +42,7 @@ function buildUserPrompt(task: Task, comments: Comment[]): string {
 
   const commentSection =
     comments.length > 0
-      ? `\n## Comment History\n\n${comments.map((c) => c.text).join('\n\n')}`
+      ? `\n## Comment History\n\n${comments.map((c) => `[${c.author === 'bot' ? 'Bot' : 'User'}] ${c.text}`).join('\n\n')}`
       : ''
 
   return `## Task

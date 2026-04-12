@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+import { COMMENT_TAG } from '../../../entities/comment'
 import type { BoardRepository } from '../../../use-cases/ports/board-repository'
 import type { LoggerPort } from '../../../use-cases/ports/logger'
 
@@ -15,7 +16,7 @@ export function createPostCommentTool(repo: BoardRepository, logger: LoggerPort)
     execute: async ({ taskId, text }) => {
       logger.debug('tool invoked', { input: { taskId, textLength: text.length } })
       try {
-        await repo.postComment(taskId, text)
+        await repo.postComment(taskId, `${COMMENT_TAG}${text}`)
         return { ok: true } as const
       } catch (err) {
         logger.warn('tool failed', {

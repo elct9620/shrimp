@@ -25,6 +25,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
 const makeComment = (text: string): Comment => ({
   text,
   timestamp: new Date('2024-01-01T00:00:00Z'),
+  author: 'user',
 })
 
 function makeBoardRepository(overrides: Partial<BoardRepository> = {}): BoardRepository {

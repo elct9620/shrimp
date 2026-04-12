@@ -6,7 +6,7 @@ import { makeFakeRepo, makeFakeLogger } from './helpers'
 type ParseableSchema = { safeParse: (data: unknown) => { success: boolean } }
 
 const sampleComments = [
-  { text: 'Did some work', timestamp: new Date('2025-01-01') },
+  { text: 'Did some work', timestamp: new Date('2025-01-01'), author: 'user' as const },
 ]
 
 describe('createGetCommentsTool', () => {

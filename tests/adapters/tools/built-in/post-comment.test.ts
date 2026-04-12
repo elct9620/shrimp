@@ -38,11 +38,11 @@ describe('createPostCommentTool', () => {
     expect(schema.safeParse({}).success).toBe(false)
   })
 
-  it('should call repo.postComment with taskId and text', async () => {
+  it('should prepend Comment Tag before calling repo.postComment', async () => {
     vi.mocked(repo.postComment).mockResolvedValue(undefined)
     const t = createPostCommentTool(repo, makeFakeLogger())
     await t.execute!({ taskId: 'task-123', text: 'Progress update' }, { toolCallId: 'test', messages: [] })
-    expect(repo.postComment).toHaveBeenCalledWith('task-123', 'Progress update')
+    expect(repo.postComment).toHaveBeenCalledWith('task-123', '[Shrimp] Progress update')
   })
 
   it('should return { ok: true }', async () => {
