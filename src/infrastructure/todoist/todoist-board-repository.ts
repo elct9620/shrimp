@@ -1,10 +1,10 @@
+import type { TodoistApi } from '@doist/todoist-sdk'
 import type { Comment } from '../../entities/comment'
 import { Priority } from '../../entities/priority'
 import { Section } from '../../entities/section'
 import type { Task } from '../../entities/task'
 import { BoardRepository, BoardSectionMissingError } from '../../use-cases/ports/board-repository'
 import type { LoggerPort } from '../../use-cases/ports/logger'
-import type { TodoistClient, TodoistSection } from './todoist-client'
 
 // SPEC §Prerequisites: exact section names — not configurable
 const SECTION_NAME_BACKLOG = 'Backlog'
@@ -31,18 +31,18 @@ function todoistPriorityToDomain(n: number): Priority {
 
 export class TodoistBoardRepository implements BoardRepository {
   constructor(
-    private readonly client: TodoistClient,
+    private readonly api: TodoistApi,
     private readonly projectId: string,
     private readonly logger: LoggerPort,
   ) {}
 
   async getTasks(section: Section): Promise<Task[]> {
     const sectionId = await this.resolveSectionId(section)
-    const rawTasks = await this.client.listTasks({ projectId: this.projectId, sectionId })
-    const tasks = rawTasks.map((raw) => ({
+    const response = await this.api.getTasks({ projectId: this.projectId, sectionId })
+    const tasks = response.results.map((raw) => ({
       id: raw.id,
       title: raw.content,
-      description: raw.description ?? undefined,
+      description: raw.description || undefined,
       priority: todoistPriorityToDomain(raw.priority),
       section,
     }))
@@ -51,31 +51,31 @@ export class TodoistBoardRepository implements BoardRepository {
   }
 
   async getComments(taskId: string): Promise<Comment[]> {
-    const rawComments = await this.client.listComments({ taskId })
-    return rawComments.map((raw) => ({
+    const response = await this.api.getComments({ taskId })
+    return response.results.map((raw) => ({
       text: raw.content,
-      timestamp: new Date(raw.posted_at),
+      timestamp: raw.postedAt,
     }))
   }
 
   async postComment(taskId: string, text: string): Promise<void> {
-    await this.client.postComment({ taskId, content: text })
+    await this.api.addComment({ taskId, content: text })
   }
 
   async moveTask(taskId: string, section: Section): Promise<void> {
     const sectionId = await this.resolveSectionId(section)
-    await this.client.moveTask({ taskId, sectionId })
+    await this.api.moveTask(taskId, { sectionId })
     this.logger.info('task moved', { taskId, section })
   }
 
   private async resolveSectionId(section: Section): Promise<string> {
     const targetName = domainSectionToName(section)
-    const sections: TodoistSection[] = await this.client.listSections({ projectId: this.projectId })
-    const found = sections.find((s) => s.name === targetName)
+    const response = await this.api.getSections({ projectId: this.projectId })
+    const found = response.results.find((s) => s.name === targetName)
     if (!found) {
       this.logger.error('board section missing', {
         targetName,
-        availableSections: sections.map((s) => s.name),
+        availableSections: response.results.map((s) => s.name),
       })
       throw new BoardSectionMissingError(targetName)
     }
