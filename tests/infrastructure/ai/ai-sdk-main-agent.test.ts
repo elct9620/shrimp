@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { LanguageModel } from "ai";
+import { MockLanguageModelV3 } from "ai/test";
 import { AiSdkMainAgent } from "../../../src/infrastructure/ai/ai-sdk-main-agent";
 import type { MainAgentInput } from "../../../src/use-cases/ports/main-agent";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
@@ -25,31 +25,27 @@ type FinishReason =
   | "error"
   | "other";
 
-// Minimal LanguageModelV2 stub — fulfils the v2 interface without calling any live API.
 function makeModel(finishReason: FinishReason = "stop") {
-  const doGenerate = vi.fn().mockResolvedValue({
-    content: [{ type: "text", text: "done" }],
-    finishReason,
-    usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
-    warnings: [],
+  return new MockLanguageModelV3({
+    doGenerate: async () => ({
+      content: [{ type: "text" as const, text: "done" }],
+      finishReason: { unified: finishReason, raw: undefined },
+      usage: {
+        inputTokens: {
+          total: 0,
+          noCache: 0,
+          cacheRead: undefined,
+          cacheWrite: undefined,
+        },
+        outputTokens: { total: 0, text: 0, reasoning: undefined },
+      },
+      warnings: [],
+    }),
   });
-
-  const model = {
-    specificationVersion: "v2" as const,
-    provider: "test",
-    modelId: "test-model",
-    supportedUrls: {},
-    doGenerate,
-    doStream: async () => {
-      throw new Error("streaming not needed");
-    },
-  } satisfies LanguageModel;
-
-  return { model, doGenerate };
 }
 
 function makeAgent(
-  model: LanguageModel,
+  model: MockLanguageModelV3,
   logger: LoggerPort,
   options?: { providerName?: string; reasoningEffort?: string },
 ) {
@@ -71,7 +67,7 @@ const baseInput: MainAgentInput = {
 describe("AiSdkMainAgent.run", () => {
   describe("termination reason mapping", () => {
     it("should return finished when model returns stop", async () => {
-      const { model } = makeModel("stop");
+      const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger());
 
       const result = await agent.run(baseInput);
@@ -80,7 +76,7 @@ describe("AiSdkMainAgent.run", () => {
     });
 
     it("should return finished when model returns tool-calls", async () => {
-      const { model } = makeModel("tool-calls");
+      const model = makeModel("tool-calls");
       const agent = makeAgent(model, makeFakeLogger());
 
       const result = await agent.run(baseInput);
@@ -89,7 +85,7 @@ describe("AiSdkMainAgent.run", () => {
     });
 
     it("should return maxStepsReached when model returns length", async () => {
-      const { model } = makeModel("length");
+      const model = makeModel("length");
       const agent = makeAgent(model, makeFakeLogger());
 
       const result = await agent.run(baseInput);
@@ -98,7 +94,7 @@ describe("AiSdkMainAgent.run", () => {
     });
 
     it("should return error when model returns error", async () => {
-      const { model } = makeModel("error");
+      const model = makeModel("error");
       const agent = makeAgent(model, makeFakeLogger());
 
       const result = await agent.run(baseInput);
@@ -107,7 +103,7 @@ describe("AiSdkMainAgent.run", () => {
     });
 
     it("should return error when model returns content-filter", async () => {
-      const { model } = makeModel("content-filter");
+      const model = makeModel("content-filter");
       const agent = makeAgent(model, makeFakeLogger());
 
       const result = await agent.run(baseInput);
@@ -116,7 +112,7 @@ describe("AiSdkMainAgent.run", () => {
     });
 
     it("should return error when model returns other", async () => {
-      const { model } = makeModel("other");
+      const model = makeModel("other");
       const agent = makeAgent(model, makeFakeLogger());
 
       const result = await agent.run(baseInput);
@@ -127,7 +123,7 @@ describe("AiSdkMainAgent.run", () => {
 
   describe("input passthrough", () => {
     it("should pass systemPrompt as instructions to ToolLoopAgent", async () => {
-      const { model, doGenerate } = makeModel("stop");
+      const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger());
 
       await agent.run({
@@ -135,7 +131,7 @@ describe("AiSdkMainAgent.run", () => {
         systemPrompt: "System instruction here.",
       });
 
-      const callOptions = doGenerate.mock.calls[0][0];
+      const callOptions = model.doGenerateCalls[0];
       const systemMessage = callOptions.prompt.find(
         (m: { role: string }) => m.role === "system",
       );
@@ -143,25 +139,27 @@ describe("AiSdkMainAgent.run", () => {
     });
 
     it("should pass userPrompt as the user message to ToolLoopAgent", async () => {
-      const { model, doGenerate } = makeModel("stop");
+      const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger());
 
       await agent.run({ ...baseInput, userPrompt: "Do the thing now." });
 
-      const callOptions = doGenerate.mock.calls[0][0];
+      const callOptions = model.doGenerateCalls[0];
       const userMessages = callOptions.prompt.filter(
         (m: { role: string }) => m.role === "user",
       );
       expect(userMessages.length).toBeGreaterThan(0);
       const firstUser = userMessages[0];
-      const textPart = firstUser.content.find(
-        (p: { type: string }) => p.type === "text",
-      ) as { type: "text"; text: string } | undefined;
+      const content = firstUser.content as Array<{
+        type: string;
+        text?: string;
+      }>;
+      const textPart = content.find((p) => p.type === "text");
       expect(textPart?.text).toBe("Do the thing now.");
     });
 
     it("should pass tools from input to ToolLoopAgent", async () => {
-      const { model, doGenerate } = makeModel("stop");
+      const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger());
       const tools = {
         special_tool: { description: "does special things", parameters: {} },
@@ -169,7 +167,7 @@ describe("AiSdkMainAgent.run", () => {
 
       await agent.run({ ...baseInput, tools });
 
-      const callOptions = doGenerate.mock.calls[0][0];
+      const callOptions = model.doGenerateCalls[0];
       expect(callOptions.tools).toBeDefined();
       expect(
         callOptions.tools!.some(
@@ -181,7 +179,7 @@ describe("AiSdkMainAgent.run", () => {
 
   describe("providerOptions", () => {
     it("should pass providerOptions with reasoningEffort when configured", async () => {
-      const { model, doGenerate } = makeModel("stop");
+      const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), {
         providerName: "shrimp",
         reasoningEffort: "high",
@@ -189,26 +187,26 @@ describe("AiSdkMainAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const callOptions = doGenerate.mock.calls[0][0];
+      const callOptions = model.doGenerateCalls[0];
       expect(callOptions.providerOptions).toEqual({
         shrimp: { reasoningEffort: "high" },
       });
     });
 
     it("should not pass providerOptions when reasoningEffort is undefined", async () => {
-      const { model, doGenerate } = makeModel("stop");
+      const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger());
 
       await agent.run(baseInput);
 
-      const callOptions = doGenerate.mock.calls[0][0];
+      const callOptions = model.doGenerateCalls[0];
       expect(callOptions.providerOptions).toBeUndefined();
     });
   });
 
   describe("independence across calls", () => {
     it("should work correctly when called multiple times", async () => {
-      const { model } = makeModel("stop");
+      const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger());
 
       const result1 = await agent.run(baseInput);
@@ -224,7 +222,7 @@ describe("AiSdkMainAgent.run", () => {
 
   describe("logging", () => {
     it("should log debug on run start with maxSteps and toolCount", async () => {
-      const { model } = makeModel("stop");
+      const model = makeModel("stop");
       const logger = makeFakeLogger();
       const agent = makeAgent(model, logger);
 
@@ -241,7 +239,7 @@ describe("AiSdkMainAgent.run", () => {
     });
 
     it("should log info on successful finish with raw and mapped reason", async () => {
-      const { model } = makeModel("stop");
+      const model = makeModel("stop");
       const logger = makeFakeLogger();
       const agent = makeAgent(model, logger);
 
@@ -254,7 +252,7 @@ describe("AiSdkMainAgent.run", () => {
     });
 
     it("should log info with mapped maxStepsReached when the model returns length", async () => {
-      const { model } = makeModel("length");
+      const model = makeModel("length");
       const logger = makeFakeLogger();
       const agent = makeAgent(model, logger);
 
@@ -271,17 +269,11 @@ describe("AiSdkMainAgent.run", () => {
 
     it("should log error and rethrow when agent.generate throws", async () => {
       const boom = new Error("upstream provider exploded");
-      const doGenerate = vi.fn().mockRejectedValue(boom);
-      const model = {
-        specificationVersion: "v2" as const,
-        provider: "test",
-        modelId: "test-model",
-        supportedUrls: {},
-        doGenerate,
-        doStream: async () => {
-          throw new Error("streaming not needed");
+      const model = new MockLanguageModelV3({
+        doGenerate: async () => {
+          throw boom;
         },
-      } satisfies LanguageModel;
+      });
 
       const logger = makeFakeLogger();
       const agent = makeAgent(model, logger);
