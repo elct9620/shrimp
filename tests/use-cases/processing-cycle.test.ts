@@ -209,6 +209,13 @@ describe('ProcessingCycle.run', () => {
 
       expect(mainAgent.run).toHaveBeenCalledTimes(1)
     })
+
+    it('should show In Progress section in user prompt when backlog task is promoted', async () => {
+      await cycle.run()
+
+      expect(mainAgent.capturedInput?.userPrompt).toContain('Section: In Progress')
+      expect(mainAgent.capturedInput?.userPrompt).not.toContain('Section: Backlog')
+    })
   })
 
   describe('when BoardSectionMissingError is thrown', () => {

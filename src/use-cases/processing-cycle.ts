@@ -65,16 +65,18 @@ export class ProcessingCycle {
       priority: task.priority,
     })
 
+    let selectedTask = task
     if (task.section === Section.Backlog) {
       await this.board.moveTask(task.id, Section.InProgress)
+      selectedTask = { ...task, section: Section.InProgress }
       this.logger.debug('cycle task promoted', { taskId: task.id })
     }
 
-    const comments = await this.board.getComments(task.id)
+    const comments = await this.board.getComments(selectedTask.id)
     const toolProvider = this.toolProviderFactory.create()
     const tools = toolProvider.getToolDescriptions()
 
-    const { systemPrompt, userPrompt } = assemble({ task, comments, tools })
+    const { systemPrompt, userPrompt } = assemble({ task: selectedTask, comments, tools })
 
     this.logger.debug('cycle invoking main agent', { taskId: task.id })
     const result = await this.mainAgent.run({

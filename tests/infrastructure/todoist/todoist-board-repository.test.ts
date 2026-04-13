@@ -507,6 +507,24 @@ describe('TodoistBoardRepository.postComment', () => {
 
     expect(result).toBeUndefined()
   })
+
+  it('should log info with taskId after a successful postComment', async () => {
+    server.use(
+      http.post(`${BASE}/comments`, () =>
+        HttpResponse.json(makeCommentHttpResponse('c-log', 'task-42', 'Progress', '2024-01-01T00:00:00Z')),
+      ),
+    )
+    const api = new TodoistApi('test-token')
+    const logger = makeFakeLogger()
+    const repo = new TodoistBoardRepository(api, PROJECT_ID, logger)
+
+    await repo.postComment('task-42', 'Progress')
+
+    expect(logger.info).toHaveBeenCalledWith(
+      'comment posted',
+      expect.objectContaining({ taskId: 'task-42' }),
+    )
+  })
 })
 
 // ─── moveTask ─────────────────────────────────────────────────────────────────

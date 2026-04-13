@@ -76,6 +76,7 @@ export class TodoistBoardRepository implements BoardRepository {
 
   async postComment(taskId: string, text: string): Promise<void> {
     await this.api.addComment({ taskId, content: text })
+    this.logger.info('comment posted', { taskId })
   }
 
   async moveTask(taskId: string, section: Section): Promise<void> {
