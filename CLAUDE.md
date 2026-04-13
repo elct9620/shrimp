@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Shrimp
 
 ## Commands
@@ -10,6 +14,7 @@
 | `pnpm build`      | Bundle to `dist/server.mjs` via tsdown |
 | `pnpm start`      | Run the bundled server                 |
 | `pnpm dev`        | Rebuild and restart on file changes    |
+| `pnpm format`     | Format all files with Prettier         |
 
 Run a single test file: `pnpm test tests/container.test.ts` (pass any path under `tests/`).
 
@@ -60,3 +65,6 @@ Layer layout at a glance:
 - `*.local.md` files in the repo root (e.g. `LOGGER.local.md`, `SPEC-IMPL.local.md`, `SPEC-WRITE.local.md`) are personal scratchpads — gitignored and non-authoritative. Do not treat them as spec or design sources; consult `SPEC.md` and `docs/architecture.md` instead.
 - Tests must not depend on live external services (Todoist API, AI provider); use mocks or stubs.
 - Class and port names follow SPEC terminology (`ProcessingCycle`, `MainAgent`, `Board`), not implementation-derived names.
+- Test files mirror the `src/` directory structure under `tests/`. Tests use MSW to mock the Todoist API at the HTTP boundary, not at the repository level.
+- DI uses Symbol-based tokens defined in `infrastructure/container/tokens.ts`, not decorator-based injection. All wiring happens in `container.ts` via `useFactory` / `useClass`.
+- Prompt templates are `.md` files imported as raw strings via `unplugin-raw` (`import tpl from "./prompts/system.md?raw"`). These live alongside their use-case files.
