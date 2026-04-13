@@ -1,1 +1,1 @@
-export type ToolSet = Record<string, unknown>
+export type ToolSet = Record<string, unknown>;

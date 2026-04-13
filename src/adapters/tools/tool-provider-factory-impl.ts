@@ -1,10 +1,10 @@
-import type { ToolProviderFactory } from '../../use-cases/ports/tool-provider-factory'
-import type { ToolProvider } from '../../use-cases/ports/tool-provider'
-import type { ToolSet } from '../../use-cases/ports/tool-set'
-import type { ToolDescription } from '../../use-cases/ports/tool-description'
-import type { LoggerPort } from '../../use-cases/ports/logger'
-import type { BuiltInToolFactory } from './built-in-tool-factory'
-import { ToolRegistry } from './tool-registry'
+import type { ToolProviderFactory } from "../../use-cases/ports/tool-provider-factory";
+import type { ToolProvider } from "../../use-cases/ports/tool-provider";
+import type { ToolSet } from "../../use-cases/ports/tool-set";
+import type { ToolDescription } from "../../use-cases/ports/tool-description";
+import type { LoggerPort } from "../../use-cases/ports/logger";
+import type { BuiltInToolFactory } from "./built-in-tool-factory";
+import { ToolRegistry } from "./tool-registry";
 
 export class ToolProviderFactoryImpl implements ToolProviderFactory {
   constructor(
@@ -15,7 +15,7 @@ export class ToolProviderFactoryImpl implements ToolProviderFactory {
   ) {}
 
   create(): ToolProvider {
-    const builtIn = this.builtInFactory.create()
+    const builtIn = this.builtInFactory.create();
     return new ToolRegistry(
       {
         builtInTools: builtIn.tools,
@@ -24,6 +24,6 @@ export class ToolProviderFactoryImpl implements ToolProviderFactory {
         mcpDescriptions: this.mcpDescriptions,
       },
       this.logger,
-    )
+    );
   }
 }

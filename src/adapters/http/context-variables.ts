@@ -1,13 +1,13 @@
-import type { HttpBindings } from '@hono/node-server'
-import type { Logger } from 'pino'
+import type { HttpBindings } from "@hono/node-server";
+import type { Logger } from "pino";
 
 export type AppEnv = {
-  Bindings: HttpBindings
-}
+  Bindings: HttpBindings;
+};
 
-declare module 'hono' {
+declare module "hono" {
   interface ContextVariableMap {
-    logger: Logger
-    requestId: string
+    logger: Logger;
+    requestId: string;
   }
 }

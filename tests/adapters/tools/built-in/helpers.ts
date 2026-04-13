@@ -1,6 +1,6 @@
-import { vi } from 'vitest'
-import type { BoardRepository } from '../../../../src/use-cases/ports/board-repository'
-import type { LoggerPort } from '../../../../src/use-cases/ports/logger'
+import { vi } from "vitest";
+import type { BoardRepository } from "../../../../src/use-cases/ports/board-repository";
+import type { LoggerPort } from "../../../../src/use-cases/ports/logger";
 
 export function makeFakeRepo(): BoardRepository {
   return {
@@ -9,7 +9,7 @@ export function makeFakeRepo(): BoardRepository {
     getComments: vi.fn(),
     postComment: vi.fn(),
     moveTask: vi.fn(),
-  }
+  };
 }
 
 export function makeFakeLogger(): LoggerPort {
@@ -21,6 +21,6 @@ export function makeFakeLogger(): LoggerPort {
     error: vi.fn(),
     fatal: vi.fn(),
     child: vi.fn(() => logger),
-  }
-  return logger
+  };
+  return logger;
 }

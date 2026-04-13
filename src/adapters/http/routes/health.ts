@@ -1,10 +1,10 @@
-import { Hono } from 'hono'
-import type { AppEnv } from '../context-variables'
+import { Hono } from "hono";
+import type { AppEnv } from "../context-variables";
 
 export function createHealthRoute(): Hono<AppEnv> {
-  const app = new Hono<AppEnv>()
+  const app = new Hono<AppEnv>();
 
-  app.get('/health', (c) => c.json({ status: 'ok' }))
+  app.get("/health", (c) => c.json({ status: "ok" }));
 
-  return app
+  return app;
 }

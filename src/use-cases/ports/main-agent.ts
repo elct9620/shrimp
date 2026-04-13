@@ -1,18 +1,21 @@
-import type { ToolSet } from './tool-set'
+import type { ToolSet } from "./tool-set";
 
-export type MainAgentTerminationReason = 'finished' | 'maxStepsReached' | 'error'
+export type MainAgentTerminationReason =
+  | "finished"
+  | "maxStepsReached"
+  | "error";
 
 export type MainAgentInput = {
-  systemPrompt: string
-  userPrompt: string
-  tools: ToolSet
-  maxSteps: number
-}
+  systemPrompt: string;
+  userPrompt: string;
+  tools: ToolSet;
+  maxSteps: number;
+};
 
 export type MainAgentResult = {
-  reason: MainAgentTerminationReason
-}
+  reason: MainAgentTerminationReason;
+};
 
 export interface MainAgent {
-  run(input: MainAgentInput): Promise<MainAgentResult>
+  run(input: MainAgentInput): Promise<MainAgentResult>;
 }

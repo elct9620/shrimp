@@ -3,8 +3,8 @@ export const Priority = {
   p2: 2,
   p3: 3,
   p4: 4,
-} as const
+} as const;
 
-export type Priority = (typeof Priority)[keyof typeof Priority]
+export type Priority = (typeof Priority)[keyof typeof Priority];
 
-export const comparePriority = (a: Priority, b: Priority): number => a - b
+export const comparePriority = (a: Priority, b: Priority): number => a - b;
