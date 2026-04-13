@@ -29,7 +29,7 @@ function buildSystemPrompt(tools: ToolDescription[]): string {
       ? tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
       : '(none)'
 
-  return systemTemplate.replace('{{toolList}}', toolList)
+  return systemTemplate.trimEnd().replace('{{toolList}}', toolList)
 }
 
 function buildUserPrompt(task: Task, comments: Comment[]): string {
@@ -43,7 +43,7 @@ function buildUserPrompt(task: Task, comments: Comment[]): string {
       ? `\n## Comment History\n\n${comments.map((c) => `[${c.author === 'bot' ? 'Bot' : 'User'}] ${c.text}`).join('\n\n')}`
       : ''
 
-  return userTemplate
+  return userTemplate.trimEnd()
     .replace('{{id}}', task.id)
     .replace('{{title}}', task.title)
     .replace('{{description}}', descriptionSection)
