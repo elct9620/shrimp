@@ -12,6 +12,7 @@ export type EnvConfig = {
   openAiApiKey: string;
   aiModel: string;
   aiMaxSteps: number;
+  aiReasoningEffort?: string;
   todoistApiToken: string;
   todoistProjectId: string;
   port: number;
@@ -72,6 +73,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     openAiApiKey: env["OPENAI_API_KEY"] as string,
     aiModel: env["AI_MODEL"] as string,
     aiMaxSteps: parsePositiveInt(env["AI_MAX_STEPS"], 50),
+    aiReasoningEffort: env["AI_REASONING_EFFORT"] || undefined,
     todoistApiToken: env["TODOIST_API_TOKEN"] as string,
     todoistProjectId: env["TODOIST_PROJECT_ID"] as string,
     port: parsePositiveInt(env["PORT"], 3000),

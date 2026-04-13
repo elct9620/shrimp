@@ -1,4 +1,3 @@
-import { injectable, inject } from "tsyringe";
 import {
   ToolLoopAgent,
   stepCountIs,
@@ -12,17 +11,27 @@ import type {
   MainAgentTerminationReason,
 } from "../../use-cases/ports/main-agent";
 import type { LoggerPort } from "../../use-cases/ports/logger";
-import { TOKENS } from "../container/tokens";
 
-@injectable()
+export type AiSdkMainAgentOptions = {
+  model: LanguageModel;
+  logger: LoggerPort;
+  providerName: string;
+  reasoningEffort?: string;
+};
+
 export class AiSdkMainAgent implements MainAgent {
+  private readonly model: LanguageModel;
   private readonly logger: LoggerPort;
+  private readonly providerOptions:
+    | Record<string, Record<string, string>>
+    | undefined;
 
-  constructor(
-    @inject(TOKENS.LanguageModel) private readonly model: LanguageModel,
-    @inject(TOKENS.Logger) logger: LoggerPort,
-  ) {
-    this.logger = logger.child({ module: "AiSdkMainAgent" });
+  constructor(options: AiSdkMainAgentOptions) {
+    this.model = options.model;
+    this.logger = options.logger.child({ module: "AiSdkMainAgent" });
+    this.providerOptions = options.reasoningEffort
+      ? { [options.providerName]: { reasoningEffort: options.reasoningEffort } }
+      : undefined;
   }
 
   async run(input: MainAgentInput): Promise<MainAgentResult> {
@@ -37,6 +46,7 @@ export class AiSdkMainAgent implements MainAgent {
       tools: input.tools as AiToolSet,
       instructions: input.systemPrompt,
       stopWhen: stepCountIs(input.maxSteps),
+      providerOptions: this.providerOptions,
     });
 
     let result;

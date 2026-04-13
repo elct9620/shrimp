@@ -25,9 +25,7 @@ type FinishReason =
   | "error"
   | "other";
 
-// Minimal LanguageModelV2 stub — fulfills the v2 interface without calling any live API.
-// LanguageModel = LanguageModelV3 | LanguageModelV2 | GlobalProviderModelId; the v2 shape
-// is identified by specificationVersion: 'v2'.
+// Minimal LanguageModelV2 stub — fulfils the v2 interface without calling any live API.
 function makeModel(finishReason: FinishReason = "stop") {
   const doGenerate = vi.fn().mockResolvedValue({
     content: [{ type: "text", text: "done" }],
@@ -50,6 +48,19 @@ function makeModel(finishReason: FinishReason = "stop") {
   return { model, doGenerate };
 }
 
+function makeAgent(
+  model: LanguageModel,
+  logger: LoggerPort,
+  options?: { providerName?: string; reasoningEffort?: string },
+) {
+  return new AiSdkMainAgent({
+    model,
+    logger,
+    providerName: options?.providerName ?? "test-provider",
+    reasoningEffort: options?.reasoningEffort,
+  });
+}
+
 const baseInput: MainAgentInput = {
   systemPrompt: "You are a helpful assistant.",
   userPrompt: "Complete the task.",
@@ -61,54 +72,54 @@ describe("AiSdkMainAgent.run", () => {
   describe("termination reason mapping", () => {
     it("should return finished when model returns stop", async () => {
       const { model } = makeModel("stop");
-      const loop = new AiSdkMainAgent(model, makeFakeLogger());
+      const agent = makeAgent(model, makeFakeLogger());
 
-      const result = await loop.run(baseInput);
+      const result = await agent.run(baseInput);
 
       expect(result.reason).toBe("finished");
     });
 
     it("should return finished when model returns tool-calls", async () => {
       const { model } = makeModel("tool-calls");
-      const loop = new AiSdkMainAgent(model, makeFakeLogger());
+      const agent = makeAgent(model, makeFakeLogger());
 
-      const result = await loop.run(baseInput);
+      const result = await agent.run(baseInput);
 
       expect(result.reason).toBe("finished");
     });
 
     it("should return maxStepsReached when model returns length", async () => {
       const { model } = makeModel("length");
-      const loop = new AiSdkMainAgent(model, makeFakeLogger());
+      const agent = makeAgent(model, makeFakeLogger());
 
-      const result = await loop.run(baseInput);
+      const result = await agent.run(baseInput);
 
       expect(result.reason).toBe("maxStepsReached");
     });
 
     it("should return error when model returns error", async () => {
       const { model } = makeModel("error");
-      const loop = new AiSdkMainAgent(model, makeFakeLogger());
+      const agent = makeAgent(model, makeFakeLogger());
 
-      const result = await loop.run(baseInput);
+      const result = await agent.run(baseInput);
 
       expect(result.reason).toBe("error");
     });
 
     it("should return error when model returns content-filter", async () => {
       const { model } = makeModel("content-filter");
-      const loop = new AiSdkMainAgent(model, makeFakeLogger());
+      const agent = makeAgent(model, makeFakeLogger());
 
-      const result = await loop.run(baseInput);
+      const result = await agent.run(baseInput);
 
       expect(result.reason).toBe("error");
     });
 
     it("should return error when model returns other", async () => {
       const { model } = makeModel("other");
-      const loop = new AiSdkMainAgent(model, makeFakeLogger());
+      const agent = makeAgent(model, makeFakeLogger());
 
-      const result = await loop.run(baseInput);
+      const result = await agent.run(baseInput);
 
       expect(result.reason).toBe("error");
     });
@@ -117,15 +128,14 @@ describe("AiSdkMainAgent.run", () => {
   describe("input passthrough", () => {
     it("should pass systemPrompt as instructions to ToolLoopAgent", async () => {
       const { model, doGenerate } = makeModel("stop");
-      const loop = new AiSdkMainAgent(model, makeFakeLogger());
+      const agent = makeAgent(model, makeFakeLogger());
 
-      await loop.run({
+      await agent.run({
         ...baseInput,
         systemPrompt: "System instruction here.",
       });
 
       const callOptions = doGenerate.mock.calls[0][0];
-      // AI SDK v6 encodes instructions as a system-role message in the prompt array
       const systemMessage = callOptions.prompt.find(
         (m: { role: string }) => m.role === "system",
       );
@@ -134,9 +144,9 @@ describe("AiSdkMainAgent.run", () => {
 
     it("should pass userPrompt as the user message to ToolLoopAgent", async () => {
       const { model, doGenerate } = makeModel("stop");
-      const loop = new AiSdkMainAgent(model, makeFakeLogger());
+      const agent = makeAgent(model, makeFakeLogger());
 
-      await loop.run({ ...baseInput, userPrompt: "Do the thing now." });
+      await agent.run({ ...baseInput, userPrompt: "Do the thing now." });
 
       const callOptions = doGenerate.mock.calls[0][0];
       const userMessages = callOptions.prompt.filter(
@@ -152,12 +162,12 @@ describe("AiSdkMainAgent.run", () => {
 
     it("should pass tools from input to ToolLoopAgent", async () => {
       const { model, doGenerate } = makeModel("stop");
-      const loop = new AiSdkMainAgent(model, makeFakeLogger());
+      const agent = makeAgent(model, makeFakeLogger());
       const tools = {
         special_tool: { description: "does special things", parameters: {} },
       };
 
-      await loop.run({ ...baseInput, tools });
+      await agent.run({ ...baseInput, tools });
 
       const callOptions = doGenerate.mock.calls[0][0];
       expect(callOptions.tools).toBeDefined();
@@ -169,13 +179,40 @@ describe("AiSdkMainAgent.run", () => {
     });
   });
 
+  describe("providerOptions", () => {
+    it("should pass providerOptions with reasoningEffort when configured", async () => {
+      const { model, doGenerate } = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        providerName: "shrimp",
+        reasoningEffort: "high",
+      });
+
+      await agent.run(baseInput);
+
+      const callOptions = doGenerate.mock.calls[0][0];
+      expect(callOptions.providerOptions).toEqual({
+        shrimp: { reasoningEffort: "high" },
+      });
+    });
+
+    it("should not pass providerOptions when reasoningEffort is undefined", async () => {
+      const { model, doGenerate } = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger());
+
+      await agent.run(baseInput);
+
+      const callOptions = doGenerate.mock.calls[0][0];
+      expect(callOptions.providerOptions).toBeUndefined();
+    });
+  });
+
   describe("independence across calls", () => {
     it("should work correctly when called multiple times", async () => {
       const { model } = makeModel("stop");
-      const loop = new AiSdkMainAgent(model, makeFakeLogger());
+      const agent = makeAgent(model, makeFakeLogger());
 
-      const result1 = await loop.run(baseInput);
-      const result2 = await loop.run({
+      const result1 = await agent.run(baseInput);
+      const result2 = await agent.run({
         ...baseInput,
         userPrompt: "Second call.",
       });
@@ -189,9 +226,9 @@ describe("AiSdkMainAgent.run", () => {
     it("should log debug on run start with maxSteps and toolCount", async () => {
       const { model } = makeModel("stop");
       const logger = makeFakeLogger();
-      const loop = new AiSdkMainAgent(model, logger);
+      const agent = makeAgent(model, logger);
 
-      await loop.run({
+      await agent.run({
         ...baseInput,
         maxSteps: 7,
         tools: { a: {}, b: {}, c: {} },
@@ -206,9 +243,9 @@ describe("AiSdkMainAgent.run", () => {
     it("should log info on successful finish with raw and mapped reason", async () => {
       const { model } = makeModel("stop");
       const logger = makeFakeLogger();
-      const loop = new AiSdkMainAgent(model, logger);
+      const agent = makeAgent(model, logger);
 
-      await loop.run(baseInput);
+      await agent.run(baseInput);
 
       expect(logger.info).toHaveBeenCalledWith(
         "main agent run finished",
@@ -219,9 +256,9 @@ describe("AiSdkMainAgent.run", () => {
     it("should log info with mapped maxStepsReached when the model returns length", async () => {
       const { model } = makeModel("length");
       const logger = makeFakeLogger();
-      const loop = new AiSdkMainAgent(model, logger);
+      const agent = makeAgent(model, logger);
 
-      await loop.run(baseInput);
+      await agent.run(baseInput);
 
       expect(logger.info).toHaveBeenCalledWith(
         "main agent run finished",
@@ -247,9 +284,9 @@ describe("AiSdkMainAgent.run", () => {
       } satisfies LanguageModel;
 
       const logger = makeFakeLogger();
-      const loop = new AiSdkMainAgent(model, logger);
+      const agent = makeAgent(model, logger);
 
-      await expect(loop.run(baseInput)).rejects.toThrow(
+      await expect(agent.run(baseInput)).rejects.toThrow(
         "upstream provider exploded",
       );
 

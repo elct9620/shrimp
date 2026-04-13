@@ -46,8 +46,18 @@ container.register(TOKENS.BoardRepository, {
   },
 });
 
-// MainAgent
-container.register(TOKENS.MainAgent, { useClass: AiSdkMainAgent });
+// MainAgent — registered via useFactory to pass provider-specific options
+container.register(TOKENS.MainAgent, {
+  useFactory: (c) => {
+    const env = c.resolve<EnvConfig>(TOKENS.EnvConfig);
+    return new AiSdkMainAgent({
+      model: c.resolve(TOKENS.LanguageModel),
+      logger: c.resolve<LoggerPort>(TOKENS.Logger),
+      providerName: "shrimp",
+      reasoningEffort: env.aiReasoningEffort,
+    });
+  },
+});
 
 // TaskQueue
 container.register(TOKENS.TaskQueue, { useClass: InMemoryTaskQueue });

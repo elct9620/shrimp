@@ -22,6 +22,7 @@ describe("loadEnvConfig", () => {
         openAiApiKey: "sk-test-key",
         aiModel: "gpt-4o",
         aiMaxSteps: 50,
+        aiReasoningEffort: undefined,
         todoistApiToken: "todoist-token",
         todoistProjectId: "project-123",
         port: 3000,
@@ -80,6 +81,37 @@ describe("loadEnvConfig", () => {
       expect(error!.message).toContain("AI_MODEL");
       expect(error!.message).toContain("TODOIST_API_TOKEN");
       expect(error!.message).toContain("TODOIST_PROJECT_ID");
+    });
+  });
+
+  describe("AI_REASONING_EFFORT", () => {
+    it("should be undefined when AI_REASONING_EFFORT is absent", () => {
+      const config = loadEnvConfig(REQUIRED_ENV);
+      expect(config.aiReasoningEffort).toBeUndefined();
+    });
+
+    it("should be undefined when AI_REASONING_EFFORT is empty string", () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        AI_REASONING_EFFORT: "",
+      });
+      expect(config.aiReasoningEffort).toBeUndefined();
+    });
+
+    it('should use "high" when AI_REASONING_EFFORT is "high"', () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        AI_REASONING_EFFORT: "high",
+      });
+      expect(config.aiReasoningEffort).toBe("high");
+    });
+
+    it('should use "low" when AI_REASONING_EFFORT is "low"', () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        AI_REASONING_EFFORT: "low",
+      });
+      expect(config.aiReasoningEffort).toBe("low");
     });
   });
 
