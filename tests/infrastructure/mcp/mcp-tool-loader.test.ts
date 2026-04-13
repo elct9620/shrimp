@@ -5,21 +5,8 @@ import type {
 } from "../../../src/infrastructure/mcp/mcp-tool-loader";
 import { McpToolLoader } from "../../../src/infrastructure/mcp/mcp-tool-loader";
 import type { McpConfig } from "../../../src/infrastructure/config/mcp-config";
-import type { LoggerPort } from "../../../src/use-cases/ports/logger";
 import { jsonSchema, tool } from "ai";
-
-function makeFakeLogger(): LoggerPort {
-  const logger: LoggerPort = {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn(() => logger),
-  };
-  return logger;
-}
+import { makeFakeLogger } from "../../mocks/fake-logger";
 
 // ---------------------------------------------------------------------------
 // Helpers

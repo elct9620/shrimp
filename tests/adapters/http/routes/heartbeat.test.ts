@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createHeartbeatRoute } from "../../../../src/adapters/http/routes/heartbeat";
 import type { TaskQueue } from "../../../../src/use-cases/ports/task-queue";
 import type { ProcessingCycle } from "../../../../src/use-cases/processing-cycle";
-import type { LoggerPort } from "../../../../src/use-cases/ports/logger";
+import { makeFakeLogger } from "../../../mocks/fake-logger";
 
 function makeTaskQueue(slotFree = true): TaskQueue {
   return {
@@ -15,19 +15,6 @@ function makeProcessingCycle(runImpl?: () => Promise<void>): ProcessingCycle {
   return {
     run: vi.fn().mockImplementation(impl),
   } as unknown as ProcessingCycle;
-}
-
-function makeFakeLogger(): LoggerPort {
-  const logger: LoggerPort = {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn(() => logger),
-  };
-  return logger;
 }
 
 describe("POST /heartbeat", () => {

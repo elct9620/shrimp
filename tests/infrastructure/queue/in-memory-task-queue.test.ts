@@ -1,19 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryTaskQueue } from "../../../src/infrastructure/queue/in-memory-task-queue";
-import type { LoggerPort } from "../../../src/use-cases/ports/logger";
-
-function makeFakeLogger(): LoggerPort {
-  const logger: LoggerPort = {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn(() => logger),
-  };
-  return logger;
-}
+import { makeFakeLogger } from "../../mocks/fake-logger";
 
 describe("InMemoryTaskQueue", () => {
   it("should return true when slot is free", () => {

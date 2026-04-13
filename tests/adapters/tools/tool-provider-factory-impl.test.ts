@@ -3,20 +3,7 @@ import { ToolProviderFactoryImpl } from "../../../src/adapters/tools/tool-provid
 import type { BuiltInToolFactory } from "../../../src/adapters/tools/built-in-tool-factory";
 import type { ToolSet } from "../../../src/use-cases/ports/tool-set";
 import type { ToolDescription } from "../../../src/use-cases/ports/tool-description";
-import type { LoggerPort } from "../../../src/use-cases/ports/logger";
-
-function makeFakeLogger(): LoggerPort {
-  const logger: LoggerPort = {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn(() => logger),
-  };
-  return logger;
-}
+import { makeFakeLogger } from "../../mocks/fake-logger";
 
 function makeTools(...names: string[]): ToolSet {
   return Object.fromEntries(names.map((n) => [n, { fake: n }]));

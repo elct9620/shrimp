@@ -14,7 +14,7 @@ import { Priority } from "../../../src/entities/priority";
 import { Section } from "../../../src/entities/section";
 import { BoardSectionMissingError } from "../../../src/use-cases/ports/board-repository";
 import { TodoistBoardRepository } from "../../../src/infrastructure/todoist/todoist-board-repository";
-import type { LoggerPort } from "../../../src/use-cases/ports/logger";
+import { makeFakeLogger } from "../../mocks/fake-logger";
 import { todoistHandlers } from "../../mocks/todoist-handlers";
 
 const BASE = "https://api.todoist.com/api/v1";
@@ -25,19 +25,6 @@ const server = setupServer(...todoistHandlers);
 beforeAll(() => server.listen());
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
-
-function makeFakeLogger(): LoggerPort {
-  const logger: LoggerPort = {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn(() => logger),
-  };
-  return logger;
-}
 
 // ─── Helpers: full snake_case HTTP payloads (SDK converts to camelCase, then validates) ─
 

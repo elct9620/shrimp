@@ -1,0 +1,15 @@
+import { vi } from "vitest";
+import type { LoggerPort } from "../../src/use-cases/ports/logger";
+
+export function makeFakeLogger(): LoggerPort {
+  const logger: LoggerPort = {
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    child: vi.fn(() => logger),
+  };
+  return logger;
+}

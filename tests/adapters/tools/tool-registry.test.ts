@@ -1,9 +1,9 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { ToolRegistry } from "../../../src/adapters/tools/tool-registry";
 import type { ToolProvider } from "../../../src/use-cases/ports/tool-provider";
 import type { ToolSet } from "../../../src/use-cases/ports/tool-set";
 import type { ToolDescription } from "../../../src/use-cases/ports/tool-description";
-import type { LoggerPort } from "../../../src/use-cases/ports/logger";
+import { makeFakeLogger } from "../../mocks/fake-logger";
 
 function makeTools(...names: string[]): ToolSet {
   return Object.fromEntries(names.map((n) => [n, { fake: n }]));
@@ -11,19 +11,6 @@ function makeTools(...names: string[]): ToolSet {
 
 function makeDescriptions(...names: string[]): ToolDescription[] {
   return names.map((name) => ({ name, description: `desc for ${name}` }));
-}
-
-function makeFakeLogger(): LoggerPort {
-  const logger: LoggerPort = {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn(() => logger),
-  };
-  return logger;
 }
 
 describe("ToolRegistry", () => {

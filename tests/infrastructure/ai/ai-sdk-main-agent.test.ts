@@ -1,29 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { FinishReason } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { AiSdkMainAgent } from "../../../src/infrastructure/ai/ai-sdk-main-agent";
 import type { MainAgentInput } from "../../../src/use-cases/ports/main-agent";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
-
-function makeFakeLogger(): LoggerPort {
-  const logger: LoggerPort = {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn(() => logger),
-  };
-  return logger;
-}
-
-type FinishReason =
-  | "stop"
-  | "length"
-  | "content-filter"
-  | "tool-calls"
-  | "error"
-  | "other";
+import { makeFakeLogger } from "../../mocks/fake-logger";
 
 function makeModel(finishReason: FinishReason = "stop") {
   return new MockLanguageModelV3({

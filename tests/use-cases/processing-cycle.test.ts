@@ -11,6 +11,7 @@ import type { ToolProvider } from "../../src/use-cases/ports/tool-provider";
 import type { ToolProviderFactory } from "../../src/use-cases/ports/tool-provider-factory";
 import type { ToolDescription } from "../../src/use-cases/ports/tool-description";
 import type { LoggerPort } from "../../src/use-cases/ports/logger";
+import { makeFakeLogger } from "../mocks/fake-logger";
 import { Section } from "../../src/entities/section";
 import { Priority } from "../../src/entities/priority";
 import type { Task } from "../../src/entities/task";
@@ -73,19 +74,6 @@ function makeToolProvider(): ToolProvider {
 function makeToolProviderFactory(provider?: ToolProvider): ToolProviderFactory {
   const inner = provider ?? makeToolProvider();
   return { create: vi.fn(() => inner) };
-}
-
-function makeFakeLogger(): LoggerPort {
-  const logger: LoggerPort = {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn(() => logger),
-  };
-  return logger;
 }
 
 // --- Tests ---
