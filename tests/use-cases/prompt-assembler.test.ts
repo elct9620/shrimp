@@ -30,24 +30,49 @@ const makeTools = (...pairs: [string, string][]): ToolDescription[] =>
 
 describe("assemble", () => {
   describe("system prompt", () => {
-    it("contains goal language about completing the task", () => {
+    it("opens with objective language, not role-based framing", () => {
       const { systemPrompt } = assemble({
         task: makeTask(),
         comments: [],
         tools: [],
       });
 
+      expect(systemPrompt).not.toMatch(/^You are/);
       expect(systemPrompt.toLowerCase()).toContain("complete");
     });
 
-    it("contains goal language about reporting progress", () => {
+    it("includes workflow section with progress reporting step", () => {
       const { systemPrompt } = assemble({
         task: makeTask(),
         comments: [],
         tools: [],
       });
 
-      expect(systemPrompt.toLowerCase()).toContain("progress");
+      expect(systemPrompt).toContain("## Workflow");
+      expect(systemPrompt.toLowerCase()).toContain("progress comment");
+    });
+
+    it("includes domain knowledge about board sections", () => {
+      const { systemPrompt } = assemble({
+        task: makeTask(),
+        comments: [],
+        tools: [],
+      });
+
+      expect(systemPrompt).toContain("## Domain Knowledge");
+      expect(systemPrompt).toContain("Backlog");
+      expect(systemPrompt).toContain("In Progress");
+      expect(systemPrompt).toContain("Done");
+    });
+
+    it("includes error handling guidance", () => {
+      const { systemPrompt } = assemble({
+        task: makeTask(),
+        comments: [],
+        tools: [],
+      });
+
+      expect(systemPrompt).toContain("## Error Handling");
     });
 
     it("lists each tool name in the system prompt", () => {
