@@ -27,7 +27,7 @@ function buildSystemPrompt(tools: ToolDescription[]): string {
       ? tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
       : '(none)'
 
-  return `You are an autonomous task execution agent. Your goal is to complete the assigned task and report progress when done.
+  return `You are an autonomous task execution agent. Your goal is to complete the assigned task. Always post a progress comment summarizing what was done and what remains before finishing.
 
 ## Available Tools
 

@@ -36,6 +36,18 @@ export class TodoistBoardRepository implements BoardRepository {
     private readonly logger: LoggerPort,
   ) {}
 
+  async validateSections(): Promise<void> {
+    const response = await this.api.getSections({ projectId: this.projectId })
+    const available = response.results.map((s) => s.name)
+    const required = [SECTION_NAME_BACKLOG, SECTION_NAME_IN_PROGRESS, SECTION_NAME_DONE]
+    for (const name of required) {
+      if (!available.includes(name)) {
+        this.logger.error('board section missing', { targetName: name, availableSections: available })
+        throw new BoardSectionMissingError(name)
+      }
+    }
+  }
+
   async getTasks(section: Section): Promise<Task[]> {
     const sectionId = await this.resolveSectionId(section)
     const response = await this.api.getTasks({ projectId: this.projectId, sectionId })

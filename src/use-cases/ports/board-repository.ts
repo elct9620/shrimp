@@ -10,6 +10,7 @@ export class BoardSectionMissingError extends Error {
 }
 
 export interface BoardRepository {
+  validateSections(): Promise<void>
   getTasks(section: Section): Promise<Task[]>
   getComments(taskId: string): Promise<Comment[]>
   postComment(taskId: string, text: string): Promise<void>

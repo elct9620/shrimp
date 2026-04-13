@@ -121,6 +121,63 @@ function withAllSections() {
   )
 }
 
+// ─── validateSections ────────────────────────────────────────────────────────
+
+describe('TodoistBoardRepository.validateSections', () => {
+  it('should resolve when all three required sections exist', async () => {
+    withAllSections()
+    const api = new TodoistApi('test-token')
+    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger())
+
+    await expect(repo.validateSections()).resolves.toBeUndefined()
+  })
+
+  it('should throw BoardSectionMissingError when Backlog is missing', async () => {
+    server.use(
+      http.get(`${BASE}/sections`, () =>
+        HttpResponse.json({
+          results: ALL_SECTIONS_HTTP.filter((s) => s.name !== 'Backlog'),
+          next_cursor: null,
+        }),
+      ),
+    )
+    const api = new TodoistApi('test-token')
+    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger())
+
+    await expect(repo.validateSections()).rejects.toThrow(BoardSectionMissingError)
+  })
+
+  it('should throw BoardSectionMissingError when Done is missing', async () => {
+    server.use(
+      http.get(`${BASE}/sections`, () =>
+        HttpResponse.json({
+          results: ALL_SECTIONS_HTTP.filter((s) => s.name !== 'Done'),
+          next_cursor: null,
+        }),
+      ),
+    )
+    const api = new TodoistApi('test-token')
+    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger())
+
+    await expect(repo.validateSections()).rejects.toThrow(BoardSectionMissingError)
+  })
+
+  it('should throw BoardSectionMissingError when In Progress is missing', async () => {
+    server.use(
+      http.get(`${BASE}/sections`, () =>
+        HttpResponse.json({
+          results: ALL_SECTIONS_HTTP.filter((s) => s.name !== 'In Progress'),
+          next_cursor: null,
+        }),
+      ),
+    )
+    const api = new TodoistApi('test-token')
+    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger())
+
+    await expect(repo.validateSections()).rejects.toThrow(BoardSectionMissingError)
+  })
+})
+
 // ─── getTasks ─────────────────────────────────────────────────────────────────
 
 describe('TodoistBoardRepository.getTasks', () => {

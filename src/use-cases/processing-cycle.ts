@@ -36,6 +36,7 @@ export class ProcessingCycle {
     let inProgressTasks, backlogTasks
 
     try {
+      await this.board.validateSections()
       inProgressTasks = await this.board.getTasks(Section.InProgress)
       backlogTasks = await this.board.getTasks(Section.Backlog)
     } catch (error) {

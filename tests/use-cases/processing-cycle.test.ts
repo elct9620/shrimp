@@ -30,6 +30,7 @@ const makeComment = (text: string): Comment => ({
 
 function makeBoardRepository(overrides: Partial<BoardRepository> = {}): BoardRepository {
   return {
+    validateSections: vi.fn().mockResolvedValue(undefined),
     getTasks: vi.fn().mockResolvedValue([]),
     getComments: vi.fn().mockResolvedValue([]),
     postComment: vi.fn().mockResolvedValue(undefined),
@@ -231,6 +232,15 @@ describe('ProcessingCycle.run', () => {
       await cycle.run()
 
       expect(board.moveTask).not.toHaveBeenCalled()
+    })
+
+    it('should skip cycle when validateSections detects Done section missing', async () => {
+      board.validateSections = vi.fn().mockRejectedValue(new BoardSectionMissingError('Done'))
+
+      await cycle.run()
+
+      expect(board.getTasks).not.toHaveBeenCalled()
+      expect(mainAgent.run).not.toHaveBeenCalled()
     })
   })
 

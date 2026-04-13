@@ -4,6 +4,7 @@ import type { LoggerPort } from '../../../../src/use-cases/ports/logger'
 
 export function makeFakeRepo(): BoardRepository {
   return {
+    validateSections: vi.fn(),
     getTasks: vi.fn(),
     getComments: vi.fn(),
     postComment: vi.fn(),
