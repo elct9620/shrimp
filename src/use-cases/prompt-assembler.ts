@@ -1,6 +1,8 @@
 import { Task } from '../entities/task'
 import { Comment } from '../entities/comment'
 import type { ToolDescription } from './ports/tool-description'
+import systemTemplate from './prompts/system.md?raw'
+import userTemplate from './prompts/user.md?raw'
 
 export type { ToolDescription }
 
@@ -27,11 +29,7 @@ function buildSystemPrompt(tools: ToolDescription[]): string {
       ? tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
       : '(none)'
 
-  return `You are an autonomous task execution agent. Your goal is to complete the assigned task. Always post a progress comment summarizing what was done and what remains before finishing.
-
-## Available Tools
-
-${toolList}`
+  return systemTemplate.replace('{{toolList}}', toolList)
 }
 
 function buildUserPrompt(task: Task, comments: Comment[]): string {
@@ -45,9 +43,10 @@ function buildUserPrompt(task: Task, comments: Comment[]): string {
       ? `\n## Comment History\n\n${comments.map((c) => `[${c.author === 'bot' ? 'Bot' : 'User'}] ${c.text}`).join('\n\n')}`
       : ''
 
-  return `## Task
-
-ID: ${task.id}
-Title: ${task.title}${descriptionSection}
-Section: ${task.section}${commentSection}`
+  return userTemplate
+    .replace('{{id}}', task.id)
+    .replace('{{title}}', task.title)
+    .replace('{{description}}', descriptionSection)
+    .replace('{{section}}', task.section)
+    .replace('{{comments}}', commentSection)
 }

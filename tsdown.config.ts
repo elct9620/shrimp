@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsdown'
+import Raw from 'unplugin-raw/rolldown'
 
 export default defineConfig({
   entry: ['src/server.ts'],
@@ -6,4 +7,5 @@ export default defineConfig({
   platform: 'node',
   target: 'node22',
   clean: true,
+  plugins: [Raw()],
 })
