@@ -18,6 +18,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Run a single test file: `pnpm test tests/container.test.ts` (pass any path under `tests/`).
 
+No ESLint is configured — `pnpm typecheck` plus `pnpm format` (Prettier) are the only static checks.
+
+### Docker
+
+All Docker workflows are exposed as `pnpm docker:*` scripts:
+
+| Command                | Purpose                                                               |
+| ---------------------- | --------------------------------------------------------------------- |
+| `pnpm docker:build`    | Build production image                                                |
+| `pnpm docker:up`       | Start production stack (reads `.env`, publishes `HOST_PORT`)          |
+| `pnpm docker:down`     | Stop production stack                                                 |
+| `pnpm docker:logs`     | Tail production logs                                                  |
+| `pnpm docker:shell`    | Open a shell in the running container                                 |
+| `pnpm docker:dev`      | Start dev stack with compose watch; syncs `./dist` into the container |
+| `pnpm docker:dev:down` | Stop dev stack                                                        |
+
+`docker:dev` only runs compose watch — keep `dist/` fresh via `pnpm dev` in another terminal, or rely on the Claude Stop hook (see below).
+
 ## Architecture
 
 Two documents are authoritative:
@@ -68,3 +86,4 @@ Layer layout at a glance:
 - Test files mirror the `src/` directory structure under `tests/`. Tests use MSW to mock the Todoist API at the HTTP boundary, not at the repository level.
 - DI uses Symbol-based tokens defined in `infrastructure/container/tokens.ts`, not decorator-based injection. All wiring happens in `container.ts` via `useFactory` / `useClass`.
 - Prompt templates are `.md` files imported as raw strings via `unplugin-raw` (`import tpl from "./prompts/system.md?raw"`). These live alongside their use-case files.
+- A Claude Code Stop hook (`.claude/settings.json`) runs `pnpm build` asynchronously after each session so `dist/` stays in sync with `docker compose --watch`. Do not hand-maintain `dist/`.
