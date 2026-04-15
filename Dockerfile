@@ -1,6 +1,7 @@
-ARG NODE_VERSION=22-alpine
+ARG NODE_VERSION=22
+ARG NODE_VARIANT=alpine
 
-FROM node:${NODE_VERSION} AS builder
+FROM node:${NODE_VERSION}-${NODE_VARIANT} AS builder
 WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
@@ -9,7 +10,7 @@ COPY tsconfig.json tsdown.config.ts ./
 COPY src ./src
 RUN pnpm build
 
-FROM node:${NODE_VERSION} AS runtime
+FROM node:${NODE_VERSION}-${NODE_VARIANT} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000

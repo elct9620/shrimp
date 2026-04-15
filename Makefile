@@ -35,8 +35,9 @@ shell:
 
 dev:
 	pnpm build
-	pnpm exec tsdown --watch & echo $$! > .tsdown.pid; \
-	  trap 'kill $$(cat .tsdown.pid) 2>/dev/null; rm -f .tsdown.pid' EXIT INT TERM; \
+	pnpm exec tsdown --watch & \
+	  TSDOWN_PID=$$!; \
+	  trap "kill $$TSDOWN_PID 2>/dev/null" EXIT INT TERM; \
 	  $(COMPOSE_DEV) up --watch
 
 dev-down:
