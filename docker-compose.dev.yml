@@ -1,0 +1,10 @@
+services:
+  shrimp:
+    build:
+      context: .
+    restart: "no"
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./dist
+          target: /app/dist

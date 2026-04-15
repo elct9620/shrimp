@@ -7,5 +7,6 @@ export default defineConfig({
   platform: "node",
   target: "node22",
   clean: true,
+  noExternal: (id) => !id.startsWith("node:"),
   plugins: [Raw()],
 });

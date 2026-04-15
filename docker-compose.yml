@@ -1,0 +1,11 @@
+services:
+  shrimp:
+    build:
+      context: .
+    image: shrimp:latest
+    container_name: shrimp
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-3000}:3000"
+    restart: unless-stopped
