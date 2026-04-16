@@ -17,7 +17,12 @@ export type CreateAppDeps = {
 };
 
 export function createApp(deps: CreateAppDeps): Hono<AppEnv> {
-  const httpLogger = pinoHttp({ logger: deps.pinoInstance });
+  const httpLogger = pinoHttp({
+    logger: deps.pinoInstance,
+    autoLogging: {
+      ignore: (req) => req.url === "/health",
+    },
+  });
   const app = new Hono<AppEnv>();
 
   app.use(requestId());
