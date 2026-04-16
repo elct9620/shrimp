@@ -25,6 +25,7 @@ import { createPinoLogger } from "./infrastructure/logger/pino-logger";
 import type { BoardRepository } from "./use-cases/ports/board-repository";
 import type { LoggerPort } from "./use-cases/ports/logger";
 import type { MainAgent } from "./use-cases/ports/main-agent";
+import type { TelemetryPort } from "./use-cases/ports/telemetry";
 import type { ToolDescription } from "./use-cases/ports/tool-description";
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,7 @@ container.register(TOKENS.MainAgent, {
       logger: c.resolve<LoggerPort>(TOKENS.Logger),
       providerName: "shrimp",
       reasoningEffort: env.aiReasoningEffort,
+      telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
     });
   },
 });

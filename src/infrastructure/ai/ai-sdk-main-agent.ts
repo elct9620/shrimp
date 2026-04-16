@@ -2,6 +2,7 @@ import {
   ToolLoopAgent,
   stepCountIs,
   type LanguageModel,
+  type ToolLoopAgentSettings,
   type ToolSet as AiToolSet,
 } from "ai";
 import type {
@@ -11,17 +12,20 @@ import type {
   MainAgentTerminationReason,
 } from "../../use-cases/ports/main-agent";
 import type { LoggerPort } from "../../use-cases/ports/logger";
+import type { TelemetryPort } from "../../use-cases/ports/telemetry";
 
 export type AiSdkMainAgentOptions = {
   model: LanguageModel;
   logger: LoggerPort;
   providerName: string;
   reasoningEffort?: string;
+  telemetry: TelemetryPort;
 };
 
 export class AiSdkMainAgent implements MainAgent {
   private readonly model: LanguageModel;
   private readonly logger: LoggerPort;
+  private readonly telemetry: TelemetryPort;
   private readonly providerOptions:
     | Record<string, Record<string, string>>
     | undefined;
@@ -29,9 +33,27 @@ export class AiSdkMainAgent implements MainAgent {
   constructor(options: AiSdkMainAgentOptions) {
     this.model = options.model;
     this.logger = options.logger.child({ module: "AiSdkMainAgent" });
+    this.telemetry = options.telemetry;
     this.providerOptions = options.reasoningEffort
       ? { [options.providerName]: { reasoningEffort: options.reasoningEffort } }
       : undefined;
+  }
+
+  buildToolLoopAgentOptions(input: MainAgentInput): ToolLoopAgentSettings {
+    return {
+      model: this.model,
+      tools: input.tools as AiToolSet,
+      instructions: input.systemPrompt,
+      stopWhen: stepCountIs(input.maxSteps),
+      providerOptions: this.providerOptions,
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: "shrimp.main-agent",
+        recordInputs: this.telemetry.recordInputs,
+        recordOutputs: this.telemetry.recordOutputs,
+        tracer: this.telemetry.tracer,
+      },
+    };
   }
 
   async run(input: MainAgentInput): Promise<MainAgentResult> {
@@ -41,13 +63,7 @@ export class AiSdkMainAgent implements MainAgent {
       toolCount,
     });
 
-    const agent = new ToolLoopAgent({
-      model: this.model,
-      tools: input.tools as AiToolSet,
-      instructions: input.systemPrompt,
-      stopWhen: stepCountIs(input.maxSteps),
-      providerOptions: this.providerOptions,
-    });
+    const agent = new ToolLoopAgent(this.buildToolLoopAgentOptions(input));
 
     let result;
     try {

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import type { FinishReason } from "ai";
+import type { FinishReason, ToolLoopAgentSettings } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { AiSdkMainAgent } from "../../../src/infrastructure/ai/ai-sdk-main-agent";
 import type { MainAgentInput } from "../../../src/use-cases/ports/main-agent";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
+import type { TelemetryPort } from "../../../src/use-cases/ports/telemetry";
 import { makeFakeLogger } from "../../mocks/fake-logger";
+import { NoopTelemetry } from "../../../src/infrastructure/telemetry/noop-telemetry";
 
 function makeModel(finishReason: FinishReason = "stop") {
   return new MockLanguageModelV3({
@@ -28,13 +30,18 @@ function makeModel(finishReason: FinishReason = "stop") {
 function makeAgent(
   model: MockLanguageModelV3,
   logger: LoggerPort,
-  options?: { providerName?: string; reasoningEffort?: string },
+  options?: {
+    providerName?: string;
+    reasoningEffort?: string;
+    telemetry?: TelemetryPort;
+  },
 ) {
   return new AiSdkMainAgent({
     model,
     logger,
     providerName: options?.providerName ?? "test-provider",
     reasoningEffort: options?.reasoningEffort,
+    telemetry: options?.telemetry ?? new NoopTelemetry(),
   });
 }
 
@@ -198,6 +205,110 @@ describe("AiSdkMainAgent.run", () => {
 
       expect(result1.reason).toBe("finished");
       expect(result2.reason).toBe("finished");
+    });
+  });
+
+  describe("experimental_telemetry forwarding", () => {
+    it("should forward experimental_telemetry with isEnabled:true and functionId to ToolLoopAgent", async () => {
+      const capturedTelemetry: unknown[] = [];
+      const model = makeModel("stop");
+      const telemetry = new NoopTelemetry();
+
+      // Subclass to intercept what is passed to ToolLoopAgent constructor
+      class InspectableAgent extends AiSdkMainAgent {
+        override buildToolLoopAgentOptions(
+          input: MainAgentInput,
+        ): ToolLoopAgentSettings {
+          const opts = super.buildToolLoopAgentOptions(input);
+          capturedTelemetry.push(opts.experimental_telemetry);
+          return opts;
+        }
+      }
+
+      const agent = new InspectableAgent({
+        model,
+        logger: makeFakeLogger(),
+        providerName: "test-provider",
+        telemetry,
+      });
+
+      await agent.run(baseInput);
+
+      expect(capturedTelemetry).toHaveLength(1);
+      const et = capturedTelemetry[0] as Record<string, unknown>;
+      expect(et.isEnabled).toBe(true);
+      expect(et.functionId).toBe("shrimp.main-agent");
+      expect(et.recordInputs).toBe(telemetry.recordInputs);
+      expect(et.recordOutputs).toBe(telemetry.recordOutputs);
+      expect(et.tracer).toBe(telemetry.tracer);
+    });
+
+    it("should forward recordInputs:false and recordOutputs:false from injected TelemetryPort", async () => {
+      const capturedTelemetry: unknown[] = [];
+      const fakeTelemetry: TelemetryPort = {
+        tracer: new NoopTelemetry().tracer,
+        recordInputs: false,
+        recordOutputs: false,
+        shutdown: async () => {},
+      };
+      const model = makeModel("stop");
+
+      class InspectableAgent extends AiSdkMainAgent {
+        override buildToolLoopAgentOptions(
+          input: MainAgentInput,
+        ): ToolLoopAgentSettings {
+          const opts = super.buildToolLoopAgentOptions(input);
+          capturedTelemetry.push(opts.experimental_telemetry);
+          return opts;
+        }
+      }
+
+      const agent = new InspectableAgent({
+        model,
+        logger: makeFakeLogger(),
+        providerName: "test-provider",
+        telemetry: fakeTelemetry,
+      });
+
+      await agent.run(baseInput);
+
+      const et = capturedTelemetry[0] as Record<string, unknown>;
+      expect(et.recordInputs).toBe(false);
+      expect(et.recordOutputs).toBe(false);
+    });
+
+    it("should forward the exact tracer instance from the injected TelemetryPort", async () => {
+      const capturedTelemetry: unknown[] = [];
+      const sentinelTracer = new NoopTelemetry().tracer;
+      const fakeTelemetry: TelemetryPort = {
+        tracer: sentinelTracer,
+        recordInputs: true,
+        recordOutputs: true,
+        shutdown: async () => {},
+      };
+      const model = makeModel("stop");
+
+      class InspectableAgent extends AiSdkMainAgent {
+        override buildToolLoopAgentOptions(
+          input: MainAgentInput,
+        ): ToolLoopAgentSettings {
+          const opts = super.buildToolLoopAgentOptions(input);
+          capturedTelemetry.push(opts.experimental_telemetry);
+          return opts;
+        }
+      }
+
+      const agent = new InspectableAgent({
+        model,
+        logger: makeFakeLogger(),
+        providerName: "test-provider",
+        telemetry: fakeTelemetry,
+      });
+
+      await agent.run(baseInput);
+
+      const et = capturedTelemetry[0] as Record<string, unknown>;
+      expect(et.tracer).toBe(sentinelTracer);
     });
   });
 
