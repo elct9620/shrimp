@@ -76,6 +76,7 @@ container.register(ProcessingCycle, {
       logger: c
         .resolve<LoggerPort>(TOKENS.Logger)
         .child({ module: "ProcessingCycle" }),
+      telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
     }),
 });
 

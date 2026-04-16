@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { SpanStatusCode } from "@opentelemetry/api";
 import { ProcessingCycle } from "../../src/use-cases/processing-cycle";
 import { BoardSectionMissingError } from "../../src/use-cases/ports/board-repository";
 import type { BoardRepository } from "../../src/use-cases/ports/board-repository";
@@ -11,6 +12,8 @@ import type { ToolProvider } from "../../src/use-cases/ports/tool-provider";
 import type { ToolProviderFactory } from "../../src/use-cases/ports/tool-provider-factory";
 import type { ToolDescription } from "../../src/use-cases/ports/tool-description";
 import type { LoggerPort } from "../../src/use-cases/ports/logger";
+import type { TelemetryPort } from "../../src/use-cases/ports/telemetry";
+import { NoopTelemetry } from "../../src/infrastructure/telemetry/noop-telemetry";
 import { makeFakeLogger } from "../mocks/fake-logger";
 import { Section } from "../../src/entities/section";
 import { Priority } from "../../src/entities/priority";
@@ -18,6 +21,37 @@ import type { Task } from "../../src/entities/task";
 import type { Comment } from "../../src/entities/comment";
 
 // --- Fakes ---
+
+type FakeSpan = {
+  end: ReturnType<typeof vi.fn>;
+  recordException: ReturnType<typeof vi.fn>;
+  setStatus: ReturnType<typeof vi.fn>;
+};
+
+function makeFakeSpan(): FakeSpan {
+  return {
+    end: vi.fn(),
+    recordException: vi.fn(),
+    setStatus: vi.fn(),
+  };
+}
+
+function makeFakeTelemetry(span?: FakeSpan): TelemetryPort {
+  const s = span ?? makeFakeSpan();
+  return {
+    tracer: {
+      startActiveSpan: vi
+        .fn()
+        .mockImplementation((_name: string, fn: (span: FakeSpan) => unknown) =>
+          fn(s),
+        ),
+      startSpan: vi.fn(),
+    },
+    recordInputs: true,
+    recordOutputs: true,
+    shutdown: vi.fn().mockResolvedValue(undefined),
+  } as unknown as TelemetryPort;
+}
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
   id: "task-1",
@@ -98,6 +132,7 @@ describe("ProcessingCycle.run", () => {
       toolProviderFactory,
       maxSteps: 10,
       logger,
+      telemetry: new NoopTelemetry(),
     });
   });
 
@@ -415,6 +450,111 @@ describe("ProcessingCycle.run", () => {
         logger.info as ReturnType<typeof vi.fn>
       ).mock.calls.filter((call) => call[0] === "cycle finished");
       expect(finishedCalls).toHaveLength(0);
+    });
+  });
+
+  describe("OTel root span", () => {
+    it("should start a span named shrimp.processing-cycle via the injected tracer", async () => {
+      const span = makeFakeSpan();
+      const telemetry = makeFakeTelemetry(span);
+      const localCycle = new ProcessingCycle({
+        board,
+        mainAgent,
+        toolProviderFactory,
+        maxSteps: 10,
+        logger,
+        telemetry,
+      });
+
+      await localCycle.run();
+
+      expect(
+        telemetry.tracer.startActiveSpan as ReturnType<typeof vi.fn>,
+      ).toHaveBeenCalledWith("shrimp.processing-cycle", expect.any(Function));
+    });
+
+    it("should end the span even when no task is selected", async () => {
+      const span = makeFakeSpan();
+      const telemetry = makeFakeTelemetry(span);
+      board.getTasks = vi.fn().mockResolvedValue([]);
+      const localCycle = new ProcessingCycle({
+        board,
+        mainAgent,
+        toolProviderFactory,
+        maxSteps: 10,
+        logger,
+        telemetry,
+      });
+
+      await localCycle.run();
+
+      expect(span.end).toHaveBeenCalledTimes(1);
+    });
+
+    it("should end the span when BoardSectionMissingError is thrown without recording an exception", async () => {
+      const span = makeFakeSpan();
+      const telemetry = makeFakeTelemetry(span);
+      board.validateSections = vi
+        .fn()
+        .mockRejectedValue(new BoardSectionMissingError("Done"));
+      const localCycle = new ProcessingCycle({
+        board,
+        mainAgent,
+        toolProviderFactory,
+        maxSteps: 10,
+        logger,
+        telemetry,
+      });
+
+      await localCycle.run();
+
+      expect(span.end).toHaveBeenCalledTimes(1);
+      expect(span.recordException).not.toHaveBeenCalled();
+    });
+
+    it("should record exception and set ERROR status when an unexpected error is thrown", async () => {
+      const span = makeFakeSpan();
+      const telemetry = makeFakeTelemetry(span);
+      const boom = new Error("boom");
+      board.getTasks = vi.fn().mockRejectedValue(boom);
+      const localCycle = new ProcessingCycle({
+        board,
+        mainAgent,
+        toolProviderFactory,
+        maxSteps: 10,
+        logger,
+        telemetry,
+      });
+
+      await expect(localCycle.run()).rejects.toThrow("boom");
+
+      expect(span.recordException).toHaveBeenCalledWith(boom);
+      expect(span.setStatus).toHaveBeenCalledWith({
+        code: SpanStatusCode.ERROR,
+      });
+      expect(span.end).toHaveBeenCalledTimes(1);
+    });
+
+    it("should end the span on the happy path after main agent completes", async () => {
+      const span = makeFakeSpan();
+      const telemetry = makeFakeTelemetry(span);
+      const task = makeTask({ id: "task-x", section: Section.InProgress });
+      board.getTasks = vi.fn().mockImplementation(async (section: Section) => {
+        if (section === Section.InProgress) return [task];
+        return [];
+      });
+      const localCycle = new ProcessingCycle({
+        board,
+        mainAgent,
+        toolProviderFactory,
+        maxSteps: 10,
+        logger,
+        telemetry,
+      });
+
+      await localCycle.run();
+
+      expect(span.end).toHaveBeenCalledTimes(1);
     });
   });
 });
