@@ -445,15 +445,21 @@ The Post Comment tool is responsible for prepending the Comment Tag to every com
 
 Runtime configuration is supplied through environment variables and a `.mcp.json` configuration file.
 
-| Variable             | Purpose                                                                                                      | Required             |
-| -------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------- |
-| `OPENAI_BASE_URL`    | Base URL of the OpenAI-compatible AI provider                                                                | Yes                  |
-| `OPENAI_API_KEY`     | API key for the AI provider                                                                                  | Yes                  |
-| `AI_MODEL`           | Model identifier to use (e.g., `gpt-4o`)                                                                     | Yes                  |
-| `AI_MAX_STEPS`       | Maximum tool-loop steps per task execution; if absent or not a valid positive integer, falls back to default | No (default: `50`)   |
-| `TODOIST_API_TOKEN`  | Todoist personal API token                                                                                   | Yes                  |
-| `TODOIST_PROJECT_ID` | ID of the Todoist project used as the Board                                                                  | Yes                  |
-| `PORT`               | HTTP port the service listens on                                                                             | No (default: `3000`) |
+| Variable                      | Purpose                                                                                                      | Required                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| `OPENAI_BASE_URL`             | Base URL of the OpenAI-compatible AI provider                                                                | Yes                                      |
+| `OPENAI_API_KEY`              | API key for the AI provider                                                                                  | Yes                                      |
+| `AI_MODEL`                    | Model identifier to use (e.g., `gpt-4o`)                                                                     | Yes                                      |
+| `AI_MAX_STEPS`                | Maximum tool-loop steps per task execution; if absent or not a valid positive integer, falls back to default | No (default: `50`)                       |
+| `TODOIST_API_TOKEN`           | Todoist personal API token                                                                                   | Yes                                      |
+| `TODOIST_PROJECT_ID`          | ID of the Todoist project used as the Board                                                                  | Yes                                      |
+| `PORT`                        | HTTP port the service listens on                                                                             | No (default: `3000`)                     |
+| `TELEMETRY_ENABLED`           | Master toggle — enables OTel trace emission; when absent or `false`/`0`, telemetry is disabled               | No (default: off)                        |
+| `OTEL_SERVICE_NAME`           | Service name resource attribute attached to every emitted span                                               | Yes when telemetry enabled; No otherwise |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector URL to which spans are exported                                                               | Yes when telemetry enabled; No otherwise |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | Authentication or routing headers for the OTLP collector (comma-separated `key=value` pairs)                 | No                                       |
+| `TELEMETRY_RECORD_INPUTS`     | When `false`/`0`, omits assembled prompt text from span attributes                                           | No (default: on)                         |
+| `TELEMETRY_RECORD_OUTPUTS`    | When `false`/`0`, omits model-generated text from span attributes                                            | No (default: on)                         |
 
 **Rules:**
 
@@ -462,6 +468,10 @@ Runtime configuration is supplied through environment variables and a `.mcp.json
 - Supplementary MCP servers are configured via a `.mcp.json` file in the project root. The file follows the standard MCP configuration format: a JSON object with a `mcpServers` key mapping server names to their definitions (`command`, `args`).
 - If `.mcp.json` is absent or contains no servers, the agent runs with built-in tools only.
 - The built-in Todoist tools (Get tasks, Get comments, Post comment, Move task) are compiled into the agent and always available. `.mcp.json` adds supplementary tools only.
+- **`OTEL_*` variables are pass-through:** Shrimp reads them and passes them to the OpenTelemetry SDK; they are not re-aliased or duplicated under Shrimp-owned names.
+- **Shrimp-owned telemetry variables** (`TELEMETRY_ENABLED`, `TELEMETRY_RECORD_INPUTS`, `TELEMETRY_RECORD_OUTPUTS`) follow the same unprefixed uppercase convention as `AI_*` and `TODOIST_*` variables.
+- **When `TELEMETRY_ENABLED` is false or unset**, the `OTEL_*` variables and `TELEMETRY_RECORD_*` variables are neither required nor read. Startup validation is skipped for all telemetry configuration. See [Telemetry Configuration](#telemetry-configuration) for the full enable/disable contract.
+- **When telemetry is enabled but a required telemetry variable is missing or malformed**, the process fails fast at startup — consistent with the fail-fast pattern applied to all required variables above. See [Telemetry Configuration](#telemetry-configuration) for startup validation rules.
 
 ### Docker Deployment
 
