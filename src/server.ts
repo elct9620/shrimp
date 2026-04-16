@@ -5,6 +5,7 @@ import { container, bootstrap } from "./container";
 import { TOKENS } from "./infrastructure/container/tokens";
 import { McpToolLoader } from "./infrastructure/mcp/mcp-tool-loader";
 import { ProcessingCycle } from "./use-cases/processing-cycle";
+import type { TelemetryPort } from "./use-cases/ports/telemetry";
 import { createApp } from "./adapters/http/app";
 
 async function main() {
@@ -18,6 +19,7 @@ async function main() {
   >(TOKENS.EnvConfig);
   const mcpToolLoader = container.resolve(McpToolLoader);
   const processingCycle = container.resolve(ProcessingCycle);
+  const telemetry = container.resolve<TelemetryPort>(TOKENS.Telemetry);
   // Raw pino instance registered during bootstrap for pino-http middleware
   const pinoInstance = container.resolve<import("pino").Logger>(
     TOKENS.PinoInstance,
@@ -37,6 +39,15 @@ async function main() {
     logger.info("shutdown signal received", { signal });
     server.close();
     await mcpToolLoader.close();
+    try {
+      await telemetry.shutdown();
+    } catch (err) {
+      // Defense-in-depth: TelemetryPort impls already swallow errors,
+      // but never let a shutdown error block process exit.
+      logger.warn("telemetry shutdown failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
     logger.info("server stopped");
     process.exit(0);
   };
