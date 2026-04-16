@@ -45,9 +45,9 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | MCP Tools          | Supplementary tools provided by external MCP servers, discovered from `.mcp.json` at startup                                                                                                                                                                                                                                                         |
 | Comment Tag        | A prefix marker (`[Shrimp]`) prepended to every comment posted by the agent, used to distinguish bot-authored comments from user-authored comments                                                                                                                                                                                                   |
 | Fail-Open Recovery | The standard failure pattern: release the queue slot, leave the task in its current Todoist section, and let the next heartbeat retry it                                                                                                                                                                                                             |
-| Trace              | The complete record of one Processing Cycle's causally-related work, represented as a tree of Spans sharing a single trace identifier                                                                                                                                                                                                                     |
-| Span               | One named, timed unit of work within a Trace — such as task selection, a Main Agent run, or a single tool call — carrying attributes and a reference to its parent Span except at the root                                                                                                                                                                  |
-| Telemetry Exporter | The component that serializes completed Spans and delivers them to an external observability backend (e.g., Jaeger, Tempo, or an OTLP collector); configured entirely through the OpenTelemetry SDK environment, not by Shrimp                                                                                                                               |
+| Trace              | The complete record of one Processing Cycle's causally-related work, represented as a tree of Spans sharing a single trace identifier                                                                                                                                                                                                                |
+| Span               | One named, timed unit of work within a Trace — such as task selection, a Main Agent run, or a single tool call — carrying attributes and a reference to its parent Span except at the root                                                                                                                                                           |
+| Telemetry Exporter | The component that serializes completed Spans and delivers them to an external observability backend (e.g., Jaeger, Tempo, or an OTLP collector); configured entirely through the OpenTelemetry SDK environment, not by Shrimp                                                                                                                       |
 
 ## Scope
 
@@ -190,6 +190,51 @@ Multiple tasks may exist in the In Progress section (e.g., due to manual user mo
 **Source of truth:**
 
 - Todoist is the authoritative state of all tasks. On restart, the next heartbeat re-reads Todoist to determine the current task.
+
+### Telemetry Emission
+
+Every Processing Cycle that runs produces one OTel trace. Spans within that trace expose task selection, agent execution, and each tool call as separately timed, attributable units of work that downstream collectors and dashboards can query.
+
+**Trace lifecycle rules:**
+
+- A Processing Cycle that is dropped by the Task Queue (slot busy) does not produce a trace; no spans are emitted for dropped cycles.
+- A Processing Cycle that runs but finds no actionable task still produces a trace containing only the root span. This makes "nothing to do" observable and distinguishable from a cycle that was never triggered.
+- A Processing Cycle that selects and executes a task produces a full trace: root span plus all nested AI SDK spans for that execution.
+
+**Root span:**
+
+The Processing Cycle owns the root span. It begins when the cycle starts and ends when the cycle completes or fails, covering the full lifecycle: task selection, prompt assembly, Main Agent execution, and queue slot release. All AI SDK spans emitted during Main Agent execution are nested under this root span via OpenTelemetry context propagation.
+
+**Nested AI SDK spans:**
+
+When the Main Agent executes, AI SDK emits spans following its own telemetry conventions. Shrimp enables these spans and does not alter their structure. The spans consumers will see are:
+
+| Span name                    | Emitted                                                    |
+| ---------------------------- | ---------------------------------------------------------- |
+| `ai.generateText`            | Once per Processing Cycle — the full Main Agent invocation |
+| `ai.generateText.doGenerate` | Once per provider round-trip within the agent loop         |
+| `ai.toolCall`                | Once per tool invocation (Built-in and MCP tools)          |
+
+AI SDK's own span schema and nesting conventions apply; Shrimp does not define or alter them.
+
+**Span attributes:**
+
+Each span carries attributes sourced from two overlapping conventions that AI SDK emits together:
+
+| Attribute group                 | Example attributes                                                                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| AI SDK native                   | `ai.model.id`, `ai.model.provider`, `ai.usage.promptTokens`, `ai.usage.completionTokens`, `ai.response.finishReason`                 |
+| OTel GenAI semantic conventions | `gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons` |
+
+Tool call spans additionally carry: `ai.toolCall.name`, `ai.toolCall.id`, `ai.toolCall.args`, and `ai.toolCall.result` (present only when the call succeeds and the result is serializable).
+
+**Function identification:**
+
+Shrimp sets a stable `ai.telemetry.functionId` on the Main Agent invocation so operators can filter traces by logical operation. The assigned identifier is `shrimp.main-agent`.
+
+**Input and output recording:**
+
+By default, the agent's assembled prompt and the model's generated text are recorded on spans. Both inputs and outputs are captured unless explicitly disabled — that configuration knob is covered separately under Deployment & Configuration.
 
 ### `GET /health`
 
