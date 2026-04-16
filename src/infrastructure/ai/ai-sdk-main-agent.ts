@@ -39,7 +39,9 @@ export class AiSdkMainAgent implements MainAgent {
       : undefined;
   }
 
-  buildToolLoopAgentOptions(input: MainAgentInput): ToolLoopAgentSettings {
+  protected buildToolLoopAgentOptions(
+    input: MainAgentInput,
+  ): ToolLoopAgentSettings {
     return {
       model: this.model,
       tools: input.tools as AiToolSet,
