@@ -17,6 +17,12 @@ export type EnvConfig = {
   todoistProjectId: string;
   port: number;
   logLevel: LogLevel;
+  telemetryEnabled: boolean;
+  telemetryRecordInputs: boolean;
+  telemetryRecordOutputs: boolean;
+  otelServiceName?: string;
+  otelExporterOtlpEndpoint?: string;
+  otelExporterOtlpHeaders?: string;
 };
 
 export class EnvConfigError extends Error {
@@ -44,6 +50,11 @@ const REQUIRED_KEYS = [
   "TODOIST_PROJECT_ID",
 ] as const;
 
+const REQUIRED_TELEMETRY_KEYS = [
+  "OTEL_SERVICE_NAME",
+  "OTEL_EXPORTER_OTLP_ENDPOINT",
+] as const;
+
 function parseLogLevel(value: string | undefined): LogLevel {
   if (value === undefined) return "info";
   if ((VALID_LOG_LEVELS as readonly string[]).includes(value))
@@ -60,12 +71,31 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function parseTelemetryEnabled(value: string | undefined): boolean {
+  return value === "true" || value === "1";
+}
+
+function parseTelemetryRecordFlag(value: string | undefined): boolean {
+  return value !== "false" && value !== "0";
+}
+
 export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const missing = REQUIRED_KEYS.filter((key) => !env[key]);
   if (missing.length > 0) {
     throw new EnvConfigError(
       `Missing required environment variables: ${missing.join(", ")}`,
     );
+  }
+
+  const telemetryEnabled = parseTelemetryEnabled(env["TELEMETRY_ENABLED"]);
+
+  if (telemetryEnabled) {
+    const missingTelemetry = REQUIRED_TELEMETRY_KEYS.filter((key) => !env[key]);
+    if (missingTelemetry.length > 0) {
+      throw new EnvConfigError(
+        `Missing required environment variables: ${missingTelemetry.join(", ")}`,
+      );
+    }
   }
 
   return {
@@ -78,5 +108,15 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     todoistProjectId: env["TODOIST_PROJECT_ID"] as string,
     port: parsePositiveInt(env["PORT"], 3000),
     logLevel: parseLogLevel(env["LOG_LEVEL"]),
+    telemetryEnabled,
+    telemetryRecordInputs: parseTelemetryRecordFlag(
+      env["TELEMETRY_RECORD_INPUTS"],
+    ),
+    telemetryRecordOutputs: parseTelemetryRecordFlag(
+      env["TELEMETRY_RECORD_OUTPUTS"],
+    ),
+    otelServiceName: env["OTEL_SERVICE_NAME"] || undefined,
+    otelExporterOtlpEndpoint: env["OTEL_EXPORTER_OTLP_ENDPOINT"] || undefined,
+    otelExporterOtlpHeaders: env["OTEL_EXPORTER_OTLP_HEADERS"] || undefined,
   };
 }

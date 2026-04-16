@@ -27,6 +27,12 @@ describe("loadEnvConfig", () => {
         todoistProjectId: "project-123",
         port: 3000,
         logLevel: "info",
+        telemetryEnabled: false,
+        telemetryRecordInputs: true,
+        telemetryRecordOutputs: true,
+        otelServiceName: undefined,
+        otelExporterOtlpEndpoint: undefined,
+        otelExporterOtlpHeaders: undefined,
       });
     });
 
@@ -165,6 +171,189 @@ describe("loadEnvConfig", () => {
       const config1 = loadEnvConfig(env);
       const config2 = loadEnvConfig(env);
       expect(config1).toEqual(config2);
+    });
+  });
+
+  describe("TELEMETRY_ENABLED", () => {
+    it("should default to false and include undefined OTel fields when TELEMETRY_ENABLED is absent", () => {
+      const config = loadEnvConfig(REQUIRED_ENV);
+      expect(config.telemetryEnabled).toBe(false);
+      expect(config.otelServiceName).toBeUndefined();
+      expect(config.otelExporterOtlpEndpoint).toBeUndefined();
+      expect(config.otelExporterOtlpHeaders).toBeUndefined();
+    });
+
+    it('should parse "true" as true', () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_ENABLED: "true",
+        OTEL_SERVICE_NAME: "svc",
+        OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
+      });
+      expect(config.telemetryEnabled).toBe(true);
+    });
+
+    it('should parse "1" as true', () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_ENABLED: "1",
+        OTEL_SERVICE_NAME: "svc",
+        OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
+      });
+      expect(config.telemetryEnabled).toBe(true);
+    });
+
+    it('should parse "yes" as false', () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_ENABLED: "yes",
+      });
+      expect(config.telemetryEnabled).toBe(false);
+    });
+
+    it('should parse "on" as false', () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_ENABLED: "on",
+      });
+      expect(config.telemetryEnabled).toBe(false);
+    });
+
+    it("should parse empty string as false", () => {
+      const config = loadEnvConfig({ ...REQUIRED_ENV, TELEMETRY_ENABLED: "" });
+      expect(config.telemetryEnabled).toBe(false);
+    });
+
+    it("should return config with telemetryEnabled true and OTel values populated when TELEMETRY_ENABLED=true and both required OTel vars are set", () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_ENABLED: "true",
+        OTEL_SERVICE_NAME: "my-service",
+        OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
+      });
+      expect(config.telemetryEnabled).toBe(true);
+      expect(config.otelServiceName).toBe("my-service");
+      expect(config.otelExporterOtlpEndpoint).toBe("http://otel:4318");
+    });
+
+    it("should throw EnvConfigError mentioning OTEL_SERVICE_NAME when TELEMETRY_ENABLED=true and OTEL_SERVICE_NAME is missing", () => {
+      expect(() =>
+        loadEnvConfig({
+          ...REQUIRED_ENV,
+          TELEMETRY_ENABLED: "true",
+          OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
+        }),
+      ).toThrow(EnvConfigError);
+      expect(() =>
+        loadEnvConfig({
+          ...REQUIRED_ENV,
+          TELEMETRY_ENABLED: "true",
+          OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
+        }),
+      ).toThrow("OTEL_SERVICE_NAME");
+    });
+
+    it("should throw EnvConfigError mentioning OTEL_EXPORTER_OTLP_ENDPOINT when TELEMETRY_ENABLED=true and OTEL_EXPORTER_OTLP_ENDPOINT is missing", () => {
+      expect(() =>
+        loadEnvConfig({
+          ...REQUIRED_ENV,
+          TELEMETRY_ENABLED: "true",
+          OTEL_SERVICE_NAME: "my-service",
+        }),
+      ).toThrow(EnvConfigError);
+      expect(() =>
+        loadEnvConfig({
+          ...REQUIRED_ENV,
+          TELEMETRY_ENABLED: "true",
+          OTEL_SERVICE_NAME: "my-service",
+        }),
+      ).toThrow("OTEL_EXPORTER_OTLP_ENDPOINT");
+    });
+
+    it("should throw EnvConfigError listing both OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT when TELEMETRY_ENABLED=true and both are missing", () => {
+      let error: EnvConfigError | undefined;
+      try {
+        loadEnvConfig({ ...REQUIRED_ENV, TELEMETRY_ENABLED: "true" });
+      } catch (e) {
+        if (e instanceof EnvConfigError) error = e;
+      }
+      expect(error).toBeDefined();
+      expect(error!.message).toContain("OTEL_SERVICE_NAME");
+      expect(error!.message).toContain("OTEL_EXPORTER_OTLP_ENDPOINT");
+    });
+
+    it("should expose OTEL_EXPORTER_OTLP_HEADERS as-is without parsing when set", () => {
+      const headers = "Authorization=Bearer token123,X-Custom=value";
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_ENABLED: "true",
+        OTEL_SERVICE_NAME: "my-service",
+        OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
+        OTEL_EXPORTER_OTLP_HEADERS: headers,
+      });
+      expect(config.otelExporterOtlpHeaders).toBe(headers);
+    });
+  });
+
+  describe("TELEMETRY_RECORD_INPUTS", () => {
+    it("should default to true when TELEMETRY_RECORD_INPUTS is absent", () => {
+      const config = loadEnvConfig(REQUIRED_ENV);
+      expect(config.telemetryRecordInputs).toBe(true);
+    });
+
+    it('should parse "false" as false', () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_RECORD_INPUTS: "false",
+      });
+      expect(config.telemetryRecordInputs).toBe(false);
+    });
+
+    it('should parse "0" as false', () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_RECORD_INPUTS: "0",
+      });
+      expect(config.telemetryRecordInputs).toBe(false);
+    });
+
+    it("should parse any other value as true", () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_RECORD_INPUTS: "yes",
+      });
+      expect(config.telemetryRecordInputs).toBe(true);
+    });
+  });
+
+  describe("TELEMETRY_RECORD_OUTPUTS", () => {
+    it("should default to true when TELEMETRY_RECORD_OUTPUTS is absent", () => {
+      const config = loadEnvConfig(REQUIRED_ENV);
+      expect(config.telemetryRecordOutputs).toBe(true);
+    });
+
+    it('should parse "false" as false', () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_RECORD_OUTPUTS: "false",
+      });
+      expect(config.telemetryRecordOutputs).toBe(false);
+    });
+
+    it('should parse "0" as false', () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_RECORD_OUTPUTS: "0",
+      });
+      expect(config.telemetryRecordOutputs).toBe(false);
+    });
+
+    it("should parse any other value as true", () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        TELEMETRY_RECORD_OUTPUTS: "yes",
+      });
+      expect(config.telemetryRecordOutputs).toBe(true);
     });
   });
 
