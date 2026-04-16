@@ -236,6 +236,37 @@ Shrimp sets a stable `ai.telemetry.functionId` on the Main Agent invocation so o
 
 By default, the agent's assembled prompt and the model's generated text are recorded on spans. Both inputs and outputs are captured unless explicitly disabled — that configuration knob is covered separately under Deployment & Configuration.
 
+### Telemetry Configuration
+
+Telemetry is controlled at startup. The following rules govern how configuration changes and export failures affect the system.
+
+**Enable / disable semantics:**
+
+- When telemetry is disabled: no spans are emitted, no tracer is initialized, and no exporter connections are opened. The Processing Cycle and Main Agent run identically to a non-tracing deployment — disabling telemetry has no observable effect on task execution.
+- When telemetry is enabled: spans are emitted per the [Telemetry Emission](#telemetry-emission) contract.
+- The enable/disable decision is fixed at startup and does not change during process lifetime. There is no runtime toggle.
+
+**Input / output recording:**
+
+- By default, both the assembled prompt text and the model's generated text are recorded on spans (as stated in Telemetry Emission).
+- Privacy-sensitive deployments may disable input recording, output recording, or both. Disabling either preserves all non-content attributes — model identifier, token usage counts, finish reason, and tool call names, arguments, and results are unaffected.
+- This is a deployment-time setting, not a per-request or per-task knob.
+
+**Exporter failure is fail-open:**
+
+- Exporter errors — including network failure, backend unavailability, timeout, and serialization error — must never propagate into the Processing Cycle. The cycle completes its work; task state in Todoist is never affected by telemetry failures.
+- This is consistent with the Fail-Open Recovery pattern applied to Todoist and AI provider failures during task processing.
+- Dropped spans are lost. Shrimp has no local span buffer beyond what the OpenTelemetry SDK provides internally, and does not retry, persist, or re-queue spans on behalf of a failing exporter.
+
+**Startup validation:**
+
+- If telemetry is enabled but required telemetry configuration is missing or malformed at startup, the process fails fast — consistent with the fail-fast pattern applied to missing required environment variables and malformed `.mcp.json` (see [Failure Handling](#failure-handling) and [Deployment & Configuration](#deployment--configuration)).
+- If telemetry is disabled, telemetry-related configuration is not validated.
+
+**Initialization ordering:**
+
+- If telemetry is enabled, the tracer and exporter are initialized before the HTTP server starts accepting heartbeats. This guarantees that the first Processing Cycle can emit spans; no cycle runs before the telemetry infrastructure is ready.
+
 ### `GET /health`
 
 Liveness check used by Docker `HEALTHCHECK`.
