@@ -9,6 +9,7 @@ import {
   loadMcpConfig,
   type McpConfig,
 } from "./infrastructure/config/mcp-config";
+import { createTelemetry } from "./infrastructure/telemetry/telemetry-factory";
 import { TodoistApi } from "@doist/todoist-sdk";
 import { TodoistBoardRepository } from "./infrastructure/todoist/todoist-board-repository";
 import { AiSdkMainAgent } from "./infrastructure/ai/ai-sdk-main-agent";
@@ -102,7 +103,12 @@ export async function bootstrap(): Promise<void> {
     aiMaxSteps: env.aiMaxSteps,
   });
 
-  // 3. Language model
+  // 3. Telemetry — initialize before HTTP server accepts heartbeats (SPEC §Initialization ordering)
+  const telemetry = createTelemetry(env, logger);
+  container.registerInstance(TOKENS.Telemetry, telemetry);
+  logger.info("telemetry initialized", { enabled: env.telemetryEnabled });
+
+  // 4. Language model
   const provider = createOpenAICompatible({
     name: "shrimp",
     baseURL: env.openAiBaseUrl,
@@ -113,10 +119,10 @@ export async function bootstrap(): Promise<void> {
     provider.chatModel(env.aiModel),
   );
 
-  // 4. MCP client factory
+  // 5. MCP client factory
   container.registerInstance(TOKENS.McpClientFactory, createMcpClient);
 
-  // 5. MCP config — absent file is explicitly allowed per SPEC §Deployment §Rules
+  // 6. MCP config — absent file is explicitly allowed per SPEC §Deployment §Rules
   let mcpConfig: McpConfig = { mcpServers: {} };
   try {
     mcpConfig = loadMcpConfig(".mcp.json");
@@ -134,7 +140,7 @@ export async function bootstrap(): Promise<void> {
   }
   container.registerInstance(TOKENS.McpConfig, mcpConfig);
 
-  // 6. MCP tool loading (async — result consumed by ToolProviderFactory)
+  // 7. MCP tool loading (async — result consumed by ToolProviderFactory)
   const mcpToolLoader = container.resolve(McpToolLoader);
   let mcpTools: Record<string, unknown> = {};
   let mcpDescriptions: ToolDescription[] = [];
@@ -146,7 +152,7 @@ export async function bootstrap(): Promise<void> {
     // Per SPEC §Failure Handling: if loading fails entirely, run with built-in tools only
   }
 
-  // 7. ToolProviderFactory — needs async MCP results captured in closure
+  // 8. ToolProviderFactory — needs async MCP results captured in closure
   container.register(TOKENS.ToolProviderFactory, {
     useFactory: (c) =>
       new ToolProviderFactoryImpl(

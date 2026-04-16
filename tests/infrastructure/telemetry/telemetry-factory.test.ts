@@ -1,0 +1,106 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { TelemetryPort } from "../../../src/use-cases/ports/telemetry";
+import type { EnvConfig } from "../../../src/infrastructure/config/env-config";
+import { makeFakeLogger } from "../../mocks/fake-logger";
+import { NoopTelemetry } from "../../../src/infrastructure/telemetry/noop-telemetry";
+
+// Captured spy so we can assert on constructor calls.
+const MockOtelTelemetry = vi.fn(function (this: Record<string, unknown>) {
+  this.tracer = {};
+  this.recordInputs = true;
+  this.recordOutputs = true;
+  this.shutdown = vi.fn().mockResolvedValue(undefined);
+});
+
+vi.mock("../../../src/infrastructure/telemetry/otel-telemetry", () => ({
+  OtelTelemetry: MockOtelTelemetry,
+}));
+
+// Import after mock so the mocked version is used
+const { createTelemetry } =
+  await import("../../../src/infrastructure/telemetry/telemetry-factory");
+const { OtelTelemetry } =
+  await import("../../../src/infrastructure/telemetry/otel-telemetry");
+
+const BASE_ENV: EnvConfig = {
+  openAiBaseUrl: "https://api.openai.com/v1",
+  openAiApiKey: "sk-test",
+  aiModel: "gpt-4o",
+  aiMaxSteps: 50,
+  aiReasoningEffort: undefined,
+  todoistApiToken: "todoist-token",
+  todoistProjectId: "project-123",
+  port: 3000,
+  logLevel: "info",
+  telemetryEnabled: false,
+  telemetryRecordInputs: true,
+  telemetryRecordOutputs: true,
+  otelServiceName: undefined,
+  otelExporterOtlpEndpoint: undefined,
+  otelExporterOtlpHeaders: undefined,
+};
+
+describe("createTelemetry", () => {
+  beforeEach(() => {
+    vi.mocked(OtelTelemetry).mockClear();
+  });
+
+  it("returns a NoopTelemetry instance when telemetryEnabled is false", () => {
+    const logger = makeFakeLogger();
+    const env: EnvConfig = { ...BASE_ENV, telemetryEnabled: false };
+
+    const result = createTelemetry(env, logger);
+
+    expect(result).toBeInstanceOf(NoopTelemetry);
+  });
+
+  it("returns an OtelTelemetry instance when telemetryEnabled is true and required fields are present", () => {
+    const logger = makeFakeLogger();
+    const env: EnvConfig = {
+      ...BASE_ENV,
+      telemetryEnabled: true,
+      otelServiceName: "my-service",
+      otelExporterOtlpEndpoint: "http://otel:4318",
+    };
+
+    const result = createTelemetry(env, logger);
+
+    expect(result).toBeInstanceOf(OtelTelemetry);
+  });
+
+  it("passes correct OtelTelemetryOptions to OtelTelemetry constructor", () => {
+    const logger = makeFakeLogger();
+    const headers = "Authorization=Bearer token123";
+    const env: EnvConfig = {
+      ...BASE_ENV,
+      telemetryEnabled: true,
+      otelServiceName: "shrimp-service",
+      otelExporterOtlpEndpoint: "http://otel:4318",
+      otelExporterOtlpHeaders: headers,
+      telemetryRecordInputs: false,
+      telemetryRecordOutputs: false,
+    };
+
+    createTelemetry(env, logger);
+
+    expect(OtelTelemetry).toHaveBeenCalledOnce();
+    expect(OtelTelemetry).toHaveBeenCalledWith({
+      serviceName: "shrimp-service",
+      endpoint: "http://otel:4318",
+      headers,
+      recordInputs: false,
+      recordOutputs: false,
+      logger,
+    });
+  });
+
+  it("always satisfies TelemetryPort interface", () => {
+    const logger = makeFakeLogger();
+    const env: EnvConfig = { ...BASE_ENV, telemetryEnabled: false };
+
+    // TypeScript compile-time assertion: TelemetryPort is satisfied
+    const t: TelemetryPort = createTelemetry(env, logger);
+
+    expect(t).toBeDefined();
+  });
+});
