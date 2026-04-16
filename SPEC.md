@@ -60,18 +60,22 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Health check endpoint              | `/health` returns a liveness signal for Docker health check                                                                            |
 | Built-in Todoist tools             | Core Todoist operations (get tasks, get comments, post comment, move task) are built-in to the agent                                   |
 | MCP-based tool extension           | Additional capabilities can be added via MCP servers without modifying the agent                                                       |
+| Distributed tracing                | The Processing Cycle, Main Agent execution, and each tool call emit OpenTelemetry spans that downstream collectors can consume         |
 
 ### IS NOT
 
-| Excluded                             | Reason                                                                                                  |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Parallel task processing             | Queue processes one task at a time; concurrent execution is out of scope                                |
-| Persistent or distributed queue      | Queue is in-memory only; tasks are lost on restart (Todoist is the source of truth)                     |
-| Proactive scheduling                 | No cron or timer inside Shrimp; heartbeat is always externally triggered                                |
-| Todoist Project/Board management     | Shrimp reads from and writes to the configured Board only; it does not create or modify Board structure |
-| Multi-Board or multi-account support | Single configured board per instance                                                                    |
-| Web UI or dashboard                  | No user-facing interface beyond the two API endpoints                                                   |
-| Authentication / multi-tenancy       | Single-instance deployment; no user accounts                                                            |
+| Excluded                             | Reason                                                                                                                           |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Parallel task processing             | Queue processes one task at a time; concurrent execution is out of scope                                                         |
+| Persistent or distributed queue      | Queue is in-memory only; tasks are lost on restart (Todoist is the source of truth)                                              |
+| Proactive scheduling                 | No cron or timer inside Shrimp; heartbeat is always externally triggered                                                         |
+| Todoist Project/Board management     | Shrimp reads from and writes to the configured Board only; it does not create or modify Board structure                          |
+| Multi-Board or multi-account support | Single configured board per instance                                                                                             |
+| Web UI or dashboard                  | No user-facing interface beyond the two API endpoints                                                                            |
+| Authentication / multi-tenancy       | Single-instance deployment; no user accounts                                                                                     |
+| Metrics and log export               | Shrimp emits traces only; RED metrics, histograms, and log shipping are not produced                                             |
+| Custom sampler or exporter plugins   | Sampler and exporter are configured entirely through the OpenTelemetry SDK environment; Shrimp ships no pluggable override       |
+| Trace visualization UI               | Shrimp does not host a trace viewer; an external backend (e.g., Jaeger, Tempo, or a vendor collector) is required to view traces |
 
 ## Behavior
 
