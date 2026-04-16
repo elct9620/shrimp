@@ -329,6 +329,30 @@ POST /heartbeat
 
 The agent has two categories of tools: built-in tools for core Todoist operations, and MCP tools for extensible capabilities. Built-in tools (get tasks, get comments, post comment, move task) are always available and do not require MCP. Additional tools (file access, web search, code execution) are added by registering MCP servers via a `.mcp.json` configuration file; no changes to the agent are required.
 
+### Telemetry
+
+Telemetry is a process-level concern: the OpenTelemetry tracer provider and exporter pipeline are initialized at process startup, alongside HTTP server startup and configuration loading, not inside the Processing Cycle or Main Agent. Once initialized, they participate via the ambient OpenTelemetry context; no component holds or passes tracer handles explicitly. This mirrors how `.mcp.json` loading is handled in the Extension Model — configuration is resolved once at startup, and the result is available to all components without tight coupling.
+
+**Component responsibilities:**
+
+| Component         | Telemetry responsibility                                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Process startup   | Initialize the tracer provider and exporter pipeline before the HTTP server accepts heartbeats                     |
+| Processing Cycle  | Own the root span lifecycle: start the span when the cycle begins, propagate OTel context, end when the cycle ends |
+| Main Agent (port) | Telemetry-agnostic at the port level; the port contract has no tracing parameters                                  |
+| AiSdkMainAgent    | Forward telemetry settings into AI SDK's `experimental_telemetry` option on each invocation                        |
+| Tool Layer        | No instrumentation required; AI SDK emits `ai.toolCall` spans for every Built-in and MCP tool call automatically   |
+
+**Inside vs. outside Shrimp:**
+
+| Inside Shrimp                                                  | Outside Shrimp                                  |
+| -------------------------------------------------------------- | ----------------------------------------------- |
+| Root span lifecycle on Processing Cycle                        | Span transport to a backend collector or vendor |
+| Forwarding telemetry settings to AI SDK (via `AiSdkMainAgent`) | Sampling policy and trace retention             |
+| Initializing tracer and exporter at process startup            | Trace storage, querying, and visualization      |
+
+Swapping `AiSdkMainAgent` for an alternative implementation requires no port changes and no changes to how `ProcessingCycle` manages the root span.
+
 ### Failure Handling
 
 - **`.mcp.json` invalid format**: if the file exists but contains invalid JSON, is missing the `mcpServers` key, or has values that do not conform to the server definition structure, the process fails at startup (fail fast). An empty servers object (`{"mcpServers": {}}`) is valid and equivalent to no servers configured.
