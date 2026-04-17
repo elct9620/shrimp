@@ -12,7 +12,7 @@ import {
 import { createTelemetry } from "./infrastructure/telemetry/telemetry-factory";
 import { TodoistApi } from "@doist/todoist-sdk";
 import { TodoistBoardRepository } from "./infrastructure/todoist/todoist-board-repository";
-import { AiSdkMainAgent } from "./infrastructure/ai/ai-sdk-main-agent";
+import { AiSdkShrimpAgent } from "./infrastructure/ai/ai-sdk-shrimp-agent";
 import {
   McpToolLoader,
   createMcpClient,
@@ -53,7 +53,7 @@ container.register(TOKENS.BoardRepository, {
 container.register(TOKENS.ShrimpAgent, {
   useFactory: (c) => {
     const env = c.resolve<EnvConfig>(TOKENS.EnvConfig);
-    return new AiSdkMainAgent({
+    return new AiSdkShrimpAgent({
       model: c.resolve(TOKENS.LanguageModel),
       logger: c.resolve<LoggerPort>(TOKENS.Logger),
       providerName: "shrimp",

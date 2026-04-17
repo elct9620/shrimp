@@ -5,7 +5,7 @@ import type {
   ToolLoopAgentSettings,
 } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
-import { AiSdkMainAgent } from "../../../src/infrastructure/ai/ai-sdk-main-agent";
+import { AiSdkShrimpAgent } from "../../../src/infrastructure/ai/ai-sdk-shrimp-agent";
 import type { JobInput } from "../../../src/use-cases/ports/shrimp-agent";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
 import { makeFakeLogger } from "../../mocks/fake-logger";
@@ -116,7 +116,7 @@ function makeAgent(
   },
 ) {
   const noop = new NoopTelemetry();
-  return new AiSdkMainAgent({
+  return new AiSdkShrimpAgent({
     model,
     logger,
     providerName: options?.providerName ?? "test-provider",
@@ -135,7 +135,7 @@ const baseInput: JobInput = {
   jobId: "00000000-0000-0000-0000-000000000001",
 };
 
-describe("AiSdkMainAgent.run", () => {
+describe("AiSdkShrimpAgent.run", () => {
   describe("termination reason mapping", () => {
     it("should return finished when model returns stop", async () => {
       const model = makeModel("stop");
@@ -293,7 +293,7 @@ describe("AiSdkMainAgent.run", () => {
 
   describe("experimental_telemetry forwarding", () => {
     function makeInspectableAgent(captured: TelemetrySettings[]) {
-      return class InspectableAgent extends AiSdkMainAgent {
+      return class InspectableAgent extends AiSdkShrimpAgent {
         override buildToolLoopAgentOptions(
           input: JobInput,
         ): ToolLoopAgentSettings {
@@ -326,7 +326,7 @@ describe("AiSdkMainAgent.run", () => {
       expect(capturedTelemetry).toHaveLength(1);
       const et = capturedTelemetry[0];
       expect(et.isEnabled).toBe(true);
-      expect(et.functionId).toBe("shrimp.main-agent");
+      expect(et.functionId).toBe("shrimp.job");
       expect(et.recordInputs).toBe(true);
       expect(et.recordOutputs).toBe(true);
       expect(et.tracer).toBe(tracer);
@@ -378,20 +378,18 @@ describe("AiSdkMainAgent.run", () => {
   describe("gen_ai semantic conventions", () => {
     function findMainAgentSpan(spans: RecordedSpan[]) {
       return spans.find(
-        (s) =>
-          s.name === "invoke_agent shrimp.main-agent" ||
-          s.name === "shrimp.main-agent",
+        (s) => s.name === "invoke_agent shrimp.job" || s.name === "shrimp.job",
       );
     }
 
-    it("should rename outer span to 'invoke_agent shrimp.main-agent' per semconv", async () => {
+    it("should rename outer span to 'invoke_agent shrimp.job' per semconv", async () => {
       const { tracer, spans } = makeRecordingTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
 
       await agent.run(baseInput);
 
-      expect(spans[0].name).toBe("invoke_agent shrimp.main-agent");
+      expect(spans[0].name).toBe("invoke_agent shrimp.job");
     });
 
     it("should record exception, set ERROR status, end the span, and rethrow when generate throws", async () => {
@@ -430,7 +428,7 @@ describe("AiSdkMainAgent.run", () => {
       expect(span!.attributes["gen_ai.operation.name"]).toBe("invoke_agent");
     });
 
-    it("should set gen_ai.agent.name to shrimp.main-agent on success", async () => {
+    it("should set gen_ai.agent.name to shrimp.job on success", async () => {
       const { tracer, spans } = makeRecordingTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
@@ -438,7 +436,7 @@ describe("AiSdkMainAgent.run", () => {
       await agent.run(baseInput);
 
       const span = findMainAgentSpan(spans);
-      expect(span!.attributes["gen_ai.agent.name"]).toBe("shrimp.main-agent");
+      expect(span!.attributes["gen_ai.agent.name"]).toBe("shrimp.job");
     });
 
     it("should set gen_ai.provider.name to the configured providerName on success", async () => {

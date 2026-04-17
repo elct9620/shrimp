@@ -26,7 +26,7 @@ const ATTR_GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
 const ATTR_GEN_AI_AGENT_NAME = "gen_ai.agent.name";
 // gen_ai.agent.id per OTel semconv is a stable unique identifier for the agent
 // implementation (not per-instance). We use a hardcoded UUID v4 that identifies
-// the "Shrimp Main Agent" type across all deployments. This constant never changes;
+// the "Shrimp Agent" type across all deployments. This constant never changes;
 // it correlates behavior across versions — use gen_ai.agent.version for that.
 const ATTR_GEN_AI_AGENT_ID = "gen_ai.agent.id";
 const ATTR_GEN_AI_AGENT_VERSION = "gen_ai.agent.version";
@@ -36,7 +36,7 @@ const ATTR_GEN_AI_INPUT_MESSAGES = "gen_ai.input.messages";
 const ATTR_GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages";
 const ATTR_ERROR_TYPE = "error.type";
 
-// Stable type-level identifier for the Shrimp Main Agent implementation.
+// Stable type-level identifier for the Shrimp Agent implementation.
 // Per OTel gen_ai semconv, gen_ai.agent.id is a stable unique identifier for
 // the agent (analogous to an OpenAI assistant ID for custom agents). We use a
 // fixed UUID v4 to identify this agent type — NOT per-deployment or per-instance.
@@ -48,7 +48,7 @@ const SHRIMP_MAIN_AGENT_ID = "e3a7c2f1-84b6-4d9e-a531-7c02b5f8e490";
 // This correlates observability signals with the deployed release.
 const SHRIMP_AGENT_VERSION: string = pkg.version;
 
-export type AiSdkMainAgentOptions = {
+export type AiSdkShrimpAgentOptions = {
   model: LanguageModel;
   logger: LoggerPort;
   providerName: string;
@@ -58,7 +58,7 @@ export type AiSdkMainAgentOptions = {
   recordOutputs: boolean;
 };
 
-export class AiSdkMainAgent implements ShrimpAgent {
+export class AiSdkShrimpAgent implements ShrimpAgent {
   private readonly model: LanguageModel;
   private readonly logger: LoggerPort;
   private readonly tracer: Tracer;
@@ -69,9 +69,9 @@ export class AiSdkMainAgent implements ShrimpAgent {
     | Record<string, Record<string, string>>
     | undefined;
 
-  constructor(options: AiSdkMainAgentOptions) {
+  constructor(options: AiSdkShrimpAgentOptions) {
     this.model = options.model;
-    this.logger = options.logger.child({ module: "AiSdkMainAgent" });
+    this.logger = options.logger.child({ module: "AiSdkShrimpAgent" });
     this.tracer = options.tracer;
     this.providerName = options.providerName;
     this.recordInputs = options.recordInputs;
@@ -90,7 +90,7 @@ export class AiSdkMainAgent implements ShrimpAgent {
       providerOptions: this.providerOptions,
       experimental_telemetry: {
         isEnabled: true,
-        functionId: "shrimp.main-agent",
+        functionId: "shrimp.job",
         recordInputs: this.recordInputs,
         recordOutputs: this.recordOutputs,
         tracer: this.tracer,
@@ -105,15 +105,15 @@ export class AiSdkMainAgent implements ShrimpAgent {
       toolCount,
     });
 
-    return this.tracer.startActiveSpan("shrimp.main-agent", async (span) => {
+    return this.tracer.startActiveSpan("shrimp.job", async (span) => {
       // Rename to semconv SHOULD form: "{gen_ai.operation.name} {gen_ai.agent.name}"
       // per gen_ai-agent-spans spec. updateName is called before any setAttribute
       // so the canonical name applies from the span's first moment. The initial
       // name passed to startActiveSpan acts as fallback on tracers that do not
       // implement updateName.
-      span.updateName("invoke_agent shrimp.main-agent");
+      span.updateName("invoke_agent shrimp.job");
       span.setAttribute(ATTR_GEN_AI_OPERATION_NAME, "invoke_agent");
-      span.setAttribute(ATTR_GEN_AI_AGENT_NAME, "shrimp.main-agent");
+      span.setAttribute(ATTR_GEN_AI_AGENT_NAME, "shrimp.job");
       span.setAttribute(ATTR_GEN_AI_AGENT_ID, SHRIMP_MAIN_AGENT_ID);
       span.setAttribute(ATTR_GEN_AI_AGENT_VERSION, SHRIMP_AGENT_VERSION);
       span.setAttribute(ATTR_GEN_AI_PROVIDER_NAME, this.providerName);
