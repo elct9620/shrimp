@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { selectTask } from "../entities/task-selector";
 import { Section } from "../entities/section";
 import { assemble } from "./prompt-assembler";
@@ -42,6 +43,10 @@ export class ProcessingCycle {
   }
 
   async run(): Promise<void> {
+    // TODO: Use crypto.randomUUID() v7 when Node.js exposes it natively;
+    // currently returns v4 which is the acceptable fallback per spec.
+    const heartbeatId = randomUUID();
+
     return this.telemetry.runInSpan("shrimp.processing-cycle", async () => {
       this.logger.info("cycle started");
 
@@ -100,6 +105,7 @@ export class ProcessingCycle {
         userPrompt,
         tools: toolProvider.getTools(),
         maxSteps: this.maxSteps,
+        heartbeatId,
       });
 
       this.logger.info("cycle finished", {

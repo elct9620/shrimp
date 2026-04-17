@@ -23,6 +23,7 @@ import { toGenAiOutputMessages } from "../telemetry/gen-ai-bridge-span-processor
 const ATTR_GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
 const ATTR_GEN_AI_AGENT_NAME = "gen_ai.agent.name";
 const ATTR_GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
+const ATTR_GEN_AI_CONVERSATION_ID = "gen_ai.conversation.id";
 const ATTR_GEN_AI_INPUT_MESSAGES = "gen_ai.input.messages";
 const ATTR_GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages";
 const ATTR_ERROR_TYPE = "error.type";
@@ -90,6 +91,9 @@ export class AiSdkMainAgent implements MainAgent {
       span.setAttribute(ATTR_GEN_AI_OPERATION_NAME, "invoke_agent");
       span.setAttribute(ATTR_GEN_AI_AGENT_NAME, "shrimp.main-agent");
       span.setAttribute(ATTR_GEN_AI_PROVIDER_NAME, this.providerName);
+      // Correlation ID — always recorded regardless of recordInputs/recordOutputs
+      // because it is trace glue, not sensitive content.
+      span.setAttribute(ATTR_GEN_AI_CONVERSATION_ID, input.heartbeatId);
 
       if (this.recordInputs) {
         const inputMessages = [

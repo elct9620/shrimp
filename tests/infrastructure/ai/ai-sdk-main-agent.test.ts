@@ -131,6 +131,7 @@ const baseInput: MainAgentInput = {
   userPrompt: "Complete the task.",
   tools: { my_tool: {} },
   maxSteps: 3,
+  heartbeatId: "00000000-0000-0000-0000-000000000001",
 };
 
 describe("AiSdkMainAgent.run", () => {
@@ -437,6 +438,36 @@ describe("AiSdkMainAgent.run", () => {
 
       const span = findMainAgentSpan(spans);
       expect(span!.attributes["gen_ai.provider.name"]).toBe("my-provider");
+    });
+
+    it("should set gen_ai.conversation.id to the heartbeatId from MainAgentInput", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), { tracer });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes["gen_ai.conversation.id"]).toBe(
+        baseInput.heartbeatId,
+      );
+    });
+
+    it("should set gen_ai.conversation.id even when recordInputs=false and recordOutputs=false", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        recordInputs: false,
+        recordOutputs: false,
+      });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes["gen_ai.conversation.id"]).toBe(
+        baseInput.heartbeatId,
+      );
     });
 
     it("should set error.type to the error constructor name when generate throws", async () => {

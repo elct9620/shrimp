@@ -203,6 +203,33 @@ describe("ProcessingCycle.run", () => {
         "prior progress note",
       );
     });
+
+    it("should pass a non-empty UUID as heartbeatId to main agent", async () => {
+      await cycle.run();
+
+      const uuidPattern =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      expect(mainAgent.capturedInput?.heartbeatId).toMatch(uuidPattern);
+    });
+
+    it("should generate a distinct heartbeatId for each successive cycle", async () => {
+      const secondAgent = makeMainAgent();
+      const secondCycle = new ProcessingCycle({
+        board,
+        mainAgent: secondAgent,
+        toolProviderFactory,
+        maxSteps: 10,
+        logger,
+        telemetry: new NoopTelemetry(),
+      });
+
+      await cycle.run();
+      await secondCycle.run();
+
+      expect(mainAgent.capturedInput?.heartbeatId).not.toBe(
+        secondAgent.capturedInput?.heartbeatId,
+      );
+    });
   });
 
   describe("when a Backlog task is selected (no In Progress tasks)", () => {
