@@ -12,11 +12,12 @@ export function createTelemetry(
     return new NoopTelemetry();
   }
 
-  // env-config validation guarantees these are present when telemetryEnabled is true.
+  // env-config validation guarantees serviceName is present when telemetryEnabled is true.
+  // OTEL_EXPORTER_OTLP_* env vars are pass-through to the OTel SDK (SPEC §Telemetry);
+  // the adapter does not forward them so the SDK reads process.env natively and
+  // applies spec-compliant signal-path appending.
   return new OtelTelemetry({
     serviceName: env.otelServiceName!,
-    endpoint: env.otelExporterOtlpEndpoint!,
-    headers: env.otelExporterOtlpHeaders,
     recordInputs: env.telemetryRecordInputs,
     recordOutputs: env.telemetryRecordOutputs,
     logger,

@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { diag, DiagLogLevel, type DiagLogger } from "@opentelemetry/api";
 import type { TelemetryPort } from "../../../src/use-cases/ports/telemetry";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 
@@ -58,8 +59,6 @@ function makeOptions(
 ): ConstructorParameters<typeof OtelTelemetry>[0] {
   return {
     serviceName: "shrimp-test",
-    endpoint: "http://localhost:4318/v1/traces",
-    headers: undefined,
     recordInputs: true,
     recordOutputs: true,
     logger: makeFakeLogger(),
@@ -71,23 +70,74 @@ function makeOptions(
 // Tests
 // ---------------------------------------------------------------------------
 describe("OtelTelemetry", () => {
+  let setLoggerSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockSdkShutdown.mockResolvedValue(undefined);
+    setLoggerSpy = vi.spyOn(diag, "setLogger");
+    delete process.env["OTEL_LOG_LEVEL"];
   });
 
-  it("should wire OTLPTraceExporter with url and parsed headers", () => {
-    new OtelTelemetry(
-      makeOptions({
-        endpoint: "http://localhost:4318/v1/traces",
-        headers: "X-Auth=secret,X-Tenant=acme",
-      }),
-    );
+  afterEach(() => {
+    setLoggerSpy.mockRestore();
+    diag.disable();
+    delete process.env["OTEL_LOG_LEVEL"];
+  });
 
-    expect(mockOTLPExporterConstructor).toHaveBeenCalledWith({
-      url: "http://localhost:4318/v1/traces",
-      headers: { "X-Auth": "secret", "X-Tenant": "acme" },
+  it("registers a diag logger that forwards OTel SDK diagnostics to LoggerPort", () => {
+    const logger = makeFakeLogger();
+    new OtelTelemetry(makeOptions({ logger }));
+
+    expect(setLoggerSpy).toHaveBeenCalledOnce();
+    const [diagLogger, opts] = setLoggerSpy.mock.calls[0] as [
+      DiagLogger,
+      { logLevel: DiagLogLevel; suppressOverrideMessage: boolean },
+    ];
+
+    diagLogger.error("export failed", { code: 401 });
+    diagLogger.warn("retrying");
+    diagLogger.info("sdk started");
+    diagLogger.debug("batch flushed");
+    diagLogger.verbose("verbose payload");
+
+    // Logger child is created with module: OtelTelemetry, so we assert against
+    // logger.child(...) — the same instance our adapter uses.
+    const child = (logger.child as ReturnType<typeof vi.fn>).mock.results[0]
+      .value;
+    expect(child.error).toHaveBeenCalledWith("[otel] export failed", {
+      args: [{ code: 401 }],
     });
+    expect(child.warn).toHaveBeenCalledWith("[otel] retrying", undefined);
+    expect(child.info).toHaveBeenCalledWith("[otel] sdk started", undefined);
+    expect(child.debug).toHaveBeenCalledWith("[otel] batch flushed", undefined);
+    expect(child.debug).toHaveBeenCalledWith(
+      "[otel] verbose payload",
+      undefined,
+    );
+    expect(opts.suppressOverrideMessage).toBe(true);
+    expect(opts.logLevel).toBe(DiagLogLevel.WARN);
+  });
+
+  it("honours OTEL_LOG_LEVEL when registering the diag logger", () => {
+    process.env["OTEL_LOG_LEVEL"] = "debug";
+    new OtelTelemetry(makeOptions());
+
+    const opts = setLoggerSpy.mock.calls[0][1] as { logLevel: DiagLogLevel };
+    expect(opts.logLevel).toBe(DiagLogLevel.DEBUG);
+  });
+
+  it("should construct OTLPTraceExporter without url/headers so the SDK reads OTEL_EXPORTER_OTLP_* from env", () => {
+    // Regression: previously we passed url:options.endpoint, which made the
+    // exporter treat it as a complete URL and skip the spec-mandated
+    // "/v1/traces" suffix appending — breaking Langfuse and any backend that
+    // relies on OTEL_EXPORTER_OTLP_ENDPOINT being a base URL.
+    new OtelTelemetry(makeOptions());
+
+    expect(mockOTLPExporterConstructor).toHaveBeenCalledOnce();
+    const args = mockOTLPExporterConstructor.mock.calls[0][0];
+    expect(args?.url).toBeUndefined();
+    expect(args?.headers).toBeUndefined();
   });
 
   it("should wire NodeSDK resource with service.name", () => {
@@ -124,34 +174,6 @@ describe("OtelTelemetry", () => {
     const t = new OtelTelemetry(makeOptions({ recordOutputs: false }));
 
     expect(t.recordOutputs).toBe(false);
-  });
-
-  it("should pass headers as undefined when headers option is not provided", () => {
-    new OtelTelemetry(makeOptions({ headers: undefined }));
-
-    expect(mockOTLPExporterConstructor).toHaveBeenCalledWith({
-      url: "http://localhost:4318/v1/traces",
-      headers: undefined,
-    });
-  });
-
-  it("should pass headers as undefined when headers option is an empty string", () => {
-    new OtelTelemetry(makeOptions({ headers: "" }));
-
-    expect(mockOTLPExporterConstructor).toHaveBeenCalledWith({
-      url: "http://localhost:4318/v1/traces",
-      headers: undefined,
-    });
-  });
-
-  it("should ignore malformed header pairs and keep valid ones", () => {
-    // "valid=ok" → kept; "broken" → no "=", dropped; "= " → key is empty, dropped; "empty=" → key non-empty, value is ""
-    new OtelTelemetry(makeOptions({ headers: "valid=ok,broken,= ,empty=" }));
-
-    expect(mockOTLPExporterConstructor).toHaveBeenCalledWith({
-      url: "http://localhost:4318/v1/traces",
-      headers: { valid: "ok", empty: "" },
-    });
   });
 
   it("should resolve and call sdk.shutdown when shutdown is called", async () => {

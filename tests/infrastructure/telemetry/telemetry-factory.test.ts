@@ -70,24 +70,23 @@ describe("createTelemetry", () => {
 
   it("passes correct OtelTelemetryOptions to OtelTelemetry constructor", () => {
     const logger = makeFakeLogger();
-    const headers = "Authorization=Bearer token123";
     const env: EnvConfig = {
       ...BASE_ENV,
       telemetryEnabled: true,
       otelServiceName: "shrimp-service",
       otelExporterOtlpEndpoint: "http://otel:4318",
-      otelExporterOtlpHeaders: headers,
+      otelExporterOtlpHeaders: "Authorization=Bearer token123",
       telemetryRecordInputs: false,
       telemetryRecordOutputs: false,
     };
 
     createTelemetry(env, logger);
 
+    // OTEL_EXPORTER_OTLP_* env vars are pass-through to the OTel SDK
+    // (SPEC §Telemetry); they are intentionally NOT forwarded into the adapter.
     expect(OtelTelemetry).toHaveBeenCalledOnce();
     expect(OtelTelemetry).toHaveBeenCalledWith({
       serviceName: "shrimp-service",
-      endpoint: "http://otel:4318",
-      headers,
       recordInputs: false,
       recordOutputs: false,
       logger,
