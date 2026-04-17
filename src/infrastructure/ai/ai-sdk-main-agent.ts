@@ -13,15 +13,18 @@ import type {
   MainAgentTerminationReason,
 } from "../../use-cases/ports/main-agent";
 import type { LoggerPort } from "../../use-cases/ports/logger";
+import { toGenAiOutputMessages } from "../telemetry/gen-ai-bridge-span-processor";
 
 // Agent-level gen_ai attributes only: operation.name=invoke_agent, agent.name,
-// provider.name, and error.type on failure. All LLM-call and tool-call gen_ai
-// attrs — including structured gen_ai.input/output.messages — are emitted by
-// GenAiBridgeSpanProcessor translating AI SDK's ai.* attrs on span end.
+// provider.name, error.type on failure, and overall input/output.messages for
+// trace-root consumers (e.g. Langfuse). Per-LLM-turn and tool-call gen_ai
+// attrs are emitted by GenAiBridgeSpanProcessor from AI SDK's ai.* attrs.
 // See src/infrastructure/telemetry/gen-ai-bridge-span-processor.ts
 const ATTR_GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
 const ATTR_GEN_AI_AGENT_NAME = "gen_ai.agent.name";
 const ATTR_GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
+const ATTR_GEN_AI_INPUT_MESSAGES = "gen_ai.input.messages";
+const ATTR_GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages";
 const ATTR_ERROR_TYPE = "error.type";
 
 export type AiSdkMainAgentOptions = {
@@ -88,10 +91,37 @@ export class AiSdkMainAgent implements MainAgent {
       span.setAttribute(ATTR_GEN_AI_AGENT_NAME, "shrimp.main-agent");
       span.setAttribute(ATTR_GEN_AI_PROVIDER_NAME, this.providerName);
 
+      if (this.recordInputs) {
+        const inputMessages = [
+          {
+            role: "system",
+            parts: [{ type: "text", content: input.systemPrompt }],
+          },
+          {
+            role: "user",
+            parts: [{ type: "text", content: input.userPrompt }],
+          },
+        ];
+        span.setAttribute(
+          ATTR_GEN_AI_INPUT_MESSAGES,
+          JSON.stringify(inputMessages),
+        );
+      }
+
       const agent = new ToolLoopAgent(this.buildToolLoopAgentOptions(input));
 
       try {
         const result = await agent.generate({ prompt: input.userPrompt });
+
+        if (this.recordOutputs) {
+          const outputMessages = toGenAiOutputMessages(result.text, []);
+          if (outputMessages.length > 0) {
+            span.setAttribute(
+              ATTR_GEN_AI_OUTPUT_MESSAGES,
+              JSON.stringify(outputMessages),
+            );
+          }
+        }
 
         const reason = mapFinishReason(result.finishReason);
         this.logger.info("main agent run finished", {

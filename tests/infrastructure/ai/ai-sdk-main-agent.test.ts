@@ -472,6 +472,103 @@ describe("AiSdkMainAgent.run", () => {
       const span = findMainAgentSpan(spans);
       expect(span!.attributes["gen_ai.provider.name"]).toBe("my-provider");
     });
+
+    it("should set gen_ai.input.messages to system+user shape when recordInputs=true", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        recordInputs: true,
+      });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      const raw = span!.attributes["gen_ai.input.messages"];
+      expect(typeof raw).toBe("string");
+      const parsed = JSON.parse(raw as string);
+      expect(parsed).toEqual([
+        {
+          role: "system",
+          parts: [{ type: "text", content: baseInput.systemPrompt }],
+        },
+        {
+          role: "user",
+          parts: [{ type: "text", content: baseInput.userPrompt }],
+        },
+      ]);
+    });
+
+    it("should set gen_ai.output.messages to assistant text shape when recordOutputs=true", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        recordOutputs: true,
+      });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      const raw = span!.attributes["gen_ai.output.messages"];
+      expect(typeof raw).toBe("string");
+      const parsed = JSON.parse(raw as string);
+      expect(parsed).toEqual([
+        { role: "assistant", parts: [{ type: "text", content: "done" }] },
+      ]);
+    });
+
+    it("should omit gen_ai.input.messages when recordInputs=false but still set output messages", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        recordInputs: false,
+        recordOutputs: true,
+      });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes).not.toHaveProperty("gen_ai.input.messages");
+      expect(span!.attributes).toHaveProperty("gen_ai.output.messages");
+    });
+
+    it("should omit gen_ai.output.messages when recordOutputs=false but still set input messages", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        recordInputs: true,
+        recordOutputs: false,
+      });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes).toHaveProperty("gen_ai.input.messages");
+      expect(span!.attributes).not.toHaveProperty("gen_ai.output.messages");
+    });
+
+    it("should set gen_ai.input.messages but not gen_ai.output.messages when generate throws", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = new MockLanguageModelV3({
+        doGenerate: async () => {
+          throw new Error("provider exploded");
+        },
+      });
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        recordInputs: true,
+        recordOutputs: true,
+      });
+
+      await expect(agent.run(baseInput)).rejects.toThrow("provider exploded");
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes).toHaveProperty("gen_ai.input.messages");
+      expect(span!.attributes).not.toHaveProperty("gen_ai.output.messages");
+    });
   });
 
   describe("logging", () => {
