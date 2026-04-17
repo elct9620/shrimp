@@ -145,7 +145,7 @@ Shrimp reads from and writes to a single designated Todoist project configured a
 
 **Prerequisites:**
 
-- The Board must contain three sections named Backlog, In Progress, and Done. If any required section is missing at task selection time, the cycle ends immediately with no side effects.
+- The Board must contain three sections named Backlog, In Progress, and Done. If any required section is missing at task selection time, the Job ends immediately with no side effects.
 
 **Section-to-status mapping:**
 
@@ -157,12 +157,12 @@ Shrimp reads from and writes to a single designated Todoist project configured a
 
 **Task selection rules:**
 
-Multiple tasks may exist in the In Progress section (e.g., due to manual user moves or prior cycle interruptions). This is a valid state; the selection rules below handle it by choosing the highest-priority task.
+Multiple tasks may exist in the In Progress section (e.g., due to manual user moves or prior Job interruptions). This is a valid state; the selection rules below handle it by choosing the highest-priority task.
 
 1. Query the Board for tasks in the In Progress section.
 2. If one or more In Progress tasks exist, select the one with the highest Todoist priority (p1 > p2 > p3 > p4); among tasks with equal priority, select the one appearing first in the Todoist API response order for that section.
 3. If no In Progress tasks exist, query the Backlog section and select the task with the highest Todoist priority; among tasks with equal priority, select the one appearing first in the Todoist API response order for that section.
-4. If both sections are empty, no task is selected; the cycle ends immediately.
+4. If both sections are empty, no task is selected; the Job ends immediately.
 
 **Backlog task promotion:**
 
@@ -170,13 +170,13 @@ Multiple tasks may exist in the In Progress section (e.g., due to manual user mo
 
 **API failure handling:**
 
-- If any Todoist API call fails during a cycle, Fail-Open Recovery applies.
+- If any Todoist API call fails during a Job, Fail-Open Recovery applies.
 
 **Progress reporting:**
 
-- After each execution attempt, the Main Agent posts a comment on the selected Todoist task summarizing what was done and what remains. The comment content and format are determined by the AI model; no fixed template is imposed.
-- The comment is always posted by the Main Agent during its tool-calling loop, whether the task completed or not.
-- If the Post Comment call itself fails, the cycle continues; Fail-Open Recovery applies after the cycle ends. The missing comment does not block task processing.
+- After each execution attempt, the Shrimp Agent posts a comment on the selected Todoist task summarizing what was done and what remains. The comment content and format are determined by the AI model; no fixed template is imposed.
+- The comment is always posted by the Shrimp Agent during its tool-calling loop, whether the task completed or not.
+- If the Post Comment call itself fails, the Job continues; Fail-Open Recovery applies after the Job ends. The missing comment does not block task processing.
 
 **Comment tagging:**
 
@@ -186,7 +186,7 @@ Multiple tasks may exist in the In Progress section (e.g., due to manual user mo
 
 **Task completion:**
 
-- When the Main Agent determines the task is done, it moves the task to the Done section via the Move Task tool.
+- When the Shrimp Agent determines the task is done, it moves the task to the Done section via the Move Task tool.
 - Shrimp does not delete tasks; it only moves them to Done.
 
 **Source of truth:**
