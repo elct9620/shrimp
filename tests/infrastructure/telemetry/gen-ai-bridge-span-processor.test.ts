@@ -777,6 +777,118 @@ describe("GenAiBridgeSpanProcessor", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Usage token bridge (item #16)
+  // ---------------------------------------------------------------------------
+
+  describe("usage token bridge (cache_read / cache_creation)", () => {
+    it("maps cacheReadTokens=42 to gen_ai.usage.cache_read.input_tokens on a chat span", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "ai.usage.inputTokenDetails.cacheReadTokens": 42,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.usage.cache_read.input_tokens"]).toBe(42);
+    });
+
+    it("does NOT set gen_ai.usage.cache_read.input_tokens when attr is absent", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "gen_ai.system": "anthropic" },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).not.toHaveProperty("gen_ai.usage.cache_read.input_tokens");
+    });
+
+    it("sets gen_ai.usage.cache_read.input_tokens=0 when cacheReadTokens is 0 (zero is legitimate)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "ai.usage.inputTokenDetails.cacheReadTokens": 0,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      // 0 is a valid count — must NOT be dropped by a falsy check
+      expect(attrs["gen_ai.usage.cache_read.input_tokens"]).toBe(0);
+    });
+
+    it("does NOT map cache attrs on a non-chat span (e.g. ai.toolCall)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: {
+          "ai.toolCall.name": "search_web",
+          "ai.usage.inputTokenDetails.cacheReadTokens": 10,
+          "ai.usage.inputTokenDetails.cacheWriteTokens": 5,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).not.toHaveProperty("gen_ai.usage.cache_read.input_tokens");
+      expect(attrs).not.toHaveProperty(
+        "gen_ai.usage.cache_creation.input_tokens",
+      );
+    });
+
+    it("preserves pre-existing gen_ai.usage.cache_read.input_tokens via setIfAbsent", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "ai.usage.inputTokenDetails.cacheReadTokens": 99,
+          "gen_ai.usage.cache_read.input_tokens": 7,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      // Pre-existing value must not be overwritten
+      expect(attrs["gen_ai.usage.cache_read.input_tokens"]).toBe(7);
+    });
+
+    it("maps cacheWriteTokens to gen_ai.usage.cache_creation.input_tokens on a chat span", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.streamText.doStream",
+        attributes: {
+          "ai.usage.inputTokenDetails.cacheWriteTokens": 128,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.usage.cache_creation.input_tokens"]).toBe(128);
+    });
+
+    it("maps both cache_read and cache_creation independently when both are present", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "ai.usage.inputTokenDetails.cacheReadTokens": 50,
+          "ai.usage.inputTokenDetails.cacheWriteTokens": 200,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.usage.cache_read.input_tokens"]).toBe(50);
+      expect(attrs["gen_ai.usage.cache_creation.input_tokens"]).toBe(200);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Span name canonicalization (item #14)
   // ---------------------------------------------------------------------------
 

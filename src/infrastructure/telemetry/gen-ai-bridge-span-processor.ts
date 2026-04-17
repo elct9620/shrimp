@@ -26,6 +26,7 @@ export class GenAiBridgeSpanProcessor implements SpanProcessor {
     translateChatSpan(span);
     translateChatMessages(span);
     translateChatTools(span);
+    translateUsageTokens(span);
     renameToCanonicalForm(span);
   }
 
@@ -432,6 +433,44 @@ function renameToCanonicalForm(span: ReadableSpan): void {
     if (toolName != null) {
       mutable.name = `execute_tool ${String(toolName)}`;
     }
+  }
+}
+
+/**
+ * Bridges cache token breakdown attrs from AI SDK into gen_ai semconv on chat spans.
+ *
+ * Source attrs (node_modules/ai/dist/index.mjs L4372-4379, L4603-4610):
+ *   ai.usage.inputTokenDetails.cacheReadTokens  → gen_ai.usage.cache_read.input_tokens
+ *   ai.usage.inputTokenDetails.cacheWriteTokens → gen_ai.usage.cache_creation.input_tokens
+ *
+ * WHY inputTokenDetails.* path: it is the canonical AI SDK source and exposes
+ * both read AND write. Bridging from the duplicate `cachedInputTokens` alias
+ * risks double-counting when both happen to be present.
+ *
+ * Zero is a legitimate count — do not skip on falsy. Use Number.isFinite.
+ */
+function translateUsageTokens(span: ReadableSpan): void {
+  if (!isChatSpan(span)) return;
+
+  const attrs = span.attributes;
+  const mutableAttrs = attrs as Attributes;
+
+  const cacheRead = attrs["ai.usage.inputTokenDetails.cacheReadTokens"];
+  if (typeof cacheRead === "number" && Number.isFinite(cacheRead)) {
+    setIfAbsent(
+      mutableAttrs,
+      "gen_ai.usage.cache_read.input_tokens",
+      cacheRead,
+    );
+  }
+
+  const cacheWrite = attrs["ai.usage.inputTokenDetails.cacheWriteTokens"];
+  if (typeof cacheWrite === "number" && Number.isFinite(cacheWrite)) {
+    setIfAbsent(
+      mutableAttrs,
+      "gen_ai.usage.cache_creation.input_tokens",
+      cacheWrite,
+    );
   }
 }
 
