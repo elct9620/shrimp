@@ -43,10 +43,10 @@ Two documents are authoritative:
 - `SPEC.md` — behavior, contracts, and success criteria. Consult before changing any endpoint, failure mode, or configuration contract.
 - `docs/architecture.md` — code structure: four-layer Clean Architecture (`entities/`, `use-cases/`, `adapters/`, `infrastructure/`), dependency rules, key ports, and SPEC-component-to-module mapping.
 
-Three facts worth internalizing before touching Processing Cycle or Main Agent code:
+Three facts worth internalizing before touching Job or Shrimp Agent code:
 
-- **Shrimp (the process) IS the Supervisor.** No class named `Supervisor` exists; Shrimp itself receives heartbeats and runs Processing Cycles.
-- **The Main Agent is a black box executor.** `ProcessingCycle` invokes the `MainAgent` port exactly once per heartbeat; iterations inside the loop cannot be driven from outside. `AiSdkMainAgent` implements this port via AI SDK's `ToolLoopAgent`.
+- **Shrimp is NOT the Supervisor.** The Supervisor is an internal component of Shrimp that receives heartbeats, owns the Job Queue, and dispatches Job Workers. The Shrimp process contains the Supervisor; it is not the Supervisor.
+- **The Shrimp Agent is a black-box executor.** A `Job` (the Job Worker, in code) invokes the `ShrimpAgent` port exactly once per Heartbeat; iterations inside the loop cannot be driven from outside. `AiSdkShrimpAgent` implements this port via AI SDK's `ToolLoopAgent`.
 - **Built-in Todoist tools are inbound adapters**, not use cases. They live in `adapters/tools/built-in/` and call `BoardRepository` directly. Do not create per-operation use-case classes for them.
 
 Layer layout at a glance:
