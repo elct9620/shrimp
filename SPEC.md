@@ -246,7 +246,7 @@ Telemetry is controlled at startup. The following rules govern how configuration
 
 **Enable / disable semantics:**
 
-- When telemetry is disabled: no spans are emitted, no tracer is initialized, and no exporter connections are opened. The Processing Cycle and Main Agent run identically to a non-tracing deployment — disabling telemetry has no observable effect on task execution.
+- When telemetry is disabled: no spans are emitted, no tracer is initialized, and no exporter connections are opened. The Job and Shrimp Agent run identically to a non-tracing deployment — disabling telemetry has no observable effect on task execution.
 - When telemetry is enabled: spans are emitted per the [Telemetry Emission](#telemetry-emission) contract.
 - The enable/disable decision is fixed at startup and does not change during process lifetime. There is no runtime toggle.
 
@@ -258,7 +258,7 @@ Telemetry is controlled at startup. The following rules govern how configuration
 
 **Exporter failure is fail-open:**
 
-- Exporter errors — including network failure, backend unavailability, timeout, and serialization error — must never propagate into the Processing Cycle. The cycle completes its work; task state in Todoist is never affected by telemetry failures.
+- Exporter errors — including network failure, backend unavailability, timeout, and serialization error — must never propagate into the Job. The Job completes its work; task state in Todoist is never affected by telemetry failures.
 - This is consistent with the Fail-Open Recovery pattern applied to Todoist and AI provider failures during task processing.
 - Dropped spans are lost. Shrimp has no local span buffer beyond what the OpenTelemetry SDK provides internally, and does not retry, persist, or re-queue spans on behalf of a failing exporter.
 
@@ -269,7 +269,7 @@ Telemetry is controlled at startup. The following rules govern how configuration
 
 **Initialization ordering:**
 
-- If telemetry is enabled, the tracer and exporter are initialized before the HTTP server starts accepting heartbeats. This guarantees that the first Processing Cycle can emit spans; no cycle runs before the telemetry infrastructure is ready.
+- If telemetry is enabled, the tracer and exporter are initialized before the HTTP server starts accepting heartbeats. This guarantees that the first Job can emit spans; no Job runs before the telemetry infrastructure is ready.
 
 ### `GET /health`
 
