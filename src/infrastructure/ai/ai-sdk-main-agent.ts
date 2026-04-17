@@ -14,19 +14,39 @@ import type {
 } from "../../use-cases/ports/main-agent";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import { toGenAiOutputMessages } from "../telemetry/gen-ai-bridge-span-processor";
+import pkg from "../../../package.json";
 
 // Agent-level gen_ai attributes only: operation.name=invoke_agent, agent.name,
-// provider.name, error.type on failure, and overall input/output.messages for
-// trace-root consumers (e.g. Langfuse). Per-LLM-turn and tool-call gen_ai
-// attrs are emitted by GenAiBridgeSpanProcessor from AI SDK's ai.* attrs.
+// agent.id (stable type UUID), agent.version (from package.json), provider.name,
+// error.type on failure, and overall input/output.messages for trace-root consumers
+// (e.g. Langfuse). Per-LLM-turn and tool-call gen_ai attrs are emitted by
+// GenAiBridgeSpanProcessor from AI SDK's ai.* attrs.
 // See src/infrastructure/telemetry/gen-ai-bridge-span-processor.ts
 const ATTR_GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
 const ATTR_GEN_AI_AGENT_NAME = "gen_ai.agent.name";
+// gen_ai.agent.id per OTel semconv is a stable unique identifier for the agent
+// implementation (not per-instance). We use a hardcoded UUID v4 that identifies
+// the "Shrimp Main Agent" type across all deployments. This constant never changes;
+// it correlates behavior across versions — use gen_ai.agent.version for that.
+const ATTR_GEN_AI_AGENT_ID = "gen_ai.agent.id";
+const ATTR_GEN_AI_AGENT_VERSION = "gen_ai.agent.version";
 const ATTR_GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
 const ATTR_GEN_AI_CONVERSATION_ID = "gen_ai.conversation.id";
 const ATTR_GEN_AI_INPUT_MESSAGES = "gen_ai.input.messages";
 const ATTR_GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages";
 const ATTR_ERROR_TYPE = "error.type";
+
+// Stable type-level identifier for the Shrimp Main Agent implementation.
+// Per OTel gen_ai semconv, gen_ai.agent.id is a stable unique identifier for
+// the agent (analogous to an OpenAI assistant ID for custom agents). We use a
+// fixed UUID v4 to identify this agent type — NOT per-deployment or per-instance.
+// This value must not change; create a new UUID only when a fundamentally
+// different agent implementation replaces this one.
+const SHRIMP_MAIN_AGENT_ID = "e3a7c2f1-84b6-4d9e-a531-7c02b5f8e490";
+
+// Version resolved from package.json at module load time (resolveJsonModule=true).
+// This correlates observability signals with the deployed release.
+const SHRIMP_AGENT_VERSION: string = pkg.version;
 
 export type AiSdkMainAgentOptions = {
   model: LanguageModel;
@@ -96,6 +116,8 @@ export class AiSdkMainAgent implements MainAgent {
       span.updateName("invoke_agent shrimp.main-agent");
       span.setAttribute(ATTR_GEN_AI_OPERATION_NAME, "invoke_agent");
       span.setAttribute(ATTR_GEN_AI_AGENT_NAME, "shrimp.main-agent");
+      span.setAttribute(ATTR_GEN_AI_AGENT_ID, SHRIMP_MAIN_AGENT_ID);
+      span.setAttribute(ATTR_GEN_AI_AGENT_VERSION, SHRIMP_AGENT_VERSION);
       span.setAttribute(ATTR_GEN_AI_PROVIDER_NAME, this.providerName);
       // Correlation ID — always recorded regardless of recordInputs/recordOutputs
       // because it is trace glue, not sensitive content.

@@ -485,6 +485,50 @@ describe("AiSdkMainAgent.run", () => {
       );
     });
 
+    it("should set gen_ai.agent.id to a non-empty UUID-format string", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), { tracer });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      const agentId = span!.attributes["gen_ai.agent.id"];
+      expect(typeof agentId).toBe("string");
+      expect(agentId as string).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      );
+    });
+
+    it("should set gen_ai.agent.version to a non-empty semver string", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), { tracer });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      const version = span!.attributes["gen_ai.agent.version"];
+      expect(typeof version).toBe("string");
+      expect(version as string).toMatch(/^\d+\.\d+\.\d+/);
+    });
+
+    it("should set gen_ai.agent.id and gen_ai.agent.version regardless of recordInputs/recordOutputs", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        recordInputs: false,
+        recordOutputs: false,
+      });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes["gen_ai.agent.id"]).toBeDefined();
+      expect(span!.attributes["gen_ai.agent.version"]).toBeDefined();
+    });
+
     it("should set error.type to the error constructor name when generate throws", async () => {
       const { tracer, spans } = makeRecordingTracer();
       const boom = new Error("upstream provider exploded");
