@@ -13,7 +13,6 @@ import type { Attributes } from "@opentelemetry/api";
  * Registered before the BatchSpanProcessor in NodeSDK so attribute writes
  * happen prior to export.
  *
- * TODO(#4): bridge ai.generateText.doGenerate → gen_ai.operation.name=chat
  * TODO(#5): bridge ai.prompt.messages / ai.response.* → gen_ai.input/output.messages
  */
 export class GenAiBridgeSpanProcessor implements SpanProcessor {
@@ -26,6 +25,7 @@ export class GenAiBridgeSpanProcessor implements SpanProcessor {
     const toolCall = isToolCallSpan(span);
     translateToolCallSpan(span, toolCall);
     translateToolCallArgsResult(span, toolCall);
+    translateChatSpan(span);
   }
 
   shutdown(): Promise<void> {
@@ -107,6 +107,52 @@ function translateToolCallArgsResult(
   const result = attrs["ai.toolCall.result"];
   if (result != null) {
     setIfAbsent(mutableAttrs, "gen_ai.tool.call.result", result);
+  }
+}
+
+/**
+ * LLM-call span names where AI SDK sets `gen_ai.system` and issues the actual
+ * model request. These are the inner spans, distinct from the orchestration
+ * wrappers (`ai.generateText`, `ai.streamText`) which do NOT carry gen_ai.system.
+ *
+ * Source: node_modules/ai/dist/index.mjs lines 4291, 7164.
+ */
+const CHAT_SPAN_NAMES = new Set([
+  "ai.generateText.doGenerate",
+  "ai.streamText.doStream",
+]);
+
+/**
+ * Returns true when the span is an actual LLM chat-completion call issued by
+ * AI SDK. Orchestration wrappers and tool-call spans return false.
+ */
+function isChatSpan(span: ReadableSpan): boolean {
+  return CHAT_SPAN_NAMES.has(span.name);
+}
+
+/**
+ * Adds `gen_ai.operation.name=chat` and mirrors `gen_ai.system` into
+ * `gen_ai.provider.name` on AI SDK LLM-call spans.
+ *
+ * WHY only two attrs: AI SDK already sets all other gen_ai.request.* and
+ * gen_ai.response.* attrs on these spans; the bridge must not duplicate or
+ * overwrite them. Only `operation.name` (required by semconv) and
+ * `provider.name` (alias for `gen_ai.system` per newer semconv) are missing.
+ *
+ * `gen_ai.provider.name` is best-effort: skipped when `gen_ai.system` is
+ * absent (e.g., AI SDK emitted the span without a provider attr).
+ */
+function translateChatSpan(span: ReadableSpan): void {
+  if (!isChatSpan(span)) return;
+
+  const attrs = span.attributes;
+  const mutableAttrs = attrs as Attributes;
+
+  setIfAbsent(mutableAttrs, "gen_ai.operation.name", "chat");
+
+  const system = attrs["gen_ai.system"];
+  if (system != null) {
+    setIfAbsent(mutableAttrs, "gen_ai.provider.name", system);
   }
 }
 

@@ -258,4 +258,95 @@ describe("GenAiBridgeSpanProcessor", () => {
       expect(attrs["gen_ai.tool.call.arguments"]).toBe('{"query":"existing"}');
     });
   });
+
+  describe("chat span mapping (ai.generateText.doGenerate / ai.streamText.doStream → gen_ai.*)", () => {
+    it("maps operation.name=chat and provider.name for ai.generateText.doGenerate with gen_ai.system", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "gen_ai.system": "openai" },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.operation.name"]).toBe("chat");
+      expect(attrs["gen_ai.provider.name"]).toBe("openai");
+    });
+
+    it("maps operation.name=chat and provider.name for ai.streamText.doStream with gen_ai.system", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.streamText.doStream",
+        attributes: { "gen_ai.system": "anthropic" },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.operation.name"]).toBe("chat");
+      expect(attrs["gen_ai.provider.name"]).toBe("anthropic");
+    });
+
+    it("sets operation.name=chat but skips provider.name when gen_ai.system is absent", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "gen_ai.request.model": "gpt-4o" },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.operation.name"]).toBe("chat");
+      expect(attrs).not.toHaveProperty("gen_ai.provider.name");
+    });
+
+    it("skips chat mapping for the orchestration wrapper ai.generateText (not an LLM-call span)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      // ai.generateText is the outer wrapper; AI SDK does NOT set gen_ai.system on it.
+      const span = makeFakeSpan({
+        name: "ai.generateText",
+        attributes: {},
+      });
+
+      const attrs = endSpan(processor, span);
+
+      // Chat translator must not fire; tool-call translator also does not fire.
+      expect(attrs).not.toHaveProperty("gen_ai.operation.name");
+      expect(attrs).not.toHaveProperty("gen_ai.provider.name");
+    });
+
+    it("does NOT apply chat mapping to tool-call spans (tool-call translator still runs)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: {
+          "ai.toolCall.name": "search_web",
+          "ai.toolCall.id": "call_abc",
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      // Tool-call translator sets execute_tool, not chat.
+      expect(attrs["gen_ai.operation.name"]).toBe("execute_tool");
+      expect(attrs).not.toHaveProperty("gen_ai.provider.name");
+    });
+
+    it("preserves pre-existing gen_ai.operation.name via setIfAbsent", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "gen_ai.system": "openai",
+          "gen_ai.operation.name": "text_completion", // hypothetical pre-set value
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      // setIfAbsent must not overwrite the pre-existing value.
+      expect(attrs["gen_ai.operation.name"]).toBe("text_completion");
+      // provider.name is still mirrored since it was absent.
+      expect(attrs["gen_ai.provider.name"]).toBe("openai");
+    });
+  });
 });
