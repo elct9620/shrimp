@@ -1,13 +1,13 @@
 ---
 goal: Complete OTEL gen_ai semantic conventions coverage for AI SDK integration. Current state (per commits fb82dc1, 5537dbf) emits partial gen_ai attributes, but tool calls / tool results and other LLM interaction details are not fully translated. Finish the gen_ai conversion so OTEL consumers (e.g. Langfuse) can fully trace LLM operation—input/output, tool invocations, tool results, and related spans. Research via WebSearch; do NOT use $(), WebFetch, or other permission-prompting shell/tool syntax.
 language: en
-current_phase: sample
+current_phase: completed
 started_at: 2026-04-17T00:00:00+08:00
 interval: 10m
 cron_id: c9930473
 execute_skills: /coding:refactor → /coding:review → /coding:refactor → /git:commit
 review_skills: /coding:review → /coding:refactor → /git:commit
-sample_passes: 4/5
+sample_passes: 5/5
 review_cycles: 6
 ---
 
