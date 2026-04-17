@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 import { ROOT_CONTEXT } from "@opentelemetry/api";
-import { GenAiBridgeSpanProcessor } from "../../../src/infrastructure/telemetry/gen-ai-bridge-span-processor";
+import {
+  GenAiBridgeSpanProcessor,
+  toGenAiInputMessages,
+  toGenAiOutputMessages,
+} from "../../../src/infrastructure/telemetry/gen-ai-bridge-span-processor";
 
 function makeFakeSpan(overrides?: Partial<ReadableSpan>): ReadableSpan {
   return {
@@ -347,6 +351,343 @@ describe("GenAiBridgeSpanProcessor", () => {
       expect(attrs["gen_ai.operation.name"]).toBe("text_completion");
       // provider.name is still mirrored since it was absent.
       expect(attrs["gen_ai.provider.name"]).toBe("openai");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Pure transform unit tests
+  // ---------------------------------------------------------------------------
+
+  describe("toGenAiInputMessages (pure transform)", () => {
+    it("maps system and user messages with string content to single text parts", () => {
+      const result = toGenAiInputMessages([
+        { role: "system", content: "You are helpful." },
+        { role: "user", content: "Hello!" },
+      ]);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        role: "system",
+        parts: [{ type: "text", content: "You are helpful." }],
+      });
+      expect(result[1]).toEqual({
+        role: "user",
+        parts: [{ type: "text", content: "Hello!" }],
+      });
+    });
+
+    it("maps user message with string content to a single text part", () => {
+      const result = toGenAiInputMessages([
+        { role: "user", content: "What is the weather?" },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.parts).toEqual([
+        { type: "text", content: "What is the weather?" },
+      ]);
+    });
+
+    it("maps assistant message with mixed text and tool-call array content", () => {
+      const result = toGenAiInputMessages([
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Let me check that." },
+            {
+              type: "tool-call",
+              toolCallId: "call_1",
+              toolName: "search",
+              input: { query: "weather" },
+            },
+          ],
+        },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.parts).toEqual([
+        { type: "text", content: "Let me check that." },
+        {
+          type: "tool_call",
+          id: "call_1",
+          name: "search",
+          arguments: { query: "weather" },
+        },
+      ]);
+    });
+
+    it("maps tool message with tool-result content to tool_call_response part", () => {
+      const result = toGenAiInputMessages([
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call_1",
+              toolName: "search",
+              output: { results: ["cloudy"] },
+            },
+          ],
+        },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.parts).toEqual([
+        {
+          type: "tool_call_response",
+          id: "call_1",
+          response: { results: ["cloudy"] },
+        },
+      ]);
+    });
+
+    it("drops unknown part types (e.g. reasoning) silently; message still emitted when other parts remain", () => {
+      const result = toGenAiInputMessages([
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "Let me think..." },
+            { type: "text", text: "The answer is 42." },
+          ],
+        },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.parts).toEqual([
+        { type: "text", content: "The answer is 42." },
+      ]);
+    });
+
+    it("drops the whole message when all parts are unknown types", () => {
+      const result = toGenAiInputMessages([
+        {
+          role: "assistant",
+          content: [
+            { type: "reasoning", text: "Just thinking..." },
+            { type: "file", text: "some-file-data" },
+          ],
+        },
+      ]);
+
+      expect(result).toHaveLength(0);
+    });
+
+    it("passes tool-call arguments through as objects, not re-stringified", () => {
+      const args = { query: "otel", limit: 10 };
+      const result = toGenAiInputMessages([
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "c1",
+              toolName: "search",
+              input: args,
+            },
+          ],
+        },
+      ]);
+
+      // arguments must be the original object, not JSON.stringify(args)
+      expect(result[0]!.parts[0]).toMatchObject({
+        type: "tool_call",
+        arguments: { query: "otel", limit: 10 },
+      });
+    });
+  });
+
+  describe("toGenAiOutputMessages (pure transform)", () => {
+    it("produces an assistant text part when only text is present", () => {
+      const result = toGenAiOutputMessages("Hello, world!", []);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        role: "assistant",
+        parts: [{ type: "text", content: "Hello, world!" }],
+      });
+    });
+
+    it("produces tool_call parts when only toolCalls are present (no text)", () => {
+      const toolCalls = [
+        { toolCallId: "c1", toolName: "search", input: { q: "otel" } },
+      ];
+      const result = toGenAiOutputMessages(undefined, toolCalls);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.parts).toEqual([
+        {
+          type: "tool_call",
+          id: "c1",
+          name: "search",
+          arguments: { q: "otel" },
+        },
+      ]);
+    });
+
+    it("produces both text and tool_call parts when both are present", () => {
+      const toolCalls = [
+        { toolCallId: "c2", toolName: "lookup", input: { id: 5 } },
+      ];
+      const result = toGenAiOutputMessages("Here you go.", toolCalls);
+
+      expect(result).toHaveLength(1);
+      const parts = result[0]!.parts;
+      expect(parts).toHaveLength(2);
+      expect(parts[0]).toEqual({ type: "text", content: "Here you go." });
+      expect(parts[1]).toMatchObject({ type: "tool_call", id: "c2" });
+    });
+
+    it("returns empty array when both text and toolCalls are absent", () => {
+      expect(toGenAiOutputMessages(undefined, [])).toHaveLength(0);
+      expect(toGenAiOutputMessages(null, [])).toHaveLength(0);
+      expect(toGenAiOutputMessages("", [])).toHaveLength(0);
+    });
+
+    it("passes tool-call arguments through as objects, not re-stringified", () => {
+      const result = toGenAiOutputMessages(undefined, [
+        { toolCallId: "c3", toolName: "run", input: { x: 1 } },
+      ]);
+
+      expect(result[0]!.parts[0]).toMatchObject({
+        type: "tool_call",
+        arguments: { x: 1 },
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Integration tests: structured messages on real span flow
+  // ---------------------------------------------------------------------------
+
+  describe("structured messages (gen_ai.input.messages / gen_ai.output.messages)", () => {
+    it("sets gen_ai.input.messages from ai.prompt.messages on a chat span", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const messages = [
+        { role: "system", content: "Be helpful." },
+        { role: "user", content: "Hi" },
+      ];
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "ai.prompt.messages": JSON.stringify(messages) },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      const parsed = JSON.parse(attrs["gen_ai.input.messages"] as string);
+      expect(parsed).toHaveLength(2);
+      expect(parsed[0].role).toBe("system");
+      expect(parsed[1].role).toBe("user");
+    });
+
+    it("sets gen_ai.output.messages from ai.response.text on a chat span", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "ai.response.text": "The answer is 42." },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      const parsed = JSON.parse(attrs["gen_ai.output.messages"] as string);
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].role).toBe("assistant");
+      expect(parsed[0].parts).toEqual([
+        { type: "text", content: "The answer is 42." },
+      ]);
+    });
+
+    it("sets gen_ai.output.messages from ai.response.toolCalls on a chat span (no text)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const toolCalls = [
+        { toolCallId: "c1", toolName: "search", input: { q: "x" } },
+      ];
+      const span = makeFakeSpan({
+        name: "ai.streamText.doStream",
+        attributes: { "ai.response.toolCalls": JSON.stringify(toolCalls) },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      const parsed = JSON.parse(attrs["gen_ai.output.messages"] as string);
+      expect(parsed[0].parts[0].type).toBe("tool_call");
+      expect(attrs).not.toHaveProperty("gen_ai.input.messages");
+    });
+
+    it("does NOT set gen_ai.output.messages when both response attrs are absent (recordOutputs=false)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "ai.prompt.messages": JSON.stringify([
+            { role: "user", content: "hi" },
+          ]),
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).toHaveProperty("gen_ai.input.messages");
+      expect(attrs).not.toHaveProperty("gen_ai.output.messages");
+    });
+
+    it("does NOT set gen_ai.input.messages when ai.prompt.messages is absent (recordInputs=false)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "ai.response.text": "Sure!" },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).not.toHaveProperty("gen_ai.input.messages");
+      expect(attrs).toHaveProperty("gen_ai.output.messages");
+    });
+
+    it("silently skips gen_ai.input.messages when ai.prompt.messages is malformed JSON", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "ai.prompt.messages": "not-json{{{" },
+      });
+
+      expect(() => processor.onEnd(span)).not.toThrow();
+      expect(span.attributes).not.toHaveProperty("gen_ai.input.messages");
+    });
+
+    it("does NOT invoke message translation on non-chat spans", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const messages = [{ role: "user", content: "hi" }];
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: {
+          "ai.toolCall.name": "search",
+          "ai.prompt.messages": JSON.stringify(messages),
+          "ai.response.text": "Sure!",
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).not.toHaveProperty("gen_ai.input.messages");
+      expect(attrs).not.toHaveProperty("gen_ai.output.messages");
+    });
+
+    it("preserves pre-existing gen_ai.input.messages via setIfAbsent", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const existing = JSON.stringify([
+        { role: "user", parts: [{ type: "text", content: "pre-set" }] },
+      ]);
+      const messages = [{ role: "user", content: "override-attempt" }];
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "ai.prompt.messages": JSON.stringify(messages),
+          "gen_ai.input.messages": existing,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.input.messages"]).toBe(existing);
     });
   });
 });

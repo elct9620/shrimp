@@ -12,8 +12,6 @@ import type { Attributes } from "@opentelemetry/api";
  *
  * Registered before the BatchSpanProcessor in NodeSDK so attribute writes
  * happen prior to export.
- *
- * TODO(#5): bridge ai.prompt.messages / ai.response.* → gen_ai.input/output.messages
  */
 export class GenAiBridgeSpanProcessor implements SpanProcessor {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -26,6 +24,7 @@ export class GenAiBridgeSpanProcessor implements SpanProcessor {
     translateToolCallSpan(span, toolCall);
     translateToolCallArgsResult(span, toolCall);
     translateChatSpan(span);
+    translateChatMessages(span);
   }
 
   shutdown(): Promise<void> {
@@ -164,5 +163,227 @@ function setIfAbsent(
 ): void {
   if (!Object.prototype.hasOwnProperty.call(attrs, key)) {
     (attrs as Record<string, unknown>)[key] = value;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Structured message translation (item #5)
+// ---------------------------------------------------------------------------
+
+/** A single content part in an AI SDK message content array. */
+interface AiSdkPart {
+  type: string;
+  // text parts
+  text?: unknown;
+  // tool-call parts
+  toolCallId?: unknown;
+  toolName?: unknown;
+  input?: unknown;
+  // tool-result parts
+  output?: unknown;
+}
+
+/** An AI SDK message as found in ai.prompt.messages. */
+interface AiSdkMessage {
+  role?: unknown;
+  content?: unknown;
+}
+
+/** A gen_ai text part. */
+interface GenAiTextPart {
+  type: "text";
+  content: string;
+}
+
+/** A gen_ai tool_call part. */
+interface GenAiToolCallPart {
+  type: "tool_call";
+  id: string;
+  name: string;
+  arguments: unknown;
+}
+
+/** A gen_ai tool_call_response part. */
+interface GenAiToolCallResponsePart {
+  type: "tool_call_response";
+  id: string;
+  response: unknown;
+}
+
+type GenAiPart = GenAiTextPart | GenAiToolCallPart | GenAiToolCallResponsePart;
+
+interface GenAiMessage {
+  role: string;
+  parts: GenAiPart[];
+}
+
+/**
+ * Maps a single AI SDK message content part to the gen_ai equivalent.
+ * Returns `null` for part types that have no gen_ai mapping (e.g. reasoning,
+ * file) — callers must drop null values silently.
+ */
+function mapAiSdkPart(part: AiSdkPart): GenAiPart | null {
+  switch (part.type) {
+    case "text":
+      return { type: "text", content: String(part.text ?? "") };
+    case "tool-call":
+      return {
+        type: "tool_call",
+        id: String(part.toolCallId ?? ""),
+        name: String(part.toolName ?? ""),
+        arguments: part.input,
+      };
+    case "tool-result":
+      return {
+        type: "tool_call_response",
+        id: String(part.toolCallId ?? ""),
+        response: part.output,
+      };
+    default:
+      // reasoning, file, and any future unknown types — drop silently
+      return null;
+  }
+}
+
+/**
+ * Converts the AI SDK `ai.prompt.messages` array to the gen_ai input messages
+ * format. Pure function — no span dependency.
+ *
+ * - String content → single text part.
+ * - Array content → mapped via mapAiSdkPart; null results dropped.
+ * - Messages that produce zero parts after mapping are dropped entirely
+ *   (e.g. reasoning-only messages).
+ */
+export function toGenAiInputMessages(aiMessages: unknown[]): GenAiMessage[] {
+  const result: GenAiMessage[] = [];
+
+  for (const msg of aiMessages) {
+    if (msg == null || typeof msg !== "object") continue;
+    const { role, content } = msg as AiSdkMessage;
+    if (typeof role !== "string") continue;
+
+    let parts: GenAiPart[];
+
+    if (typeof content === "string") {
+      parts = [{ type: "text", content }];
+    } else if (Array.isArray(content)) {
+      parts = (content as AiSdkPart[])
+        .map(mapAiSdkPart)
+        .filter((p): p is GenAiPart => p !== null);
+    } else {
+      // Unexpected content shape — skip the message
+      continue;
+    }
+
+    // Drop messages that become empty after part mapping
+    if (parts.length === 0) continue;
+
+    result.push({ role, parts });
+  }
+
+  return result;
+}
+
+/**
+ * Builds the gen_ai output messages array from AI SDK response attributes.
+ * Pure function — no span dependency.
+ *
+ * Returns an array with ONE assistant message containing:
+ * - A text part when `text` is a non-empty string.
+ * - Tool call parts for each entry in `toolCalls`.
+ *
+ * Returns an empty array when both inputs are absent/empty — callers must
+ * skip setting `gen_ai.output.messages` in that case.
+ */
+export function toGenAiOutputMessages(
+  text: unknown,
+  toolCalls: unknown[],
+): GenAiMessage[] {
+  const parts: GenAiPart[] = [];
+
+  if (typeof text === "string" && text.length > 0) {
+    parts.push({ type: "text", content: text });
+  }
+
+  for (const tc of toolCalls) {
+    if (tc == null || typeof tc !== "object") continue;
+    const { toolCallId, toolName, input } = tc as {
+      toolCallId?: unknown;
+      toolName?: unknown;
+      input?: unknown;
+    };
+    parts.push({
+      type: "tool_call",
+      id: String(toolCallId ?? ""),
+      name: String(toolName ?? ""),
+      arguments: input,
+    });
+  }
+
+  if (parts.length === 0) return [];
+  return [{ role: "assistant", parts }];
+}
+
+/**
+ * Bridges `ai.prompt.messages`, `ai.response.text`, and
+ * `ai.response.toolCalls` into structured `gen_ai.input.messages` /
+ * `gen_ai.output.messages` attributes on LLM-call chat spans.
+ *
+ * Gating:
+ * - Only runs on chat spans (reuses isChatSpan guard).
+ * - Input messages: skipped when `ai.prompt.messages` is absent (recordInputs=false).
+ * - Output messages: skipped when both response attrs are absent (recordOutputs=false).
+ * - Uses setIfAbsent so pre-existing gen_ai.* attrs are never overwritten.
+ * - JSON parse errors are caught and silently ignored — telemetry must not crash.
+ */
+function translateChatMessages(span: ReadableSpan): void {
+  if (!isChatSpan(span)) return;
+
+  const attrs = span.attributes;
+  const mutableAttrs = attrs as Attributes;
+
+  // --- input messages ---
+  const rawPrompt = attrs["ai.prompt.messages"];
+  if (rawPrompt != null) {
+    try {
+      const parsed: unknown = JSON.parse(String(rawPrompt));
+      if (Array.isArray(parsed)) {
+        const inputMessages = toGenAiInputMessages(parsed);
+        setIfAbsent(
+          mutableAttrs,
+          "gen_ai.input.messages",
+          JSON.stringify(inputMessages),
+        );
+      }
+    } catch {
+      // Malformed JSON — skip silently
+    }
+  }
+
+  // --- output messages ---
+  const rawText = attrs["ai.response.text"];
+  const rawToolCalls = attrs["ai.response.toolCalls"];
+
+  if (rawText == null && rawToolCalls == null) return;
+
+  let toolCallsArray: unknown[] = [];
+  if (rawToolCalls != null) {
+    try {
+      const parsed: unknown = JSON.parse(String(rawToolCalls));
+      if (Array.isArray(parsed)) {
+        toolCallsArray = parsed;
+      }
+    } catch {
+      // Malformed JSON — skip silently; build output from text only
+    }
+  }
+
+  const outputMessages = toGenAiOutputMessages(rawText, toolCallsArray);
+  if (outputMessages.length > 0) {
+    setIfAbsent(
+      mutableAttrs,
+      "gen_ai.output.messages",
+      JSON.stringify(outputMessages),
+    );
   }
 }
