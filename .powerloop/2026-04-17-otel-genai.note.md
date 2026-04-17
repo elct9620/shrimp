@@ -1,14 +1,14 @@
 ---
 goal: Complete OTEL gen_ai semantic conventions coverage for AI SDK integration. Current state (per commits fb82dc1, 5537dbf) emits partial gen_ai attributes, but tool calls / tool results and other LLM interaction details are not fully translated. Finish the gen_ai conversion so OTEL consumers (e.g. Langfuse) can fully trace LLM operation—input/output, tool invocations, tool results, and related spans. Research via WebSearch; do NOT use $(), WebFetch, or other permission-prompting shell/tool syntax.
 language: en
-current_phase: review
+current_phase: sample
 started_at: 2026-04-17T00:00:00+08:00
 interval: 10m
 cron_id: c9930473
 execute_skills: /coding:refactor → /coding:review → /coding:refactor → /git:commit
 review_skills: /coding:review → /coding:refactor → /git:commit
 sample_passes: 0/5
-review_cycles: 5
+review_cycles: 6
 ---
 
 # OTEL gen_ai Coverage — Progress Note
@@ -32,7 +32,7 @@ review_cycles: 5
 | 13  | Implement the Heartbeat ID per spec (#12): generate in `ProcessingCycle` (UUID v7 from `node:crypto` or equivalent), add `heartbeatId: string` to `MainAgentInput`, thread through all callers, emit `gen_ai.conversation.id = heartbeatId` on `shrimp.main-agent` span (new constant in `AiSdkMainAgent`). Tests for generation uniqueness, propagation, and span attr emission. | done | done | pending | UUID v4 via `crypto.randomUUID()` (TODO comment for v7 when Node exposes it). Generated before `runInSpan` in `ProcessingCycle.run()`. `ATTR_GEN_AI_CONVERSATION_ID` constant added; written unconditionally after `ATTR_GEN_AI_PROVIDER_NAME`. 4 new tests (UUID shape, uniqueness across cycles, conversation.id on success, conversation.id when recordInputs/recordOutputs=false). 423 total tests pass. Typecheck clean. |
 | 14  | Rename span names to follow `{operation} {model}` / `{operation} {agent.name}` format per semconv SHOULD. Bridge rewrites chat span names (`ai.generateText.doGenerate` → `chat {gen_ai.request.model}`). `AiSdkMainAgent` renames outer span (`shrimp.main-agent` → `invoke_agent shrimp.main-agent`). Update tests. | done | done | pending | Bridge rename feasible via direct `span.name` field assignment (same pattern as attributes). `updateName` is a no-op post-end (Span.js L241), but `SpanImpl.name` is a plain public field (Span.d.ts L42) — cast via `span as unknown as { name: string }`. Foreign-span guard: only rewrites spans starting with `ai.`. Outer rename via `span.updateName("invoke_agent shrimp.main-agent")` before first setAttribute. `makeRecordingTracer.updateName` fixed to record new name. 6 new tests (1 outer-span, 5 bridge canonicalization). 429 total tests pass. Typecheck clean. |
 | 15  | Emit `gen_ai.agent.id` and `gen_ai.agent.version` on `shrimp.main-agent` span. `agent.id` from a stable constant, `agent.version` from package.json or a `SHRIMP_VERSION` env var. Tests. | done | done | pending | WebSearch confirmed: agent.id is a stable unique identifier (not human-readable name); agent.name remains "shrimp.main-agent". Chose option (a): hardcoded UUID v4 constant `SHRIMP_MAIN_AGENT_ID` identifying the Shrimp Main Agent type across all deployments. Version resolved via `import pkg from "../../../package.json"` (resolveJsonModule=true). 2 new attr constants + 2 file-level constants + 2 setAttribute calls (unconditional, placed after agent.name). 3 new tests: UUID format regex, semver format regex, present regardless of recordInputs/recordOutputs. 432 total tests pass (was 429). Typecheck clean. Format unchanged. |
-| 16  | Bridge `gen_ai.usage.cache_read.input_tokens` on chat spans from AI SDK's cache-read token attr (grep `node_modules/ai/dist/index.mjs` for `cache` to find the exact attr name). Skip batch if AI SDK doesn't expose cache tokens. Tests. | done | pending | pending | WebSearch confirmed: cache_read=`gen_ai.usage.cache_read.input_tokens`, cache_write=`gen_ai.usage.cache_creation.input_tokens` (NOT cache_write). Both standard. Added `translateUsageTokens(span)` helper (14 lines). Source: `ai.usage.inputTokenDetails.cacheReadTokens` + `ai.usage.inputTokenDetails.cacheWriteTokens`. Zero-value correct via `Number.isFinite`. 7 new tests (cases 1–7). 439 total pass. Typecheck clean. ALL 16 execute items done — phase should flip to review next cycle. |
+| 16  | Bridge `gen_ai.usage.cache_read.input_tokens` on chat spans from AI SDK's cache-read token attr (grep `node_modules/ai/dist/index.mjs` for `cache` to find the exact attr name). Skip batch if AI SDK doesn't expose cache tokens. Tests. | done | done | pending | WebSearch confirmed: cache_read=`gen_ai.usage.cache_read.input_tokens`, cache_write=`gen_ai.usage.cache_creation.input_tokens` (NOT cache_write). Both standard. Added `translateUsageTokens(span)` helper (14 lines). Source: `ai.usage.inputTokenDetails.cacheReadTokens` + `ai.usage.inputTokenDetails.cacheWriteTokens`. Zero-value correct via `Number.isFinite`. 7 new tests (cases 1–7). 439 total pass. Typecheck clean. ALL 16 execute items done — phase should flip to review next cycle. |
 
 ## Log Table
 
