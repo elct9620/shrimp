@@ -10,8 +10,10 @@ import {
   type DiagLogger,
   type Tracer,
 } from "@opentelemetry/api";
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import type { TelemetryPort } from "../../use-cases/ports/telemetry";
 import type { LoggerPort } from "../../use-cases/ports/logger";
+import { GenAiBridgeSpanProcessor } from "./gen-ai-bridge-span-processor";
 
 export type OtelTelemetryOptions = {
   serviceName: string;
@@ -41,7 +43,10 @@ export class OtelTelemetry implements TelemetryPort {
       resource: resourceFromAttributes({
         [ATTR_SERVICE_NAME]: options.serviceName,
       }),
-      traceExporter: exporter,
+      spanProcessors: [
+        new GenAiBridgeSpanProcessor(),
+        new BatchSpanProcessor(exporter),
+      ],
     });
 
     this.sdk.start(); // registers global TracerProvider
