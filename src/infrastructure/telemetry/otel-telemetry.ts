@@ -60,17 +60,11 @@ export class OtelTelemetry implements TelemetryPort {
     // Record what the exporter will actually use, so misconfigured endpoints
     // / headers are visible without needing diag DEBUG.
     this.logger.info("telemetry exporter ready", {
-      endpoint:
-        process.env["OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"] ??
-        process.env["OTEL_EXPORTER_OTLP_ENDPOINT"],
+      endpoint: signalEnv("ENDPOINT"),
       protocol:
-        process.env["OTEL_EXPORTER_OTLP_TRACES_PROTOCOL"] ??
-        process.env["OTEL_EXPORTER_OTLP_PROTOCOL"] ??
+        signalEnv("PROTOCOL") ??
         "http/json (Shrimp default — using @opentelemetry/exporter-trace-otlp-http)",
-      headerKeys: parseHeaderKeys(
-        process.env["OTEL_EXPORTER_OTLP_TRACES_HEADERS"] ??
-          process.env["OTEL_EXPORTER_OTLP_HEADERS"],
-      ),
+      headerKeys: parseHeaderKeys(signalEnv("HEADERS")),
     });
   }
 
@@ -101,11 +95,31 @@ function buildDiagLogger(logger: LoggerPort): DiagLogger {
   };
 }
 
+// OTel spec precedence: signal-specific OTEL_EXPORTER_OTLP_TRACES_<SUFFIX>
+// overrides the non-signal-specific OTEL_EXPORTER_OTLP_<SUFFIX>. Empty
+// strings are treated as unset (matches @opentelemetry/core's
+// getStringFromEnv) so an explicit `KEY=` in .env doesn't shadow the
+// fallback.
+function signalEnv(suffix: string): string | undefined {
+  return (
+    nonEmpty(process.env[`OTEL_EXPORTER_OTLP_TRACES_${suffix}`]) ??
+    nonEmpty(process.env[`OTEL_EXPORTER_OTLP_${suffix}`])
+  );
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+  return value === undefined || value === "" ? undefined : value;
+}
+
 function parseHeaderKeys(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw
     .split(",")
-    .map((p) => p.split("=")[0]?.trim())
+    .map((part) => {
+      const eq = part.indexOf("=");
+      if (eq <= 0) return undefined;
+      return part.slice(0, eq).trim();
+    })
     .filter((k): k is string => !!k);
 }
 
