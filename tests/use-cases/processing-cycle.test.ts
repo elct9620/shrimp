@@ -3,10 +3,10 @@ import { ProcessingCycle } from "../../src/use-cases/processing-cycle";
 import { BoardSectionMissingError } from "../../src/use-cases/ports/board-repository";
 import type { BoardRepository } from "../../src/use-cases/ports/board-repository";
 import type {
-  MainAgent,
-  MainAgentInput,
-  MainAgentResult,
-} from "../../src/use-cases/ports/main-agent";
+  ShrimpAgent,
+  JobInput,
+  ShrimpAgentResult,
+} from "../../src/use-cases/ports/shrimp-agent";
 import type { ToolProvider } from "../../src/use-cases/ports/tool-provider";
 import type { ToolProviderFactory } from "../../src/use-cases/ports/tool-provider-factory";
 import type { ToolDescription } from "../../src/use-cases/ports/tool-description";
@@ -64,10 +64,10 @@ function makeBoardRepository(
 }
 
 function makeMainAgent(
-  result: MainAgentResult = { reason: "finished" },
-): MainAgent & { capturedInput?: MainAgentInput } {
-  const agent: MainAgent & { capturedInput?: MainAgentInput } = {
-    run: vi.fn().mockImplementation(async (input: MainAgentInput) => {
+  result: ShrimpAgentResult = { reason: "finished" },
+): ShrimpAgent & { capturedInput?: JobInput } {
+  const agent: ShrimpAgent & { capturedInput?: JobInput } = {
+    run: vi.fn().mockImplementation(async (input: JobInput) => {
       agent.capturedInput = input;
       return result;
     }),
@@ -204,15 +204,15 @@ describe("ProcessingCycle.run", () => {
       );
     });
 
-    it("should pass a non-empty UUID as heartbeatId to main agent", async () => {
+    it("should pass a non-empty UUID as jobId to main agent", async () => {
       await cycle.run();
 
       const uuidPattern =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      expect(mainAgent.capturedInput?.heartbeatId).toMatch(uuidPattern);
+      expect(mainAgent.capturedInput?.jobId).toMatch(uuidPattern);
     });
 
-    it("should generate a distinct heartbeatId for each successive cycle", async () => {
+    it("should generate a distinct jobId for each successive cycle", async () => {
       const secondAgent = makeMainAgent();
       const secondCycle = new ProcessingCycle({
         board,
@@ -226,8 +226,8 @@ describe("ProcessingCycle.run", () => {
       await cycle.run();
       await secondCycle.run();
 
-      expect(mainAgent.capturedInput?.heartbeatId).not.toBe(
-        secondAgent.capturedInput?.heartbeatId,
+      expect(mainAgent.capturedInput?.jobId).not.toBe(
+        secondAgent.capturedInput?.jobId,
       );
     });
   });

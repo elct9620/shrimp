@@ -24,7 +24,7 @@ import { ProcessingCycle } from "./use-cases/processing-cycle";
 import { createPinoLogger } from "./infrastructure/logger/pino-logger";
 import type { BoardRepository } from "./use-cases/ports/board-repository";
 import type { LoggerPort } from "./use-cases/ports/logger";
-import type { MainAgent } from "./use-cases/ports/main-agent";
+import type { ShrimpAgent } from "./use-cases/ports/shrimp-agent";
 import type { TelemetryPort } from "./use-cases/ports/telemetry";
 import type { Tracer } from "@opentelemetry/api";
 import type { ToolDescription } from "./use-cases/ports/tool-description";
@@ -49,8 +49,8 @@ container.register(TOKENS.BoardRepository, {
   },
 });
 
-// MainAgent — registered via useFactory to pass provider-specific options
-container.register(TOKENS.MainAgent, {
+// ShrimpAgent — registered via useFactory to pass provider-specific options
+container.register(TOKENS.ShrimpAgent, {
   useFactory: (c) => {
     const env = c.resolve<EnvConfig>(TOKENS.EnvConfig);
     return new AiSdkMainAgent({
@@ -73,7 +73,7 @@ container.register(ProcessingCycle, {
   useFactory: (c) =>
     new ProcessingCycle({
       board: c.resolve<BoardRepository>(TOKENS.BoardRepository),
-      mainAgent: c.resolve<MainAgent>(TOKENS.MainAgent),
+      mainAgent: c.resolve<ShrimpAgent>(TOKENS.ShrimpAgent),
       toolProviderFactory: c.resolve(TOKENS.ToolProviderFactory),
       maxSteps: c.resolve<EnvConfig>(TOKENS.EnvConfig).aiMaxSteps,
       logger: c

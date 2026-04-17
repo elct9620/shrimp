@@ -7,11 +7,11 @@ import {
 } from "ai";
 import { SpanStatusCode, type Tracer } from "@opentelemetry/api";
 import type {
-  MainAgent,
-  MainAgentInput,
-  MainAgentResult,
-  MainAgentTerminationReason,
-} from "../../use-cases/ports/main-agent";
+  ShrimpAgent,
+  JobInput,
+  ShrimpAgentResult,
+  ShrimpAgentTerminationReason,
+} from "../../use-cases/ports/shrimp-agent";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import { toGenAiOutputMessages } from "../telemetry/gen-ai-bridge-span-processor";
 import pkg from "../../../package.json";
@@ -58,7 +58,7 @@ export type AiSdkMainAgentOptions = {
   recordOutputs: boolean;
 };
 
-export class AiSdkMainAgent implements MainAgent {
+export class AiSdkMainAgent implements ShrimpAgent {
   private readonly model: LanguageModel;
   private readonly logger: LoggerPort;
   private readonly tracer: Tracer;
@@ -81,9 +81,7 @@ export class AiSdkMainAgent implements MainAgent {
       : undefined;
   }
 
-  protected buildToolLoopAgentOptions(
-    input: MainAgentInput,
-  ): ToolLoopAgentSettings {
+  protected buildToolLoopAgentOptions(input: JobInput): ToolLoopAgentSettings {
     return {
       model: this.model,
       tools: input.tools as AiToolSet,
@@ -100,7 +98,7 @@ export class AiSdkMainAgent implements MainAgent {
     };
   }
 
-  async run(input: MainAgentInput): Promise<MainAgentResult> {
+  async run(input: JobInput): Promise<ShrimpAgentResult> {
     const toolCount = Object.keys(input.tools).length;
     this.logger.debug("main agent run started", {
       maxSteps: input.maxSteps,
@@ -121,7 +119,7 @@ export class AiSdkMainAgent implements MainAgent {
       span.setAttribute(ATTR_GEN_AI_PROVIDER_NAME, this.providerName);
       // Correlation ID — always recorded regardless of recordInputs/recordOutputs
       // because it is trace glue, not sensitive content.
-      span.setAttribute(ATTR_GEN_AI_CONVERSATION_ID, input.heartbeatId);
+      span.setAttribute(ATTR_GEN_AI_CONVERSATION_ID, input.jobId);
 
       if (this.recordInputs) {
         const inputMessages = [
@@ -180,7 +178,7 @@ export class AiSdkMainAgent implements MainAgent {
   }
 }
 
-function mapFinishReason(reason: string): MainAgentTerminationReason {
+function mapFinishReason(reason: string): ShrimpAgentTerminationReason {
   switch (reason) {
     case "stop":
     case "tool-calls":

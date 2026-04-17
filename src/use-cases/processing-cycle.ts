@@ -4,14 +4,14 @@ import { Section } from "../entities/section";
 import { assemble } from "./prompt-assembler";
 import { BoardSectionMissingError } from "./ports/board-repository";
 import type { BoardRepository } from "./ports/board-repository";
-import type { MainAgent } from "./ports/main-agent";
+import type { ShrimpAgent } from "./ports/shrimp-agent";
 import type { ToolProviderFactory } from "./ports/tool-provider-factory";
 import type { LoggerPort } from "./ports/logger";
 import type { TelemetryPort } from "./ports/telemetry";
 
 export type ProcessingCycleConfig = {
   board: BoardRepository;
-  mainAgent: MainAgent;
+  mainAgent: ShrimpAgent;
   toolProviderFactory: ToolProviderFactory;
   maxSteps: number;
   logger: LoggerPort;
@@ -20,7 +20,7 @@ export type ProcessingCycleConfig = {
 
 export class ProcessingCycle {
   private readonly board: BoardRepository;
-  private readonly mainAgent: MainAgent;
+  private readonly mainAgent: ShrimpAgent;
   private readonly toolProviderFactory: ToolProviderFactory;
   private readonly maxSteps: number;
   private readonly logger: LoggerPort;
@@ -45,7 +45,7 @@ export class ProcessingCycle {
   async run(): Promise<void> {
     // TODO: Use crypto.randomUUID() v7 when Node.js exposes it natively;
     // currently returns v4 which is the acceptable fallback per spec.
-    const heartbeatId = randomUUID();
+    const jobId = randomUUID();
 
     return this.telemetry.runInSpan("shrimp.processing-cycle", async () => {
       this.logger.info("cycle started");
@@ -105,7 +105,7 @@ export class ProcessingCycle {
         userPrompt,
         tools: toolProvider.getTools(),
         maxSteps: this.maxSteps,
-        heartbeatId,
+        jobId,
       });
 
       this.logger.info("cycle finished", {

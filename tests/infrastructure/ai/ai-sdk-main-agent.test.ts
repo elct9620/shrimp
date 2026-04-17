@@ -6,7 +6,7 @@ import type {
 } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { AiSdkMainAgent } from "../../../src/infrastructure/ai/ai-sdk-main-agent";
-import type { MainAgentInput } from "../../../src/use-cases/ports/main-agent";
+import type { JobInput } from "../../../src/use-cases/ports/shrimp-agent";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 import { NoopTelemetry } from "../../../src/infrastructure/telemetry/noop-telemetry";
@@ -127,12 +127,12 @@ function makeAgent(
   });
 }
 
-const baseInput: MainAgentInput = {
+const baseInput: JobInput = {
   systemPrompt: "You are a helpful assistant.",
   userPrompt: "Complete the task.",
   tools: { my_tool: {} },
   maxSteps: 3,
-  heartbeatId: "00000000-0000-0000-0000-000000000001",
+  jobId: "00000000-0000-0000-0000-000000000001",
 };
 
 describe("AiSdkMainAgent.run", () => {
@@ -295,7 +295,7 @@ describe("AiSdkMainAgent.run", () => {
     function makeInspectableAgent(captured: TelemetrySettings[]) {
       return class InspectableAgent extends AiSdkMainAgent {
         override buildToolLoopAgentOptions(
-          input: MainAgentInput,
+          input: JobInput,
         ): ToolLoopAgentSettings {
           const opts = super.buildToolLoopAgentOptions(input);
           if (opts.experimental_telemetry) {
@@ -455,7 +455,7 @@ describe("AiSdkMainAgent.run", () => {
       expect(span!.attributes["gen_ai.provider.name"]).toBe("my-provider");
     });
 
-    it("should set gen_ai.conversation.id to the heartbeatId from MainAgentInput", async () => {
+    it("should set gen_ai.conversation.id to the jobId from JobInput", async () => {
       const { tracer, spans } = makeRecordingTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
@@ -463,9 +463,7 @@ describe("AiSdkMainAgent.run", () => {
       await agent.run(baseInput);
 
       const span = findMainAgentSpan(spans);
-      expect(span!.attributes["gen_ai.conversation.id"]).toBe(
-        baseInput.heartbeatId,
-      );
+      expect(span!.attributes["gen_ai.conversation.id"]).toBe(baseInput.jobId);
     });
 
     it("should set gen_ai.conversation.id even when recordInputs=false and recordOutputs=false", async () => {
@@ -480,9 +478,7 @@ describe("AiSdkMainAgent.run", () => {
       await agent.run(baseInput);
 
       const span = findMainAgentSpan(spans);
-      expect(span!.attributes["gen_ai.conversation.id"]).toBe(
-        baseInput.heartbeatId,
-      );
+      expect(span!.attributes["gen_ai.conversation.id"]).toBe(baseInput.jobId);
     });
 
     it("should set gen_ai.agent.id to a non-empty UUID-format string", async () => {
