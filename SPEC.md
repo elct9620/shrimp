@@ -4,9 +4,9 @@ An ultra-minimal background agent that automatically processes Todoist tasks in 
 
 ## Purpose
 
-Shrimp keeps a Todoist task board moving forward without human supervision: each time it is woken by a Heartbeat, a Processing Cycle selects the highest-priority task, dispatches it to the Main Agent for execution, and reports progress back as task comments.
+Shrimp keeps a Todoist task board moving forward without human supervision: each time it is woken by a Heartbeat, a Job selects the highest-priority task, dispatches it to the Shrimp Agent for execution, and reports progress back as task comments.
 
-Because the Main Agent is a black-box tool-calling loop, operators have no visibility into what the agent actually did inside a single Processing Cycle — which tools it called, how many steps it took, or where it spent time. Distributed tracing via OpenTelemetry closes that gap by recording the agent's activity as structured, correlated spans that can be inspected after the fact. This makes Shrimp's background processing auditable and diagnosable without adding any synchronous overhead to the heartbeat path.
+Because the Shrimp Agent is a black-box tool-calling loop, operators have no visibility into what the agent actually did inside a single Job — which tools it called, how many steps it took, or where it spent time. Distributed tracing via OpenTelemetry closes that gap by recording the agent's activity as structured, correlated spans that can be inspected after the fact. This makes Shrimp's background processing auditable and diagnosable without adding any synchronous overhead to the heartbeat path.
 
 ## Users
 
@@ -14,14 +14,14 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 ## Success Criteria
 
-| Criterion                         | Pass Condition                                                                                                            |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Heartbeat triggers task selection | Calling `/heartbeat` returns `202 Accepted` immediately; a background cycle is dispatched to select and process one task  |
-| Priority order is correct         | If an In Progress task exists, it is continued first; otherwise a new task is taken from Backlog                          |
-| Progress reporting                | After each execution attempt, the agent posts a non-empty Todoist comment on the selected task summarizing what was done  |
-| Task completion                   | When the agent determines a task is done, it updates the task status to Done                                              |
-| Health check                      | `/health` returns OK; the Docker container stays healthy                                                                  |
-| Trace emission                    | A completed Processing Cycle produces an OTel trace whose spans cover task selection, agent execution, and each tool call |
+| Criterion                         | Pass Condition                                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Heartbeat triggers task selection | Calling `/heartbeat` returns `202 Accepted` immediately; a background Job is dispatched to select and process one task   |
+| Priority order is correct         | If an In Progress task exists, it is continued first; otherwise a new task is taken from Backlog                         |
+| Progress reporting                | After each execution attempt, the agent posts a non-empty Todoist comment on the selected task summarizing what was done |
+| Task completion                   | When the agent determines a task is done, it updates the task status to Done                                             |
+| Health check                      | `/health` returns OK; the Docker container stays healthy                                                                 |
+| Trace emission                    | A completed Job produces an OTel trace whose spans cover task selection, Shrimp Agent execution, and each tool call      |
 
 ## Non-goals
 
