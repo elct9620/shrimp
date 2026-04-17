@@ -55,17 +55,17 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 ### IS
 
-| Feature                            | Description                                                                                                                            |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| In-memory task queue               | A single-slot in-memory queue that serializes task processing; one task at a time                                                      |
-| Heartbeat-triggered task selection | On `/heartbeat`, enqueue a processing cycle: select one task (In Progress first, then Backlog)                                         |
-| AI-driven task execution           | The Main Agent executes the selected task via built-in and MCP tools until the task is complete, max steps reached, or an error occurs |
-| Progress reporting via comments    | Agent posts a Todoist comment with status after each execution                                                                         |
-| Task completion                    | Agent marks the task Done when it determines the task is finished                                                                      |
-| Health check endpoint              | `/health` returns a liveness signal for Docker health check                                                                            |
-| Built-in Todoist tools             | Core Todoist operations (get tasks, get comments, post comment, move task) are built-in to the agent                                   |
-| MCP-based tool extension           | Additional capabilities can be added via MCP servers without modifying the agent                                                       |
-| Distributed tracing                | The Processing Cycle, Main Agent execution, and each tool call emit OpenTelemetry spans that downstream collectors can consume         |
+| Feature                            | Description                                                                                                                              |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| In-memory task queue               | A single-slot in-memory queue that serializes task processing; one task at a time                                                        |
+| Heartbeat-triggered task selection | On `/heartbeat`, enqueue a processing cycle: select one task (In Progress first, then Backlog)                                           |
+| AI-driven task execution           | The Shrimp Agent executes the selected task via built-in and MCP tools until the task is complete, max steps reached, or an error occurs |
+| Progress reporting via comments    | Agent posts a Todoist comment with status after each execution                                                                           |
+| Task completion                    | Agent marks the task Done when it determines the task is finished                                                                        |
+| Health check endpoint              | `/health` returns a liveness signal for Docker health check                                                                              |
+| Built-in Todoist tools             | Core Todoist operations (get tasks, get comments, post comment, move task) are built-in to the agent                                     |
+| MCP-based tool extension           | Additional capabilities can be added via MCP servers without modifying the agent                                                         |
+| Distributed tracing                | The Job, Shrimp Agent execution, and each tool call emit OpenTelemetry spans that downstream collectors can consume                      |
 
 ### IS NOT
 
@@ -337,28 +337,28 @@ The agent has two categories of tools: built-in tools for core Todoist operation
 
 ### Telemetry
 
-Telemetry is a process-level concern: the OpenTelemetry tracer provider and exporter pipeline are initialized at process startup, alongside HTTP server startup and configuration loading, not inside the Processing Cycle or Main Agent. Once initialized, they participate via the ambient OpenTelemetry context; no component holds or passes tracer handles explicitly. This mirrors how `.mcp.json` loading is handled in the Extension Model — configuration is resolved once at startup, and the result is available to all components without tight coupling.
+Telemetry is a process-level concern: the OpenTelemetry tracer provider and exporter pipeline are initialized at process startup, alongside HTTP server startup and configuration loading, not inside the Job Worker or Shrimp Agent. Once initialized, they participate via the ambient OpenTelemetry context; no component holds or passes tracer handles explicitly. This mirrors how `.mcp.json` loading is handled in the Extension Model — configuration is resolved once at startup, and the result is available to all components without tight coupling.
 
 **Component responsibilities:**
 
-| Component                | Telemetry responsibility                                                                                                                                              |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Process startup          | Initialize the tracer provider and exporter pipeline before the HTTP server accepts heartbeats                                                                        |
-| Processing Cycle         | Own the root span lifecycle: start the span when the cycle begins, propagate OTel context, end when the cycle ends                                                    |
-| Main Agent (port)        | Telemetry-agnostic at the port level; the port contract has no tracing parameters                                                                                     |
-| AiSdkMainAgent           | Forward telemetry settings into AI SDK's `experimental_telemetry`; annotate the `shrimp.main-agent` span with agent-level gen_ai attrs (`invoke_agent`, `error.type`) |
-| GenAiBridgeSpanProcessor | Translate AI SDK's `ai.*` span attrs to OTel gen_ai semconv (`gen_ai.*`) on span end; single translation point for all LLM-call and tool-call spans                   |
-| Tool Layer               | No instrumentation required; AI SDK emits `ai.toolCall` spans for every Built-in and MCP tool call automatically                                                      |
+| Component                | Telemetry responsibility                                                                                                                                       |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Process startup          | Initialize the tracer provider and exporter pipeline before the HTTP server accepts heartbeats                                                                 |
+| Job Worker               | Own the root span lifecycle: start the span when the Job begins, propagate OTel context, end when the Job ends                                                 |
+| Shrimp Agent (port)      | Telemetry-agnostic at the port level; the port contract has no tracing parameters                                                                              |
+| AiSdkShrimpAgent         | Forward telemetry settings into AI SDK's `experimental_telemetry`; annotate the `shrimp.job` span with agent-level gen_ai attrs (`invoke_agent`, `error.type`) |
+| GenAiBridgeSpanProcessor | Translate AI SDK's `ai.*` span attrs to OTel gen_ai semconv (`gen_ai.*`) on span end; single translation point for all LLM-call and tool-call spans            |
+| Tool Layer               | No instrumentation required; AI SDK emits `ai.toolCall` spans for every Built-in and MCP tool call automatically                                               |
 
 **Inside vs. outside Shrimp:**
 
-| Inside Shrimp                                                  | Outside Shrimp                                  |
-| -------------------------------------------------------------- | ----------------------------------------------- |
-| Root span lifecycle on Processing Cycle                        | Span transport to a backend collector or vendor |
-| Forwarding telemetry settings to AI SDK (via `AiSdkMainAgent`) | Sampling policy and trace retention             |
-| Initializing tracer and exporter at process startup            | Trace storage, querying, and visualization      |
+| Inside Shrimp                                                    | Outside Shrimp                                  |
+| ---------------------------------------------------------------- | ----------------------------------------------- |
+| Root span lifecycle on Job Worker                                | Span transport to a backend collector or vendor |
+| Forwarding telemetry settings to AI SDK (via `AiSdkShrimpAgent`) | Sampling policy and trace retention             |
+| Initializing tracer and exporter at process startup              | Trace storage, querying, and visualization      |
 
-Swapping `AiSdkMainAgent` for an alternative implementation requires no port changes and no changes to how `ProcessingCycle` manages the root span.
+Swapping `AiSdkShrimpAgent` for an alternative implementation requires no port changes and no changes to how `Job` manages the root span.
 
 ### Failure Handling
 
