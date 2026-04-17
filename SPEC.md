@@ -291,14 +291,15 @@ Liveness check used by Docker `HEALTHCHECK`.
 
 ### Architecture Overview
 
-Shrimp is a single-process service composed of five collaborating components. Shrimp itself (the running process) acts as the Supervisor: it receives heartbeats, manages the Task Queue, and runs Processing Cycles. tsyringe wires all components together at startup; no component constructs its own dependencies.
+Shrimp is a single-process service composed of multiple collaborating components. Within the process, the **Supervisor** is the internal component that receives heartbeats, owns the Job Queue, and dispatches Job Workers. tsyringe wires all components together at startup; no component constructs its own dependencies.
 
 | Component         | Responsibility                                                                                                                                                                                                |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| HTTP Layer (Hono) | Accepts inbound requests, validates route contracts, delegates to Task Queue                                                                                                                                  |
-| Task Queue        | Concurrency gate; limits simultaneous Processing Cycles to one                                                                                                                                                |
-| Processing Cycle  | Orchestrates one heartbeat-triggered unit of work: selects a task, promotes Backlog→In Progress, retrieves comment history, assembles prompts, and dispatches to the Main Agent                               |
-| Main Agent        | AI execution engine: given prompts and a tool set, runs the tool-calling loop until the task is done, max steps reached, or an error occurs; posts progress comments and moves the task to Done when complete |
+| HTTP Layer (Hono) | Accepts inbound requests, validates route contracts, delegates to the Supervisor                                                                                                                              |
+| Supervisor        | Internal component of Shrimp; receives accepted heartbeats, owns the Job Queue, and dispatches Job Workers                                                                                                    |
+| Job Queue         | Concurrency gate; limits simultaneous Jobs to one                                                                                                                                                             |
+| Job Worker        | Orchestrates one Job: selects a task, promotes Backlog→In Progress, retrieves comment history, assembles prompts, and dispatches to the Shrimp Agent                                                          |
+| Shrimp Agent      | AI execution engine: given prompts and a tool set, runs the tool-calling loop until the task is done, max steps reached, or an error occurs; posts progress comments and moves the task to Done when complete |
 | Tool Layer        | Built-in Todoist tools for core operations; MCP servers for extensible capabilities                                                                                                                           |
 
 ### System Boundary
