@@ -7,7 +7,7 @@ interval: 10m
 cron_id: c9930473
 execute_skills: /coding:refactor → /coding:review → /coding:refactor → /git:commit
 review_skills: /coding:review → /coding:refactor → /git:commit
-sample_passes: 1/5
+sample_passes: 2/5
 review_cycles: 6
 ---
 
