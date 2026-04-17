@@ -16,6 +16,10 @@ import { SpanStatusCode, type Tracer } from "@opentelemetry/api";
 const ATTR_GEN_AI_SYSTEM = "gen_ai.system";
 const ATTR_GEN_AI_PROMPT = "gen_ai.prompt";
 const ATTR_GEN_AI_COMPLETION = "gen_ai.completion";
+const ATTR_GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
+const ATTR_GEN_AI_AGENT_NAME = "gen_ai.agent.name";
+const ATTR_GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
+const ATTR_ERROR_TYPE = "error.type";
 import type {
   MainAgent,
   MainAgentInput,
@@ -88,6 +92,9 @@ export class AiSdkMainAgent implements MainAgent {
     // attributes (e.g. Langfuse, Phoenix) still surface prompt/completion.
     return this.tracer.startActiveSpan("shrimp.main-agent", async (span) => {
       span.setAttribute(ATTR_GEN_AI_SYSTEM, this.providerName);
+      span.setAttribute(ATTR_GEN_AI_OPERATION_NAME, "invoke_agent");
+      span.setAttribute(ATTR_GEN_AI_AGENT_NAME, "shrimp.main-agent");
+      span.setAttribute(ATTR_GEN_AI_PROVIDER_NAME, this.providerName);
       if (this.recordInputs) {
         span.setAttribute(
           ATTR_GEN_AI_PROMPT,
@@ -116,6 +123,10 @@ export class AiSdkMainAgent implements MainAgent {
         return { reason };
       } catch (err) {
         span.recordException(err as Error);
+        span.setAttribute(
+          ATTR_ERROR_TYPE,
+          err instanceof Error ? err.constructor.name : typeof err,
+        );
         span.setStatus({ code: SpanStatusCode.ERROR });
         this.logger.error("main agent run failed", {
           error: err instanceof Error ? err.message : String(err),

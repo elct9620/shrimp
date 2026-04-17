@@ -472,6 +472,76 @@ describe("AiSdkMainAgent.run", () => {
       expect(span!.exceptions).toContain(boom);
       expect(span!.attributes).not.toHaveProperty("gen_ai.completion");
     });
+
+    it("should set gen_ai.operation.name to invoke_agent on success", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), { tracer });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes["gen_ai.operation.name"]).toBe("invoke_agent");
+    });
+
+    it("should set gen_ai.agent.name to shrimp.main-agent on success", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), { tracer });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes["gen_ai.agent.name"]).toBe("shrimp.main-agent");
+    });
+
+    it("should set gen_ai.provider.name to the configured providerName on success", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        providerName: "my-provider",
+      });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes["gen_ai.provider.name"]).toBe("my-provider");
+    });
+
+    it("should set error.type to the error constructor name when generate throws", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const boom = new Error("upstream provider exploded");
+      const model = new MockLanguageModelV3({
+        doGenerate: async () => {
+          throw boom;
+        },
+      });
+      const agent = makeAgent(model, makeFakeLogger(), { tracer });
+
+      await expect(agent.run(baseInput)).rejects.toThrow();
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes["error.type"]).toBe("Error");
+    });
+
+    it("should set gen_ai.provider.name even when generate throws", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = new MockLanguageModelV3({
+        doGenerate: async () => {
+          throw new Error("boom");
+        },
+      });
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        providerName: "my-provider",
+      });
+
+      await expect(agent.run(baseInput)).rejects.toThrow();
+
+      const span = findMainAgentSpan(spans);
+      expect(span!.attributes["gen_ai.provider.name"]).toBe("my-provider");
+    });
   });
 
   describe("logging", () => {
