@@ -86,24 +86,24 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 ### `POST /heartbeat`
 
-Enqueues one task-processing cycle in the background.
+Enqueues one Job in the background.
 
 **Request:** no body required.
 
 **Response:**
 
-| Scenario                            | Status         | Body                       |
-| ----------------------------------- | -------------- | -------------------------- |
-| Queue slot is free — cycle enqueued | `202 Accepted` | `{ "status": "accepted" }` |
-| Queue slot is busy — cycle dropped  | `202 Accepted` | `{ "status": "accepted" }` |
+| Scenario                              | Status         | Body                       |
+| ------------------------------------- | -------------- | -------------------------- |
+| Job Queue slot is free — Job enqueued | `202 Accepted` | `{ "status": "accepted" }` |
+| Job Queue slot is busy — Job dropped  | `202 Accepted` | `{ "status": "accepted" }` |
 
 **Behavior rules:**
 
-- Always returns `202 Accepted` immediately, regardless of whether the background cycle was enqueued or dropped. The caller cannot distinguish the two cases; this is intentional fire-and-forget semantics.
+- Always returns `202 Accepted` immediately, regardless of whether the background Job was enqueued or dropped. The caller cannot distinguish the two cases; this is intentional fire-and-forget semantics.
 - Returns immediately after enqueuing; does not wait for task processing to complete.
-- Each Processing Cycle selects at most one task: an In Progress task takes priority over a Backlog task.
-- If no actionable task is found, the cycle ends immediately with no side effects.
-- Task progress reporting and status updates happen asynchronously within the background Processing Cycle.
+- Each Job selects at most one task: an In Progress task takes priority over a Backlog task.
+- If no actionable task is found, the Job ends immediately with no side effects.
+- Task progress reporting and status updates happen asynchronously within the background Job.
 
 ### In-Memory Task Queue
 
