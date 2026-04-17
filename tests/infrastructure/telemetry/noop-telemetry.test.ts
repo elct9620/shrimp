@@ -7,8 +7,6 @@ describe("NoopTelemetry", () => {
     // TypeScript assignment verifies structural conformance at compile time;
     // this test confirms the class exposes all required members at runtime.
     const t: TelemetryPort = new NoopTelemetry();
-    expect(typeof t.recordInputs).toBe("boolean");
-    expect(typeof t.recordOutputs).toBe("boolean");
     expect(typeof t.runInSpan).toBe("function");
     expect(typeof t.shutdown).toBe("function");
   });
@@ -17,16 +15,6 @@ describe("NoopTelemetry", () => {
     const noop = new NoopTelemetry();
     expect(noop.tracer).toBeTruthy();
     expect(typeof noop.tracer.startActiveSpan).toBe("function");
-  });
-
-  it("should default recordInputs to true", () => {
-    const noop = new NoopTelemetry();
-    expect(noop.recordInputs).toBe(true);
-  });
-
-  it("should default recordOutputs to true", () => {
-    const noop = new NoopTelemetry();
-    expect(noop.recordOutputs).toBe(true);
   });
 
   it("should resolve shutdown without error", async () => {

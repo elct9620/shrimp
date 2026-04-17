@@ -7,8 +7,11 @@ import { NoopTelemetry } from "../../../src/infrastructure/telemetry/noop-teleme
 // Captured spy so we can assert on constructor calls.
 const MockOtelTelemetry = vi.fn(function (this: Record<string, unknown>) {
   this.tracer = {};
-  this.recordInputs = true;
-  this.recordOutputs = true;
+  this.runInSpan = vi
+    .fn()
+    .mockImplementation(async (_name: string, fn: () => Promise<unknown>) =>
+      fn(),
+    );
   this.shutdown = vi.fn().mockResolvedValue(undefined);
 });
 
@@ -89,8 +92,6 @@ describe("createTelemetry", () => {
     expect(OtelTelemetry).toHaveBeenCalledOnce();
     expect(OtelTelemetry).toHaveBeenCalledWith({
       serviceName: "shrimp-service",
-      recordInputs: false,
-      recordOutputs: false,
       logger,
     });
   });

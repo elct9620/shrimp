@@ -15,21 +15,21 @@ import type { LoggerPort } from "../../use-cases/ports/logger";
 
 export type OtelTelemetryOptions = {
   serviceName: string;
-  recordInputs: boolean;
-  recordOutputs: boolean;
   logger: LoggerPort;
+  /**
+   * Override the tracer used for `runInSpan`. Intended for tests; production
+   * callers leave this unset so the tracer is resolved from the global
+   * TracerProvider that `NodeSDK.start()` just registered.
+   */
+  tracer?: Tracer;
 };
 
 export class OtelTelemetry implements TelemetryPort {
   readonly tracer: Tracer;
-  readonly recordInputs: boolean;
-  readonly recordOutputs: boolean;
   private readonly sdk: NodeSDK;
   private readonly logger: LoggerPort;
 
   constructor(options: OtelTelemetryOptions) {
-    this.recordInputs = options.recordInputs;
-    this.recordOutputs = options.recordOutputs;
     this.logger = options.logger.child({ module: "OtelTelemetry" });
 
     // OTEL_EXPORTER_OTLP_* env vars are pass-through (SPEC §Telemetry):
@@ -56,7 +56,7 @@ export class OtelTelemetry implements TelemetryPort {
       suppressOverrideMessage: true,
     });
 
-    this.tracer = trace.getTracer("shrimp");
+    this.tracer = options.tracer ?? trace.getTracer("shrimp");
 
     // Record what the exporter will actually use, so misconfigured endpoints
     // / headers are visible without needing diag DEBUG.

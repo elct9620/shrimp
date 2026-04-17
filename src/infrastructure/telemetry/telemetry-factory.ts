@@ -25,8 +25,6 @@ export function createTelemetry(
   // applies spec-compliant signal-path appending.
   const otel = new OtelTelemetry({
     serviceName: env.otelServiceName!,
-    recordInputs: env.telemetryRecordInputs,
-    recordOutputs: env.telemetryRecordOutputs,
     logger,
   });
   return { telemetry: otel, tracer: otel.tracer };

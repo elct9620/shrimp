@@ -58,8 +58,9 @@ container.register(TOKENS.MainAgent, {
       logger: c.resolve<LoggerPort>(TOKENS.Logger),
       providerName: "shrimp",
       reasoningEffort: env.aiReasoningEffort,
-      telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
       tracer: c.resolve<Tracer>(TOKENS.Tracer),
+      recordInputs: env.telemetryRecordInputs,
+      recordOutputs: env.telemetryRecordOutputs,
     });
   },
 });

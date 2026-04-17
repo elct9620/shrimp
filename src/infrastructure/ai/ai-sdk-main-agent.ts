@@ -13,22 +13,23 @@ import type {
   MainAgentTerminationReason,
 } from "../../use-cases/ports/main-agent";
 import type { LoggerPort } from "../../use-cases/ports/logger";
-import type { TelemetryPort } from "../../use-cases/ports/telemetry";
 
 export type AiSdkMainAgentOptions = {
   model: LanguageModel;
   logger: LoggerPort;
   providerName: string;
   reasoningEffort?: string;
-  telemetry: TelemetryPort;
   tracer: Tracer;
+  recordInputs: boolean;
+  recordOutputs: boolean;
 };
 
 export class AiSdkMainAgent implements MainAgent {
   private readonly model: LanguageModel;
   private readonly logger: LoggerPort;
-  private readonly telemetry: TelemetryPort;
   private readonly tracer: Tracer;
+  private readonly recordInputs: boolean;
+  private readonly recordOutputs: boolean;
   private readonly providerOptions:
     | Record<string, Record<string, string>>
     | undefined;
@@ -36,8 +37,9 @@ export class AiSdkMainAgent implements MainAgent {
   constructor(options: AiSdkMainAgentOptions) {
     this.model = options.model;
     this.logger = options.logger.child({ module: "AiSdkMainAgent" });
-    this.telemetry = options.telemetry;
     this.tracer = options.tracer;
+    this.recordInputs = options.recordInputs;
+    this.recordOutputs = options.recordOutputs;
     this.providerOptions = options.reasoningEffort
       ? { [options.providerName]: { reasoningEffort: options.reasoningEffort } }
       : undefined;
@@ -55,8 +57,8 @@ export class AiSdkMainAgent implements MainAgent {
       experimental_telemetry: {
         isEnabled: true,
         functionId: "shrimp.main-agent",
-        recordInputs: this.telemetry.recordInputs,
-        recordOutputs: this.telemetry.recordOutputs,
+        recordInputs: this.recordInputs,
+        recordOutputs: this.recordOutputs,
         tracer: this.tracer,
       },
     };

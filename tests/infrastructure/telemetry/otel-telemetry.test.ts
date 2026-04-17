@@ -66,8 +66,6 @@ function makeOptions(
 ): ConstructorParameters<typeof OtelTelemetry>[0] {
   return {
     serviceName: "shrimp-test",
-    recordInputs: true,
-    recordOutputs: true,
     logger: makeFakeLogger(),
     ...overrides,
   };
@@ -203,22 +201,8 @@ describe("OtelTelemetry", () => {
   it("should satisfy the TelemetryPort contract", () => {
     const t: TelemetryPort = new OtelTelemetry(makeOptions());
 
-    expect(typeof t.recordInputs).toBe("boolean");
-    expect(typeof t.recordOutputs).toBe("boolean");
     expect(typeof t.runInSpan).toBe("function");
     expect(typeof t.shutdown).toBe("function");
-  });
-
-  it("should reflect recordInputs from constructor options", () => {
-    const t = new OtelTelemetry(makeOptions({ recordInputs: false }));
-
-    expect(t.recordInputs).toBe(false);
-  });
-
-  it("should reflect recordOutputs from constructor options", () => {
-    const t = new OtelTelemetry(makeOptions({ recordOutputs: false }));
-
-    expect(t.recordOutputs).toBe(false);
   });
 
   it("should resolve and call sdk.shutdown when shutdown is called", async () => {
@@ -247,15 +231,18 @@ describe("OtelTelemetry", () => {
       setStatus: ReturnType<typeof vi.fn>;
     };
 
-    function installFakeTracer(
+    function makeFakeTracer(span: FakeSpan): Tracer {
+      return {
+        startActiveSpan: ((_name: string, cb: (span: Span) => unknown) =>
+          cb(span as unknown as Span)) as Tracer["startActiveSpan"],
+        startSpan: vi.fn(),
+      } as unknown as Tracer;
+    }
+
+    function buildTelemetry(
       span: FakeSpan,
     ): InstanceType<typeof OtelTelemetry> {
-      const telemetry = new OtelTelemetry(makeOptions());
-      (telemetry.tracer as Tracer).startActiveSpan = ((
-        _name: string,
-        cb: (span: Span) => unknown,
-      ) => cb(span as unknown as Span)) as Tracer["startActiveSpan"];
-      return telemetry;
+      return new OtelTelemetry(makeOptions({ tracer: makeFakeTracer(span) }));
     }
 
     function makeSpan(): FakeSpan {
@@ -268,14 +255,14 @@ describe("OtelTelemetry", () => {
 
     it("should invoke the callback and return its resolved value", async () => {
       const span = makeSpan();
-      const telemetry = installFakeTracer(span);
+      const telemetry = buildTelemetry(span);
       const result = await telemetry.runInSpan("x", async () => "ok");
       expect(result).toBe("ok");
     });
 
     it("should end the span exactly once on the happy path", async () => {
       const span = makeSpan();
-      const telemetry = installFakeTracer(span);
+      const telemetry = buildTelemetry(span);
       await telemetry.runInSpan("x", async () => undefined);
       expect(span.end).toHaveBeenCalledTimes(1);
       expect(span.recordException).not.toHaveBeenCalled();
@@ -284,7 +271,7 @@ describe("OtelTelemetry", () => {
 
     it("should record the exception, set ERROR status, end the span, and rethrow", async () => {
       const span = makeSpan();
-      const telemetry = installFakeTracer(span);
+      const telemetry = buildTelemetry(span);
       const boom = new Error("boom");
       await expect(
         telemetry.runInSpan("x", async () => {

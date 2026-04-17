@@ -27,8 +27,6 @@ type RecordingTelemetry = TelemetryPort & {
 
 function makeFakeTelemetry(): RecordingTelemetry {
   return {
-    recordInputs: true,
-    recordOutputs: true,
     runInSpan: vi
       .fn()
       .mockImplementation(async (_name: string, fn: () => Promise<unknown>) =>
