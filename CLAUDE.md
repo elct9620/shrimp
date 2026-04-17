@@ -24,17 +24,17 @@ No ESLint is configured — `pnpm typecheck` plus `pnpm format` (Prettier) are t
 
 All Docker workflows are exposed as `pnpm docker:*` scripts:
 
-| Command                | Purpose                                                               |
-| ---------------------- | --------------------------------------------------------------------- |
-| `pnpm docker:build`    | Build production image                                                |
-| `pnpm docker:up`       | Start production stack (reads `.env`, publishes `HOST_PORT`)          |
-| `pnpm docker:down`     | Stop production stack                                                 |
-| `pnpm docker:logs`     | Tail production logs                                                  |
-| `pnpm docker:shell`    | Open a shell in the running container                                 |
-| `pnpm docker:dev`      | Start dev stack with compose watch; syncs `./dist` into the container |
-| `pnpm docker:dev:down` | Stop dev stack                                                        |
+| Command                | Purpose                                                      |
+| ---------------------- | ------------------------------------------------------------ |
+| `pnpm docker:build`    | Build production image                                       |
+| `pnpm docker:up`       | Start production stack (reads `.env`, publishes `HOST_PORT`) |
+| `pnpm docker:down`     | Stop production stack                                        |
+| `pnpm docker:logs`     | Tail production logs                                         |
+| `pnpm docker:shell`    | Open a shell in the running container                        |
+| `pnpm docker:dev`      | Rebuild image and start dev stack with compose watch         |
+| `pnpm docker:dev:down` | Stop dev stack                                               |
 
-`docker:dev` only runs compose watch — keep `dist/` fresh via `pnpm dev` in another terminal, or rely on the Claude Stop hook (see below).
+`docker:dev` always rebuilds the image (Docker layer cache keeps it cheap), so the freshly baked `dist/` is what the container starts with. Compose watch then syncs `./dist` into the container on subsequent rebuilds — pair with `pnpm dev` in another terminal, or rely on the Claude Stop hook (see below).
 
 ## Architecture
 
