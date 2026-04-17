@@ -13,7 +13,6 @@ import type { Attributes } from "@opentelemetry/api";
  * Registered before the BatchSpanProcessor in NodeSDK so attribute writes
  * happen prior to export.
  *
- * TODO(#3): bridge ai.toolCall args/result → gen_ai.tool.call.arguments/result
  * TODO(#4): bridge ai.generateText.doGenerate → gen_ai.operation.name=chat
  * TODO(#5): bridge ai.prompt.messages / ai.response.* → gen_ai.input/output.messages
  */
@@ -24,7 +23,9 @@ export class GenAiBridgeSpanProcessor implements SpanProcessor {
   }
 
   onEnd(span: ReadableSpan): void {
-    translateToolCallSpan(span);
+    const toolCall = isToolCallSpan(span);
+    translateToolCallSpan(span, toolCall);
+    translateToolCallArgsResult(span, toolCall);
   }
 
   shutdown(): Promise<void> {
@@ -37,16 +38,22 @@ export class GenAiBridgeSpanProcessor implements SpanProcessor {
 }
 
 /**
- * Detects `ai.toolCall` spans and maps AI SDK attributes to gen_ai.*
- * semantic conventions (gen_ai-tool-calls semconv).
+ * Returns true when the span represents an `ai.toolCall` execution.
+ * Shared guard used by both tool-call translators to avoid recomputing.
  */
-function translateToolCallSpan(span: ReadableSpan): void {
+function isToolCallSpan(span: ReadableSpan): boolean {
+  return (
+    span.name === "ai.toolCall" || span.attributes["ai.toolCall.name"] != null
+  );
+}
+
+/**
+ * Maps identity attrs (operation, tool name/id, type) for `ai.toolCall` spans.
+ */
+function translateToolCallSpan(span: ReadableSpan, toolCall: boolean): void {
+  if (!toolCall) return;
+
   const attrs = span.attributes;
-
-  const isToolCall =
-    span.name === "ai.toolCall" || attrs["ai.toolCall.name"] != null;
-
-  if (!isToolCall) return;
 
   // We mutate `span.attributes` directly because `SpanImpl.setAttribute`
   // guards against writes after `_ended` is true — which is always the case
@@ -68,6 +75,39 @@ function translateToolCallSpan(span: ReadableSpan): void {
 
   // AI SDK tools are always function-type per the AI SDK tool model.
   setIfAbsent(mutableAttrs, "gen_ai.tool.type", "function");
+}
+
+/**
+ * Maps args and result for `ai.toolCall` spans.
+ *
+ * WHY string pass-through: AI SDK serializes both `ai.toolCall.args` and
+ * `ai.toolCall.result` via `JSON.stringify` before setting them as OTel
+ * attributes (node_modules/ai/dist/index.mjs lines 2801-2803, 2871-2873).
+ * OTel attribute values are primitives, so the values are always strings here;
+ * no re-serialization needed.
+ *
+ * Gating: AI SDK gates both attrs on `recordOutputs` (both use the `output`
+ * callback shape). If either attr is absent, the bridge must NOT invent a
+ * default — simply skip it.
+ */
+function translateToolCallArgsResult(
+  span: ReadableSpan,
+  toolCall: boolean,
+): void {
+  if (!toolCall) return;
+
+  const attrs = span.attributes;
+  const mutableAttrs = attrs as Attributes;
+
+  const args = attrs["ai.toolCall.args"];
+  if (args != null) {
+    setIfAbsent(mutableAttrs, "gen_ai.tool.call.arguments", args);
+  }
+
+  const result = attrs["ai.toolCall.result"];
+  if (result != null) {
+    setIfAbsent(mutableAttrs, "gen_ai.tool.call.result", result);
+  }
 }
 
 /** Writes `value` to `attrs[key]` only when the key is not already present. */

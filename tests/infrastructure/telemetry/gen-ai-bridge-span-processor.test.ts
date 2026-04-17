@@ -156,4 +156,106 @@ describe("GenAiBridgeSpanProcessor", () => {
       expect(attrs["gen_ai.tool.name"]).toBe("existing_name");
     });
   });
+
+  describe("tool-call args/result mapping (ai.toolCall.args/result → gen_ai.tool.call.*)", () => {
+    it("maps both arguments and result when both attrs are present", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: {
+          "ai.toolCall.name": "search_web",
+          "ai.toolCall.args": '{"query":"otel"}',
+          "ai.toolCall.result": '{"results":[]}',
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.tool.call.arguments"]).toBe('{"query":"otel"}');
+      expect(attrs["gen_ai.tool.call.result"]).toBe('{"results":[]}');
+    });
+
+    it("maps arguments but skips result when ai.toolCall.result is absent (recordOutputs=false)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: {
+          "ai.toolCall.name": "search_web",
+          "ai.toolCall.args": '{"query":"otel"}',
+          // ai.toolCall.result intentionally absent (recordOutputs=false)
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.tool.call.arguments"]).toBe('{"query":"otel"}');
+      expect(attrs).not.toHaveProperty("gen_ai.tool.call.result");
+    });
+
+    it("maps result but skips arguments when ai.toolCall.args is absent (recordInputs=false)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: {
+          "ai.toolCall.name": "search_web",
+          // ai.toolCall.args intentionally absent (recordInputs=false)
+          "ai.toolCall.result": '{"results":[]}',
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).not.toHaveProperty("gen_ai.tool.call.arguments");
+      expect(attrs["gen_ai.tool.call.result"]).toBe('{"results":[]}');
+    });
+
+    it("sets neither gen_ai.tool.call.* when both source attrs are absent", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: {
+          "ai.toolCall.name": "search_web",
+          // both args and result absent
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).not.toHaveProperty("gen_ai.tool.call.arguments");
+      expect(attrs).not.toHaveProperty("gen_ai.tool.call.result");
+    });
+
+    it("does NOT map args/result on non-tool-call spans even when attrs are accidentally present", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText",
+        attributes: {
+          "ai.toolCall.args": '{"query":"otel"}',
+          "ai.toolCall.result": '{"results":[]}',
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).not.toHaveProperty("gen_ai.tool.call.arguments");
+      expect(attrs).not.toHaveProperty("gen_ai.tool.call.result");
+    });
+
+    it("preserves existing gen_ai.tool.call.arguments when already present", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: {
+          "ai.toolCall.name": "search_web",
+          "ai.toolCall.args": '{"query":"new"}',
+          "gen_ai.tool.call.arguments": '{"query":"existing"}',
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      // setIfAbsent must not overwrite the pre-existing value
+      expect(attrs["gen_ai.tool.call.arguments"]).toBe('{"query":"existing"}');
+    });
+  });
 });
