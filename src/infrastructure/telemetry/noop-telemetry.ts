@@ -6,6 +6,10 @@ export class NoopTelemetry implements TelemetryPort {
   readonly recordInputs = true;
   readonly recordOutputs = true;
 
+  async runInSpan<T>(_name: string, fn: () => Promise<T>): Promise<T> {
+    return fn();
+  }
+
   async shutdown(): Promise<void> {
     // No-op: there is no exporter to flush.
   }

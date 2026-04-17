@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NoopTelemetry } from "../../../src/infrastructure/telemetry/noop-telemetry";
 import type { TelemetryPort } from "../../../src/use-cases/ports/telemetry";
 
@@ -7,9 +7,9 @@ describe("NoopTelemetry", () => {
     // TypeScript assignment verifies structural conformance at compile time;
     // this test confirms the class exposes all required members at runtime.
     const t: TelemetryPort = new NoopTelemetry();
-    expect(t.tracer).toBeDefined();
     expect(typeof t.recordInputs).toBe("boolean");
     expect(typeof t.recordOutputs).toBe("boolean");
+    expect(typeof t.runInSpan).toBe("function");
     expect(typeof t.shutdown).toBe("function");
   });
 
@@ -41,5 +41,29 @@ describe("NoopTelemetry", () => {
       return "ok";
     });
     expect(result).toBe("ok");
+  });
+
+  describe("runInSpan", () => {
+    it("should forward the callback's resolved value", async () => {
+      const noop = new NoopTelemetry();
+      await expect(noop.runInSpan("x", async () => 42)).resolves.toBe(42);
+    });
+
+    it("should invoke the callback exactly once", async () => {
+      const noop = new NoopTelemetry();
+      const fn = vi.fn().mockResolvedValue(undefined);
+      await noop.runInSpan("x", fn);
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it("should propagate errors thrown by the callback", async () => {
+      const noop = new NoopTelemetry();
+      const boom = new Error("boom");
+      await expect(
+        noop.runInSpan("x", async () => {
+          throw boom;
+        }),
+      ).rejects.toBe(boom);
+    });
   });
 });

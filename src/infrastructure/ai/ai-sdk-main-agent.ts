@@ -5,6 +5,7 @@ import {
   type ToolLoopAgentSettings,
   type ToolSet as AiToolSet,
 } from "ai";
+import type { Tracer } from "@opentelemetry/api";
 import type {
   MainAgent,
   MainAgentInput,
@@ -20,12 +21,14 @@ export type AiSdkMainAgentOptions = {
   providerName: string;
   reasoningEffort?: string;
   telemetry: TelemetryPort;
+  tracer: Tracer;
 };
 
 export class AiSdkMainAgent implements MainAgent {
   private readonly model: LanguageModel;
   private readonly logger: LoggerPort;
   private readonly telemetry: TelemetryPort;
+  private readonly tracer: Tracer;
   private readonly providerOptions:
     | Record<string, Record<string, string>>
     | undefined;
@@ -34,6 +37,7 @@ export class AiSdkMainAgent implements MainAgent {
     this.model = options.model;
     this.logger = options.logger.child({ module: "AiSdkMainAgent" });
     this.telemetry = options.telemetry;
+    this.tracer = options.tracer;
     this.providerOptions = options.reasoningEffort
       ? { [options.providerName]: { reasoningEffort: options.reasoningEffort } }
       : undefined;
@@ -53,7 +57,7 @@ export class AiSdkMainAgent implements MainAgent {
         functionId: "shrimp.main-agent",
         recordInputs: this.telemetry.recordInputs,
         recordOutputs: this.telemetry.recordOutputs,
-        tracer: this.telemetry.tracer,
+        tracer: this.tracer,
       },
     };
   }

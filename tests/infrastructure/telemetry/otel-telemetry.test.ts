@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { diag, DiagLogLevel, type DiagLogger } from "@opentelemetry/api";
+import {
+  diag,
+  DiagLogLevel,
+  SpanStatusCode,
+  type DiagLogger,
+  type Span,
+  type Tracer,
+} from "@opentelemetry/api";
 import type { TelemetryPort } from "../../../src/use-cases/ports/telemetry";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 
@@ -187,10 +194,19 @@ describe("OtelTelemetry", () => {
     expect(mockSdkStart).toHaveBeenCalledOnce();
   });
 
-  it("should have a defined tracer after construction", () => {
-    const telemetry: TelemetryPort = new OtelTelemetry(makeOptions());
+  it("should expose a tracer on the concrete adapter for DI wiring", () => {
+    const telemetry = new OtelTelemetry(makeOptions());
 
     expect(telemetry.tracer).toBeDefined();
+  });
+
+  it("should satisfy the TelemetryPort contract", () => {
+    const t: TelemetryPort = new OtelTelemetry(makeOptions());
+
+    expect(typeof t.recordInputs).toBe("boolean");
+    expect(typeof t.recordOutputs).toBe("boolean");
+    expect(typeof t.runInSpan).toBe("function");
+    expect(typeof t.shutdown).toBe("function");
   });
 
   it("should reflect recordInputs from constructor options", () => {
@@ -222,6 +238,65 @@ describe("OtelTelemetry", () => {
       "telemetry shutdown failed",
       expect.objectContaining({ error: "boom" }),
     );
+  });
+
+  describe("runInSpan", () => {
+    type FakeSpan = {
+      end: ReturnType<typeof vi.fn>;
+      recordException: ReturnType<typeof vi.fn>;
+      setStatus: ReturnType<typeof vi.fn>;
+    };
+
+    function installFakeTracer(
+      span: FakeSpan,
+    ): InstanceType<typeof OtelTelemetry> {
+      const telemetry = new OtelTelemetry(makeOptions());
+      (telemetry.tracer as Tracer).startActiveSpan = ((
+        _name: string,
+        cb: (span: Span) => unknown,
+      ) => cb(span as unknown as Span)) as Tracer["startActiveSpan"];
+      return telemetry;
+    }
+
+    function makeSpan(): FakeSpan {
+      return {
+        end: vi.fn(),
+        recordException: vi.fn(),
+        setStatus: vi.fn(),
+      };
+    }
+
+    it("should invoke the callback and return its resolved value", async () => {
+      const span = makeSpan();
+      const telemetry = installFakeTracer(span);
+      const result = await telemetry.runInSpan("x", async () => "ok");
+      expect(result).toBe("ok");
+    });
+
+    it("should end the span exactly once on the happy path", async () => {
+      const span = makeSpan();
+      const telemetry = installFakeTracer(span);
+      await telemetry.runInSpan("x", async () => undefined);
+      expect(span.end).toHaveBeenCalledTimes(1);
+      expect(span.recordException).not.toHaveBeenCalled();
+      expect(span.setStatus).not.toHaveBeenCalled();
+    });
+
+    it("should record the exception, set ERROR status, end the span, and rethrow", async () => {
+      const span = makeSpan();
+      const telemetry = installFakeTracer(span);
+      const boom = new Error("boom");
+      await expect(
+        telemetry.runInSpan("x", async () => {
+          throw boom;
+        }),
+      ).rejects.toBe(boom);
+      expect(span.recordException).toHaveBeenCalledWith(boom);
+      expect(span.setStatus).toHaveBeenCalledWith({
+        code: SpanStatusCode.ERROR,
+      });
+      expect(span.end).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("telemetry exporter ready startup log", () => {

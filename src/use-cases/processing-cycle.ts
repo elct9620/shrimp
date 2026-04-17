@@ -1,4 +1,3 @@
-import { SpanStatusCode } from "@opentelemetry/api";
 import { selectTask } from "../entities/task-selector";
 import { Section } from "../entities/section";
 import { assemble } from "./prompt-assembler";
@@ -43,81 +42,70 @@ export class ProcessingCycle {
   }
 
   async run(): Promise<void> {
-    return this.telemetry.tracer.startActiveSpan(
-      "shrimp.processing-cycle",
-      async (span) => {
-        try {
-          this.logger.info("cycle started");
+    return this.telemetry.runInSpan("shrimp.processing-cycle", async () => {
+      this.logger.info("cycle started");
 
-          let inProgressTasks, backlogTasks;
+      let inProgressTasks, backlogTasks;
 
-          try {
-            await this.board.validateSections();
-            inProgressTasks = await this.board.getTasks(Section.InProgress);
-            backlogTasks = await this.board.getTasks(Section.Backlog);
-          } catch (error) {
-            if (error instanceof BoardSectionMissingError) {
-              this.logger.warn("cycle skipped — board section missing", {
-                missingSection: error.message,
-              });
-              return;
-            }
-            throw error;
-          }
-
-          const task = selectTask(inProgressTasks, backlogTasks);
-          if (task === null) {
-            this.logger.info("cycle idle", {
-              reason: "no tasks available",
-              inProgressCount: inProgressTasks.length,
-              backlogCount: backlogTasks.length,
-            });
-            return;
-          }
-
-          this.logger.info("cycle task selected", {
-            taskId: task.id,
-            section: task.section,
-            priority: task.priority,
+      try {
+        await this.board.validateSections();
+        inProgressTasks = await this.board.getTasks(Section.InProgress);
+        backlogTasks = await this.board.getTasks(Section.Backlog);
+      } catch (error) {
+        if (error instanceof BoardSectionMissingError) {
+          this.logger.warn("cycle skipped — board section missing", {
+            missingSection: error.message,
           });
-
-          let selectedTask = task;
-          if (task.section === Section.Backlog) {
-            await this.board.moveTask(task.id, Section.InProgress);
-            selectedTask = { ...task, section: Section.InProgress };
-            this.logger.debug("cycle task promoted", { taskId: task.id });
-          }
-
-          const comments = await this.board.getComments(selectedTask.id);
-          const toolProvider = this.toolProviderFactory.create();
-          const tools = toolProvider.getToolDescriptions();
-
-          const { systemPrompt, userPrompt } = assemble({
-            task: selectedTask,
-            comments,
-            tools,
-          });
-
-          this.logger.debug("cycle invoking main agent", { taskId: task.id });
-          const result = await this.mainAgent.run({
-            systemPrompt,
-            userPrompt,
-            tools: toolProvider.getTools(),
-            maxSteps: this.maxSteps,
-          });
-
-          this.logger.info("cycle finished", {
-            taskId: task.id,
-            reason: result.reason,
-          });
-        } catch (err) {
-          span.recordException(err as Error);
-          span.setStatus({ code: SpanStatusCode.ERROR });
-          throw err;
-        } finally {
-          span.end();
+          return;
         }
-      },
-    );
+        throw error;
+      }
+
+      const task = selectTask(inProgressTasks, backlogTasks);
+      if (task === null) {
+        this.logger.info("cycle idle", {
+          reason: "no tasks available",
+          inProgressCount: inProgressTasks.length,
+          backlogCount: backlogTasks.length,
+        });
+        return;
+      }
+
+      this.logger.info("cycle task selected", {
+        taskId: task.id,
+        section: task.section,
+        priority: task.priority,
+      });
+
+      let selectedTask = task;
+      if (task.section === Section.Backlog) {
+        await this.board.moveTask(task.id, Section.InProgress);
+        selectedTask = { ...task, section: Section.InProgress };
+        this.logger.debug("cycle task promoted", { taskId: task.id });
+      }
+
+      const comments = await this.board.getComments(selectedTask.id);
+      const toolProvider = this.toolProviderFactory.create();
+      const tools = toolProvider.getToolDescriptions();
+
+      const { systemPrompt, userPrompt } = assemble({
+        task: selectedTask,
+        comments,
+        tools,
+      });
+
+      this.logger.debug("cycle invoking main agent", { taskId: task.id });
+      const result = await this.mainAgent.run({
+        systemPrompt,
+        userPrompt,
+        tools: toolProvider.getTools(),
+        maxSteps: this.maxSteps,
+      });
+
+      this.logger.info("cycle finished", {
+        taskId: task.id,
+        reason: result.reason,
+      });
+    });
   }
 }

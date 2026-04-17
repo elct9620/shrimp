@@ -49,9 +49,10 @@ describe("createTelemetry", () => {
     const logger = makeFakeLogger();
     const env: EnvConfig = { ...BASE_ENV, telemetryEnabled: false };
 
-    const result = createTelemetry(env, logger);
+    const { telemetry, tracer } = createTelemetry(env, logger);
 
-    expect(result).toBeInstanceOf(NoopTelemetry);
+    expect(telemetry).toBeInstanceOf(NoopTelemetry);
+    expect(tracer).toBeDefined();
   });
 
   it("returns an OtelTelemetry instance when telemetryEnabled is true and required fields are present", () => {
@@ -63,9 +64,10 @@ describe("createTelemetry", () => {
       otelExporterOtlpEndpoint: "http://otel:4318",
     };
 
-    const result = createTelemetry(env, logger);
+    const { telemetry, tracer } = createTelemetry(env, logger);
 
-    expect(result).toBeInstanceOf(OtelTelemetry);
+    expect(telemetry).toBeInstanceOf(OtelTelemetry);
+    expect(tracer).toBeDefined();
   });
 
   it("passes correct OtelTelemetryOptions to OtelTelemetry constructor", () => {
@@ -98,7 +100,7 @@ describe("createTelemetry", () => {
     const env: EnvConfig = { ...BASE_ENV, telemetryEnabled: false };
 
     // TypeScript compile-time assertion: TelemetryPort is satisfied
-    const t: TelemetryPort = createTelemetry(env, logger);
+    const t: TelemetryPort = createTelemetry(env, logger).telemetry;
 
     expect(t).toBeDefined();
   });

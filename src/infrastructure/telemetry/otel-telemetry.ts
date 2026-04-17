@@ -5,6 +5,7 @@ import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import {
   diag,
   DiagLogLevel,
+  SpanStatusCode,
   trace,
   type DiagLogger,
   type Tracer,
@@ -65,6 +66,20 @@ export class OtelTelemetry implements TelemetryPort {
         signalEnv("PROTOCOL") ??
         "http/json (Shrimp default — using @opentelemetry/exporter-trace-otlp-http)",
       headerKeys: parseHeaderKeys(signalEnv("HEADERS")),
+    });
+  }
+
+  async runInSpan<T>(name: string, fn: () => Promise<T>): Promise<T> {
+    return this.tracer.startActiveSpan(name, async (span) => {
+      try {
+        return await fn();
+      } catch (err) {
+        span.recordException(err as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        throw err;
+      } finally {
+        span.end();
+      }
     });
   }
 

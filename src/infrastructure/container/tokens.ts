@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import type { LanguageModel } from "ai";
+import type { Tracer } from "@opentelemetry/api";
 import type { BoardRepository } from "../../use-cases/ports/board-repository";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import type { MainAgent } from "../../use-cases/ports/main-agent";
@@ -17,6 +18,7 @@ export const TOKENS = {
   MainAgent: Symbol.for("shrimp.MainAgent"),
   TaskQueue: Symbol.for("shrimp.TaskQueue"),
   Telemetry: Symbol.for("shrimp.TelemetryPort"),
+  Tracer: Symbol.for("shrimp.Tracer"),
   ToolProviderFactory: Symbol.for("shrimp.ToolProviderFactory"),
   LanguageModel: Symbol.for("shrimp.LanguageModel"),
   EnvConfig: Symbol.for("shrimp.EnvConfig"),
@@ -31,6 +33,7 @@ export type TokenRegistry = {
   [TOKENS.MainAgent]: MainAgent;
   [TOKENS.TaskQueue]: TaskQueue;
   [TOKENS.Telemetry]: TelemetryPort;
+  [TOKENS.Tracer]: Tracer;
   [TOKENS.ToolProviderFactory]: ToolProviderFactory;
   [TOKENS.LanguageModel]: LanguageModel;
   [TOKENS.EnvConfig]: EnvConfig;

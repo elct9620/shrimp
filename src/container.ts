@@ -26,6 +26,7 @@ import type { BoardRepository } from "./use-cases/ports/board-repository";
 import type { LoggerPort } from "./use-cases/ports/logger";
 import type { MainAgent } from "./use-cases/ports/main-agent";
 import type { TelemetryPort } from "./use-cases/ports/telemetry";
+import type { Tracer } from "@opentelemetry/api";
 import type { ToolDescription } from "./use-cases/ports/tool-description";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +59,7 @@ container.register(TOKENS.MainAgent, {
       providerName: "shrimp",
       reasoningEffort: env.aiReasoningEffort,
       telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
+      tracer: c.resolve<Tracer>(TOKENS.Tracer),
     });
   },
 });
@@ -107,8 +109,9 @@ export async function bootstrap(): Promise<void> {
   });
 
   // 3. Telemetry — initialize before HTTP server accepts heartbeats (SPEC §Initialization ordering)
-  const telemetry = createTelemetry(env, logger);
+  const { telemetry, tracer } = createTelemetry(env, logger);
   container.registerInstance(TOKENS.Telemetry, telemetry);
+  container.registerInstance(TOKENS.Tracer, tracer);
   logger.info("telemetry initialized", { enabled: env.telemetryEnabled });
 
   // 4. Language model

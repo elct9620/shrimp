@@ -11,6 +11,7 @@ import type { LoggerPort } from "../../../src/use-cases/ports/logger";
 import type { TelemetryPort } from "../../../src/use-cases/ports/telemetry";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 import { NoopTelemetry } from "../../../src/infrastructure/telemetry/noop-telemetry";
+import type { Tracer } from "@opentelemetry/api";
 
 function makeModel(finishReason: FinishReason = "stop") {
   return new MockLanguageModelV3({
@@ -38,14 +39,17 @@ function makeAgent(
     providerName?: string;
     reasoningEffort?: string;
     telemetry?: TelemetryPort;
+    tracer?: Tracer;
   },
 ) {
+  const noop = new NoopTelemetry();
   return new AiSdkMainAgent({
     model,
     logger,
     providerName: options?.providerName ?? "test-provider",
     reasoningEffort: options?.reasoningEffort,
-    telemetry: options?.telemetry ?? new NoopTelemetry(),
+    telemetry: options?.telemetry ?? noop,
+    tracer: options?.tracer ?? noop.tracer,
   });
 }
 
@@ -231,6 +235,7 @@ describe("AiSdkMainAgent.run", () => {
       const capturedTelemetry: TelemetrySettings[] = [];
       const model = makeModel("stop");
       const telemetry = new NoopTelemetry();
+      const tracer = telemetry.tracer;
 
       const InspectableAgent = makeInspectableAgent(capturedTelemetry);
       const agent = new InspectableAgent({
@@ -238,6 +243,7 @@ describe("AiSdkMainAgent.run", () => {
         logger: makeFakeLogger(),
         providerName: "test-provider",
         telemetry,
+        tracer,
       });
 
       await agent.run(baseInput);
@@ -248,15 +254,15 @@ describe("AiSdkMainAgent.run", () => {
       expect(et.functionId).toBe("shrimp.main-agent");
       expect(et.recordInputs).toBe(telemetry.recordInputs);
       expect(et.recordOutputs).toBe(telemetry.recordOutputs);
-      expect(et.tracer).toBe(telemetry.tracer);
+      expect(et.tracer).toBe(tracer);
     });
 
     it("should forward recordInputs:false and recordOutputs:false from injected TelemetryPort", async () => {
       const capturedTelemetry: TelemetrySettings[] = [];
       const fakeTelemetry: TelemetryPort = {
-        tracer: new NoopTelemetry().tracer,
         recordInputs: false,
         recordOutputs: false,
+        runInSpan: async (_name, fn) => fn(),
         shutdown: async () => {},
       };
       const model = makeModel("stop");
@@ -267,6 +273,7 @@ describe("AiSdkMainAgent.run", () => {
         logger: makeFakeLogger(),
         providerName: "test-provider",
         telemetry: fakeTelemetry,
+        tracer: new NoopTelemetry().tracer,
       });
 
       await agent.run(baseInput);
@@ -276,13 +283,13 @@ describe("AiSdkMainAgent.run", () => {
       expect(et.recordOutputs).toBe(false);
     });
 
-    it("should forward the exact tracer instance from the injected TelemetryPort", async () => {
+    it("should forward the exact tracer instance from the injected Tracer token", async () => {
       const capturedTelemetry: TelemetrySettings[] = [];
       const sentinelTracer = new NoopTelemetry().tracer;
       const fakeTelemetry: TelemetryPort = {
-        tracer: sentinelTracer,
         recordInputs: true,
         recordOutputs: true,
+        runInSpan: async (_name, fn) => fn(),
         shutdown: async () => {},
       };
       const model = makeModel("stop");
@@ -293,6 +300,7 @@ describe("AiSdkMainAgent.run", () => {
         logger: makeFakeLogger(),
         providerName: "test-provider",
         telemetry: fakeTelemetry,
+        tracer: sentinelTracer,
       });
 
       await agent.run(baseInput);

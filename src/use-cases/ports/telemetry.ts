@@ -1,13 +1,4 @@
-import type { Tracer } from "@opentelemetry/api";
-
 export interface TelemetryPort {
-  /**
-   * The OpenTelemetry tracer. Forwarded to AI SDK's experimental_telemetry.tracer
-   * and used by ProcessingCycle to start the root span. Implementations may
-   * return a no-op tracer when telemetry is disabled.
-   */
-  readonly tracer: Tracer;
-
   /**
    * When false, prompt text is omitted from span attributes.
    * Maps to TELEMETRY_RECORD_INPUTS.
@@ -19,6 +10,14 @@ export interface TelemetryPort {
    * Maps to TELEMETRY_RECORD_OUTPUTS.
    */
   readonly recordOutputs: boolean;
+
+  /**
+   * Run `fn` inside a named active span. Implementations are responsible for
+   * the full span lifecycle: start → record exception + set ERROR status on
+   * throw → end the span in a finally block. Callers observe no telemetry
+   * primitives.
+   */
+  runInSpan<T>(name: string, fn: () => Promise<T>): Promise<T>;
 
   /**
    * Flush buffered spans and tear down the exporter pipeline.
