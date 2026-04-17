@@ -12,6 +12,69 @@ import { makeFakeLogger } from "../../mocks/fake-logger";
 import { NoopTelemetry } from "../../../src/infrastructure/telemetry/noop-telemetry";
 import type { Tracer } from "@opentelemetry/api";
 
+type RecordedSpan = {
+  name: string;
+  attributes: Record<string, unknown>;
+  ended: boolean;
+};
+
+function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
+  const spans: RecordedSpan[] = [];
+  const tracer = {
+    startActiveSpan(name: string, ...args: unknown[]): unknown {
+      const fn = args[args.length - 1] as (span: unknown) => unknown;
+      const record: RecordedSpan = { name, attributes: {}, ended: false };
+      spans.push(record);
+      const span = {
+        setAttribute(key: string, value: unknown) {
+          record.attributes[key] = value;
+          return span;
+        },
+        setAttributes(attrs: Record<string, unknown>) {
+          Object.assign(record.attributes, attrs);
+          return span;
+        },
+        setStatus() {
+          return span;
+        },
+        recordException() {
+          return span;
+        },
+        updateName() {
+          return span;
+        },
+        end() {
+          record.ended = true;
+        },
+        isRecording() {
+          return true;
+        },
+        spanContext() {
+          return {
+            traceId: "0".repeat(32),
+            spanId: "0".repeat(16),
+            traceFlags: 0,
+          };
+        },
+        addEvent() {
+          return span;
+        },
+        addLink() {
+          return span;
+        },
+        addLinks() {
+          return span;
+        },
+      };
+      return fn(span);
+    },
+    startSpan() {
+      throw new Error("startSpan not implemented in recording tracer");
+    },
+  } as unknown as Tracer;
+  return { tracer, spans };
+}
+
 function makeModel(finishReason: FinishReason = "stop") {
   return new MockLanguageModelV3({
     doGenerate: async () => ({
@@ -298,6 +361,104 @@ describe("AiSdkMainAgent.run", () => {
 
       const et = capturedTelemetry[0];
       expect(et.tracer).toBe(sentinelTracer);
+    });
+  });
+
+  describe("gen_ai semantic conventions", () => {
+    function findMainAgentSpan(spans: RecordedSpan[]) {
+      return spans.find((s) => s.name === "shrimp.main-agent");
+    }
+
+    it("should set gen_ai.system / gen_ai.prompt / gen_ai.completion on the main agent span", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        providerName: "my-provider",
+        recordInputs: true,
+        recordOutputs: true,
+      });
+
+      await agent.run({
+        ...baseInput,
+        systemPrompt: "You are a helpful assistant.",
+        userPrompt: "Complete the task.",
+      });
+
+      const span = findMainAgentSpan(spans);
+      expect(span).toBeDefined();
+      expect(span!.ended).toBe(true);
+      expect(span!.attributes["gen_ai.system"]).toBe("my-provider");
+
+      const prompt = span!.attributes["gen_ai.prompt"];
+      expect(typeof prompt).toBe("string");
+      const parsed = JSON.parse(prompt as string) as Array<{
+        role: string;
+        content: string;
+      }>;
+      expect(parsed).toEqual([
+        { role: "system", content: "You are a helpful assistant." },
+        { role: "user", content: "Complete the task." },
+      ]);
+
+      expect(span!.attributes["gen_ai.completion"]).toBe("done");
+    });
+
+    it("should omit gen_ai.prompt when recordInputs is false", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        recordInputs: false,
+        recordOutputs: true,
+      });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      expect(span).toBeDefined();
+      expect(span!.attributes).not.toHaveProperty("gen_ai.prompt");
+      expect(span!.attributes["gen_ai.completion"]).toBe("done");
+    });
+
+    it("should omit gen_ai.completion when recordOutputs is false", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        recordInputs: true,
+        recordOutputs: false,
+      });
+
+      await agent.run(baseInput);
+
+      const span = findMainAgentSpan(spans);
+      expect(span).toBeDefined();
+      expect(span!.attributes["gen_ai.prompt"]).toEqual(expect.any(String));
+      expect(span!.attributes).not.toHaveProperty("gen_ai.completion");
+    });
+
+    it("should end the span and rethrow when generate throws", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const boom = new Error("upstream provider exploded");
+      const model = new MockLanguageModelV3({
+        doGenerate: async () => {
+          throw boom;
+        },
+      });
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
+        recordInputs: true,
+        recordOutputs: true,
+      });
+
+      await expect(agent.run(baseInput)).rejects.toThrow(
+        "upstream provider exploded",
+      );
+
+      const span = findMainAgentSpan(spans);
+      expect(span).toBeDefined();
+      expect(span!.ended).toBe(true);
     });
   });
 

@@ -5,7 +5,7 @@ import {
   type ToolLoopAgentSettings,
   type ToolSet as AiToolSet,
 } from "ai";
-import type { Tracer } from "@opentelemetry/api";
+import { SpanStatusCode, type Tracer } from "@opentelemetry/api";
 import type {
   MainAgent,
   MainAgentInput,
@@ -28,6 +28,7 @@ export class AiSdkMainAgent implements MainAgent {
   private readonly model: LanguageModel;
   private readonly logger: LoggerPort;
   private readonly tracer: Tracer;
+  private readonly providerName: string;
   private readonly recordInputs: boolean;
   private readonly recordOutputs: boolean;
   private readonly providerOptions:
@@ -38,6 +39,7 @@ export class AiSdkMainAgent implements MainAgent {
     this.model = options.model;
     this.logger = options.logger.child({ module: "AiSdkMainAgent" });
     this.tracer = options.tracer;
+    this.providerName = options.providerName;
     this.recordInputs = options.recordInputs;
     this.recordOutputs = options.recordOutputs;
     this.providerOptions = options.reasoningEffort
@@ -71,25 +73,49 @@ export class AiSdkMainAgent implements MainAgent {
       toolCount,
     });
 
-    const agent = new ToolLoopAgent(this.buildToolLoopAgentOptions(input));
+    // Wrap generate() in an active span annotated with OpenTelemetry GenAI
+    // semantic conventions so backends that don't speak AI SDK's `ai.*`
+    // attributes (e.g. Langfuse, Phoenix) still surface prompt/completion.
+    return this.tracer.startActiveSpan("shrimp.main-agent", async (span) => {
+      span.setAttribute("gen_ai.system", this.providerName);
+      if (this.recordInputs) {
+        span.setAttribute(
+          "gen_ai.prompt",
+          JSON.stringify([
+            { role: "system", content: input.systemPrompt },
+            { role: "user", content: input.userPrompt },
+          ]),
+        );
+      }
 
-    let result;
-    try {
-      result = await agent.generate({ prompt: input.userPrompt });
-    } catch (err) {
-      this.logger.error("main agent run failed", {
-        error: err instanceof Error ? err.message : String(err),
+      const agent = new ToolLoopAgent(this.buildToolLoopAgentOptions(input));
+
+      let result;
+      try {
+        result = await agent.generate({ prompt: input.userPrompt });
+      } catch (err) {
+        span.recordException(err as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        span.end();
+        this.logger.error("main agent run failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
+
+      if (this.recordOutputs) {
+        span.setAttribute("gen_ai.completion", result.text);
+      }
+
+      const reason = mapFinishReason(result.finishReason);
+      this.logger.info("main agent run finished", {
+        finishReason: result.finishReason,
+        reason,
       });
-      throw err;
-    }
 
-    const reason = mapFinishReason(result.finishReason);
-    this.logger.info("main agent run finished", {
-      finishReason: result.finishReason,
-      reason,
+      span.end();
+      return { reason };
     });
-
-    return { reason };
   }
 }
 
