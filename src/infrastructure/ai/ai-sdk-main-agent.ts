@@ -18,10 +18,10 @@ import pkg from "../../../package.json";
 
 // Agent-level gen_ai attributes only: operation.name=invoke_agent, agent.name,
 // agent.id (stable type UUID), agent.version (from package.json), provider.name,
-// error.type on failure, and overall input/output.messages for trace-root consumers
-// (e.g. Langfuse). Per-LLM-turn and tool-call gen_ai attrs are emitted by
-// GenAiBridgeSpanProcessor from AI SDK's ai.* attrs.
-// See src/infrastructure/telemetry/gen-ai-bridge-span-processor.ts
+// conversation.id (Heartbeat correlation), error.type on failure, and overall
+// input/output.messages for trace-root consumers (e.g. Langfuse). Per-LLM-turn
+// and tool-call gen_ai attrs are emitted by GenAiBridgeSpanProcessor from AI SDK's
+// ai.* attrs. See src/infrastructure/telemetry/gen-ai-bridge-span-processor.ts
 const ATTR_GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
 const ATTR_GEN_AI_AGENT_NAME = "gen_ai.agent.name";
 // gen_ai.agent.id per OTel semconv is a stable unique identifier for the agent
