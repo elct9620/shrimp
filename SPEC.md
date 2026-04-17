@@ -195,27 +195,27 @@ Multiple tasks may exist in the In Progress section (e.g., due to manual user mo
 
 ### Telemetry Emission
 
-Every Processing Cycle that runs produces one OTel trace. Spans within that trace expose task selection, agent execution, and each tool call as separately timed, attributable units of work that downstream collectors and dashboards can query.
+Every Job that runs produces one OTel trace. Spans within that trace expose task selection, agent execution, and each tool call as separately timed, attributable units of work that downstream collectors and dashboards can query.
 
 **Trace lifecycle rules:**
 
-- A Processing Cycle that is dropped by the Task Queue (slot busy) does not produce a trace; no spans are emitted for dropped cycles.
-- A Processing Cycle that runs but finds no actionable task still produces a trace containing only the root span. This makes "nothing to do" observable and distinguishable from a cycle that was never triggered.
-- A Processing Cycle that selects and executes a task produces a full trace: root span plus all nested AI SDK spans for that execution.
+- A Job that is dropped by the Job Queue (slot busy) does not produce a trace; no spans are emitted for dropped Jobs.
+- A Job that runs but finds no actionable task still produces a trace containing only the root span. This makes "nothing to do" observable and distinguishable from a Job that was never triggered.
+- A Job that selects and executes a task produces a full trace: root span plus all nested AI SDK spans for that execution.
 
 **Root span:**
 
-The Processing Cycle owns the root span. It begins when the cycle starts and ends when the cycle completes or fails, covering the full lifecycle: task selection, prompt assembly, Main Agent execution, and queue slot release. All AI SDK spans emitted during Main Agent execution are nested under this root span via OpenTelemetry context propagation.
+The Job Worker owns the root span. It begins when the Job starts and ends when the Job completes or fails, covering the full lifecycle: task selection, prompt assembly, Shrimp Agent execution, and queue slot release. All AI SDK spans emitted during Shrimp Agent execution are nested under this root span via OpenTelemetry context propagation.
 
 **Nested AI SDK spans:**
 
-When the Main Agent executes, AI SDK emits spans following its own telemetry conventions. Shrimp enables these spans and does not alter their structure. The spans consumers will see are:
+When the Shrimp Agent executes, AI SDK emits spans following its own telemetry conventions. Shrimp enables these spans and does not alter their structure. The spans consumers will see are:
 
-| Span name                    | Emitted                                                    |
-| ---------------------------- | ---------------------------------------------------------- |
-| `ai.generateText`            | Once per Processing Cycle — the full Main Agent invocation |
-| `ai.generateText.doGenerate` | Once per provider round-trip within the agent loop         |
-| `ai.toolCall`                | Once per tool invocation (Built-in and MCP tools)          |
+| Span name                    | Emitted                                            |
+| ---------------------------- | -------------------------------------------------- |
+| `ai.generateText`            | Once per Job — the full Shrimp Agent invocation    |
+| `ai.generateText.doGenerate` | Once per provider round-trip within the agent loop |
+| `ai.toolCall`                | Once per tool invocation (Built-in and MCP tools)  |
 
 AI SDK's own span schema and nesting conventions apply; Shrimp does not define or alter them.
 
@@ -230,11 +230,11 @@ Each span carries attributes sourced from two overlapping conventions that AI SD
 
 Tool call spans additionally carry: `ai.toolCall.name`, `ai.toolCall.id`, `ai.toolCall.args`, and `ai.toolCall.result` (present only when the call succeeds and the result is serializable).
 
-`GenAiBridgeSpanProcessor` supplements AI SDK's native emission with full OTel gen_ai semconv coverage: LLM-call spans receive `gen_ai.operation.name=chat`, structured `gen_ai.input.messages` and `gen_ai.output.messages`; tool-call spans receive `gen_ai.operation.name=execute_tool` and `gen_ai.tool.*` attrs. The `shrimp.main-agent` span carries `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name`, `gen_ai.provider.name`, and `error.type` on failure.
+`GenAiBridgeSpanProcessor` supplements AI SDK's native emission with full OTel gen_ai semconv coverage: LLM-call spans receive `gen_ai.operation.name=chat`, structured `gen_ai.input.messages` and `gen_ai.output.messages`; tool-call spans receive `gen_ai.operation.name=execute_tool` and `gen_ai.tool.*` attrs. The `shrimp.job` span carries `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name="shrimp.job"`, `gen_ai.provider.name`, and `error.type` on failure.
 
 **Function identification:**
 
-Shrimp sets a stable `ai.telemetry.functionId` on the Main Agent invocation so operators can filter traces by logical operation. The assigned identifier is `shrimp.main-agent`.
+Shrimp sets a stable `ai.telemetry.functionId` on the Shrimp Agent invocation so operators can filter traces by logical operation. The assigned identifier is `shrimp.job`.
 
 **Input and output recording:**
 
