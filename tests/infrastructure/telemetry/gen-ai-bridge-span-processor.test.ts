@@ -690,4 +690,89 @@ describe("GenAiBridgeSpanProcessor", () => {
       expect(attrs["gen_ai.input.messages"]).toBe(existing);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Tool definitions bridge (item #10)
+  // ---------------------------------------------------------------------------
+
+  describe("tool definitions bridge (ai.prompt.tools → gen_ai.tool.definitions)", () => {
+    it("passes ai.prompt.tools string[] through to gen_ai.tool.definitions verbatim on a chat span", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const toolDefs = [
+        JSON.stringify({ name: "search_web", description: "Search the web" }),
+        JSON.stringify({ name: "list_tasks", description: "List tasks" }),
+      ];
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "ai.prompt.tools": toolDefs },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      // Value must be the same reference/deep-equal string array — no re-serialization.
+      expect(attrs["gen_ai.tool.definitions"]).toEqual(toolDefs);
+    });
+
+    it("does NOT set gen_ai.tool.definitions when ai.prompt.tools is absent on a chat span", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "gen_ai.system": "openai" },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).not.toHaveProperty("gen_ai.tool.definitions");
+    });
+
+    it("does NOT map ai.prompt.tools on a non-chat span (e.g. ai.toolCall)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const toolDefs = [JSON.stringify({ name: "search_web" })];
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: {
+          "ai.toolCall.name": "search_web",
+          "ai.prompt.tools": toolDefs,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).not.toHaveProperty("gen_ai.tool.definitions");
+    });
+
+    it("preserves pre-existing gen_ai.tool.definitions via setIfAbsent on a chat span", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const existing = [JSON.stringify({ name: "pre_existing_tool" })];
+      const incoming = [JSON.stringify({ name: "new_tool" })];
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "ai.prompt.tools": incoming,
+          "gen_ai.tool.definitions": existing,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      // setIfAbsent must not overwrite the pre-existing value.
+      expect(attrs["gen_ai.tool.definitions"]).toEqual(existing);
+    });
+
+    it("passes through verbatim when the value is a single string (future shape robustness)", () => {
+      // If AI SDK ever changes to emit a single JSON-array string, the bridge
+      // must not crash or transform — telemetry robustness is more important
+      // than enforcing the current string[] shape.
+      const processor = new GenAiBridgeSpanProcessor();
+      const singleString = '[{"name":"search_web"}]';
+      const span = makeFakeSpan({
+        name: "ai.streamText.doStream",
+        attributes: { "ai.prompt.tools": singleString },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.tool.definitions"]).toBe(singleString);
+    });
+  });
 });

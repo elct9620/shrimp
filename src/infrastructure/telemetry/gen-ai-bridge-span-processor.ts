@@ -25,6 +25,7 @@ export class GenAiBridgeSpanProcessor implements SpanProcessor {
     translateToolCallArgsResult(span, toolCall);
     translateChatSpan(span);
     translateChatMessages(span);
+    translateChatTools(span);
   }
 
   shutdown(): Promise<void> {
@@ -386,4 +387,29 @@ function translateChatMessages(span: ReadableSpan): void {
       JSON.stringify(outputMessages),
     );
   }
+}
+
+/**
+ * Bridges `ai.prompt.tools` (AI SDK JSON-stringified tool definitions) into
+ * `gen_ai.tool.definitions` on LLM-call chat spans.
+ *
+ * WHY Option A (pass-through verbatim): AI SDK emits `ai.prompt.tools` as a
+ * `string[]` — each element is already a JSON-stringified tool definition
+ * (node_modules/ai/dist/index.mjs lines 4307–4310). The OTel attribute value
+ * is therefore already a `string[]` with no further transformation required.
+ * Passing through verbatim (Option A) is lossless and avoids an unnecessary
+ * parse+re-stringify round-trip. Downstream consumers decode per element.
+ *
+ * Gating:
+ * - Only runs on chat spans (reuses isChatSpan guard).
+ * - Skipped when `ai.prompt.tools` is absent — no invented defaults.
+ * - Uses setIfAbsent so pre-existing `gen_ai.tool.definitions` is preserved.
+ */
+function translateChatTools(span: ReadableSpan): void {
+  if (!isChatSpan(span)) return;
+
+  const tools = span.attributes["ai.prompt.tools"];
+  if (tools == null) return;
+
+  setIfAbsent(span.attributes as Attributes, "gen_ai.tool.definitions", tools);
 }
