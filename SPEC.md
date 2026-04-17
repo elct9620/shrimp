@@ -122,22 +122,22 @@ Concurrency gate that ensures only one Job runs at a time. The Job Queue does no
 
 End-to-end sequence from external trigger to task completion. Each step references the component that owns the detail.
 
-| Step | Actor            | Action                            | Outcome                                                                                                                                                                                       |
-| ---- | ---------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | External caller  | `POST /heartbeat`                 | Request accepted; see [`POST /heartbeat`](#post-heartbeat) for response rules                                                                                                                 |
-| 2    | Task Queue       | Accept or drop the heartbeat      | If queue slot is free, start a Processing Cycle; if busy, silently drop; see [In-Memory Task Queue](#in-memory-task-queue)                                                                    |
-| 3    | Processing Cycle | Select one task                   | Check for an In Progress task first; if none, take one Backlog task; if no actionable task exists, cycle ends immediately                                                                     |
-| 4    | Processing Cycle | Promote task and assemble prompts | If task is in Backlog, move to In Progress; retrieve comment history; assemble system prompt and user prompt                                                                                  |
-| 5    | Main Agent       | Execute the task                  | Runs the tool-calling loop with the assembled prompts and full tool set; continues until task is done, max steps reached, or error; posts progress comment and moves task to Done if complete |
-| 6    | Task Queue       | Release queue slot                | Processing Cycle is finished; queue is ready to accept the next heartbeat                                                                                                                     |
+| Step | Actor           | Action                            | Outcome                                                                                                                                                                                       |
+| ---- | --------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | External caller | `POST /heartbeat`                 | Request accepted; see [`POST /heartbeat`](#post-heartbeat) for response rules                                                                                                                 |
+| 2    | Job Queue       | Accept or drop the heartbeat      | If queue slot is free, start a Job; if busy, silently drop; see [In-Memory Job Queue](#in-memory-job-queue)                                                                                   |
+| 3    | Job Worker      | Select one task                   | Check for an In Progress task first; if none, take one Backlog task; if no actionable task exists, Job ends immediately                                                                       |
+| 4    | Job Worker      | Promote task and assemble prompts | If task is in Backlog, move to In Progress; retrieve comment history; assemble system prompt and user prompt                                                                                  |
+| 5    | Shrimp Agent    | Execute the task                  | Runs the tool-calling loop with the assembled prompts and full tool set; continues until task is done, max steps reached, or error; posts progress comment and moves task to Done if complete |
+| 6    | Job Queue       | Release queue slot                | Job is finished; queue is ready to accept the next heartbeat                                                                                                                                  |
 
 **Flow invariants:**
 
-- Only one Processing Cycle occupies the queue at any time; step 2 enforces mutual exclusion.
+- Only one Job occupies the Job Queue at any time; step 2 enforces mutual exclusion.
 - Steps 3–6 run entirely in the background; the external caller at step 1 never waits for them.
-- A task not completed in one cycle is retried naturally when the next heartbeat triggers step 3 again.
+- A task not completed in one Job is retried naturally when the next Heartbeat triggers step 3 again.
 - The queue slot (step 6) is released regardless of whether steps 3–5 succeed or fail; Fail-Open Recovery ensures no failure path can leave the slot occupied.
-- Steps 3–4 are the Processing Cycle's orchestration responsibility; step 5 is the Main Agent's execution responsibility. The Main Agent is not involved in task selection or prompt assembly.
+- Steps 3–4 are the Job Worker's orchestration responsibility; step 5 is the Shrimp Agent's execution responsibility. The Shrimp Agent is not involved in task selection or prompt assembly.
 
 ### Todoist Integration
 
