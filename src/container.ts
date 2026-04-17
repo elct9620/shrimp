@@ -73,7 +73,7 @@ container.register(Job, {
   useFactory: (c) =>
     new Job({
       board: c.resolve<BoardRepository>(TOKENS.BoardRepository),
-      mainAgent: c.resolve<ShrimpAgent>(TOKENS.ShrimpAgent),
+      shrimpAgent: c.resolve<ShrimpAgent>(TOKENS.ShrimpAgent),
       toolProviderFactory: c.resolve(TOKENS.ToolProviderFactory),
       maxSteps: c.resolve<EnvConfig>(TOKENS.EnvConfig).aiMaxSteps,
       logger: c.resolve<LoggerPort>(TOKENS.Logger).child({ module: "Job" }),

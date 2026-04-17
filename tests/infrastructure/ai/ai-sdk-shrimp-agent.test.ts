@@ -376,7 +376,7 @@ describe("AiSdkShrimpAgent.run", () => {
   });
 
   describe("gen_ai semantic conventions", () => {
-    function findMainAgentSpan(spans: RecordedSpan[]) {
+    function findShrimpAgentSpan(spans: RecordedSpan[]) {
       return spans.find(
         (s) => s.name === "invoke_agent shrimp.job" || s.name === "shrimp.job",
       );
@@ -410,7 +410,7 @@ describe("AiSdkShrimpAgent.run", () => {
         "upstream provider exploded",
       );
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span).toBeDefined();
       expect(span!.ended).toBe(true);
       expect(span!.status?.code).toBe(SpanStatusCode.ERROR);
@@ -424,7 +424,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes["gen_ai.operation.name"]).toBe("invoke_agent");
     });
 
@@ -435,7 +435,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes["gen_ai.agent.name"]).toBe("shrimp.job");
     });
 
@@ -449,7 +449,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes["gen_ai.provider.name"]).toBe("my-provider");
     });
 
@@ -460,7 +460,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes["gen_ai.conversation.id"]).toBe(baseInput.jobId);
     });
 
@@ -475,7 +475,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes["gen_ai.conversation.id"]).toBe(baseInput.jobId);
     });
 
@@ -486,7 +486,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       const agentId = span!.attributes["gen_ai.agent.id"];
       expect(typeof agentId).toBe("string");
       expect(agentId as string).toMatch(
@@ -501,7 +501,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       const version = span!.attributes["gen_ai.agent.version"];
       expect(typeof version).toBe("string");
       expect(version as string).toMatch(/^\d+\.\d+\.\d+/);
@@ -518,7 +518,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes["gen_ai.agent.id"]).toBeDefined();
       expect(span!.attributes["gen_ai.agent.version"]).toBeDefined();
     });
@@ -535,7 +535,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await expect(agent.run(baseInput)).rejects.toThrow();
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes["error.type"]).toBe("Error");
     });
 
@@ -553,7 +553,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await expect(agent.run(baseInput)).rejects.toThrow();
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes["gen_ai.provider.name"]).toBe("my-provider");
     });
 
@@ -567,7 +567,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       const raw = span!.attributes["gen_ai.input.messages"];
       expect(typeof raw).toBe("string");
       const parsed = JSON.parse(raw as string);
@@ -593,7 +593,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       const raw = span!.attributes["gen_ai.output.messages"];
       expect(typeof raw).toBe("string");
       const parsed = JSON.parse(raw as string);
@@ -613,7 +613,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes).not.toHaveProperty("gen_ai.input.messages");
       expect(span!.attributes).toHaveProperty("gen_ai.output.messages");
     });
@@ -629,7 +629,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes).toHaveProperty("gen_ai.input.messages");
       expect(span!.attributes).not.toHaveProperty("gen_ai.output.messages");
     });
@@ -649,7 +649,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await expect(agent.run(baseInput)).rejects.toThrow("provider exploded");
 
-      const span = findMainAgentSpan(spans);
+      const span = findShrimpAgentSpan(spans);
       expect(span!.attributes).toHaveProperty("gen_ai.input.messages");
       expect(span!.attributes).not.toHaveProperty("gen_ai.output.messages");
     });

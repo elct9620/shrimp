@@ -63,7 +63,7 @@ function makeBoardRepository(
   };
 }
 
-function makeMainAgent(
+function makeShrimpAgent(
   result: ShrimpAgentResult = { reason: "finished" },
 ): ShrimpAgent & { capturedInput?: JobInput } {
   const agent: ShrimpAgent & { capturedInput?: JobInput } = {
@@ -97,7 +97,7 @@ function makeToolProviderFactory(provider?: ToolProvider): ToolProviderFactory {
 
 describe("Job.run", () => {
   let board: ReturnType<typeof makeBoardRepository>;
-  let mainAgent: ReturnType<typeof makeMainAgent>;
+  let shrimpAgent: ReturnType<typeof makeShrimpAgent>;
   let toolProvider: ToolProvider;
   let toolProviderFactory: ToolProviderFactory;
   let logger: LoggerPort;
@@ -105,13 +105,13 @@ describe("Job.run", () => {
 
   beforeEach(() => {
     board = makeBoardRepository();
-    mainAgent = makeMainAgent();
+    shrimpAgent = makeShrimpAgent();
     toolProvider = makeToolProvider();
     toolProviderFactory = makeToolProviderFactory(toolProvider);
     logger = makeFakeLogger();
     cycle = new Job({
       board,
-      mainAgent,
+      shrimpAgent,
       toolProviderFactory,
       maxSteps: 10,
       logger,
@@ -125,7 +125,7 @@ describe("Job.run", () => {
 
       await cycle.run();
 
-      expect(mainAgent.run).not.toHaveBeenCalled();
+      expect(shrimpAgent.run).not.toHaveBeenCalled();
     });
 
     it("should end immediately without moving any task", async () => {
@@ -153,7 +153,7 @@ describe("Job.run", () => {
     it("should call main agent exactly once", async () => {
       await cycle.run();
 
-      expect(mainAgent.run).toHaveBeenCalledTimes(1);
+      expect(shrimpAgent.run).toHaveBeenCalledTimes(1);
     });
 
     it("should not move the In Progress task before execution", async () => {
@@ -171,25 +171,25 @@ describe("Job.run", () => {
     it("should pass tool set to main agent", async () => {
       await cycle.run();
 
-      expect(mainAgent.capturedInput?.tools).toBe(toolSet);
+      expect(shrimpAgent.capturedInput?.tools).toBe(toolSet);
     });
 
     it("should pass maxSteps to main agent", async () => {
       await cycle.run();
 
-      expect(mainAgent.capturedInput?.maxSteps).toBe(10);
+      expect(shrimpAgent.capturedInput?.maxSteps).toBe(10);
     });
 
     it("should pass non-empty systemPrompt to main agent", async () => {
       await cycle.run();
 
-      expect(mainAgent.capturedInput?.systemPrompt).toBeTruthy();
+      expect(shrimpAgent.capturedInput?.systemPrompt).toBeTruthy();
     });
 
     it("should include task id in user prompt", async () => {
       await cycle.run();
 
-      expect(mainAgent.capturedInput?.userPrompt).toContain("ip-1");
+      expect(shrimpAgent.capturedInput?.userPrompt).toContain("ip-1");
     });
 
     it("should include comment text in user prompt", async () => {
@@ -199,7 +199,7 @@ describe("Job.run", () => {
 
       await cycle.run();
 
-      expect(mainAgent.capturedInput?.userPrompt).toContain(
+      expect(shrimpAgent.capturedInput?.userPrompt).toContain(
         "prior progress note",
       );
     });
@@ -209,14 +209,14 @@ describe("Job.run", () => {
 
       const uuidPattern =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      expect(mainAgent.capturedInput?.jobId).toMatch(uuidPattern);
+      expect(shrimpAgent.capturedInput?.jobId).toMatch(uuidPattern);
     });
 
     it("should generate a distinct jobId for each successive cycle", async () => {
-      const secondAgent = makeMainAgent();
+      const secondAgent = makeShrimpAgent();
       const secondCycle = new Job({
         board,
-        mainAgent: secondAgent,
+        shrimpAgent: secondAgent,
         toolProviderFactory,
         maxSteps: 10,
         logger,
@@ -226,7 +226,7 @@ describe("Job.run", () => {
       await cycle.run();
       await secondCycle.run();
 
-      expect(mainAgent.capturedInput?.jobId).not.toBe(
+      expect(shrimpAgent.capturedInput?.jobId).not.toBe(
         secondAgent.capturedInput?.jobId,
       );
     });
@@ -247,7 +247,7 @@ describe("Job.run", () => {
       board.moveTask = vi.fn().mockImplementation(async () => {
         callOrder.push("move");
       });
-      mainAgent.run = vi.fn().mockImplementation(async () => {
+      shrimpAgent.run = vi.fn().mockImplementation(async () => {
         callOrder.push("agent");
         return { reason: "finished" };
       });
@@ -266,16 +266,16 @@ describe("Job.run", () => {
     it("should call main agent exactly once", async () => {
       await cycle.run();
 
-      expect(mainAgent.run).toHaveBeenCalledTimes(1);
+      expect(shrimpAgent.run).toHaveBeenCalledTimes(1);
     });
 
     it("should show In Progress section in user prompt when backlog task is promoted", async () => {
       await cycle.run();
 
-      expect(mainAgent.capturedInput?.userPrompt).toContain(
+      expect(shrimpAgent.capturedInput?.userPrompt).toContain(
         "Section: In Progress",
       );
-      expect(mainAgent.capturedInput?.userPrompt).not.toContain(
+      expect(shrimpAgent.capturedInput?.userPrompt).not.toContain(
         "Section: Backlog",
       );
     });
@@ -289,7 +289,7 @@ describe("Job.run", () => {
 
       await cycle.run();
 
-      expect(mainAgent.run).not.toHaveBeenCalled();
+      expect(shrimpAgent.run).not.toHaveBeenCalled();
     });
 
     it("should not throw", async () => {
@@ -318,7 +318,7 @@ describe("Job.run", () => {
       await cycle.run();
 
       expect(board.getTasks).not.toHaveBeenCalled();
-      expect(mainAgent.run).not.toHaveBeenCalled();
+      expect(shrimpAgent.run).not.toHaveBeenCalled();
     });
   });
 
@@ -334,7 +334,7 @@ describe("Job.run", () => {
       board.getTasks = vi.fn().mockRejectedValue(new Error("unexpected"));
 
       await expect(cycle.run()).rejects.toThrow();
-      expect(mainAgent.run).not.toHaveBeenCalled();
+      expect(shrimpAgent.run).not.toHaveBeenCalled();
     });
   });
 
@@ -353,7 +353,7 @@ describe("Job.run", () => {
 
       await cycle.run();
 
-      expect(mainAgent.capturedInput?.systemPrompt).toContain("special_tool");
+      expect(shrimpAgent.capturedInput?.systemPrompt).toContain("special_tool");
     });
   });
 
@@ -438,7 +438,9 @@ describe("Job.run", () => {
         if (section === Section.InProgress) return [task];
         return [];
       });
-      mainAgent.run = vi.fn().mockResolvedValue({ reason: "maxStepsReached" });
+      shrimpAgent.run = vi
+        .fn()
+        .mockResolvedValue({ reason: "maxStepsReached" });
 
       await cycle.run();
 
@@ -468,7 +470,7 @@ describe("Job.run", () => {
       const telemetry = makeFakeTelemetry();
       const localCycle = new Job({
         board,
-        mainAgent,
+        shrimpAgent,
         toolProviderFactory,
         maxSteps: 10,
         logger,
@@ -491,7 +493,7 @@ describe("Job.run", () => {
         .mockRejectedValue(new BoardSectionMissingError("Done"));
       const localCycle = new Job({
         board,
-        mainAgent,
+        shrimpAgent,
         toolProviderFactory,
         maxSteps: 10,
         logger,
@@ -507,7 +509,7 @@ describe("Job.run", () => {
       board.getTasks = vi.fn().mockRejectedValue(boom);
       const localCycle = new Job({
         board,
-        mainAgent,
+        shrimpAgent,
         toolProviderFactory,
         maxSteps: 10,
         logger,

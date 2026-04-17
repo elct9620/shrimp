@@ -11,7 +11,7 @@ import type { TelemetryPort } from "./ports/telemetry";
 
 export type JobConfig = {
   board: BoardRepository;
-  mainAgent: ShrimpAgent;
+  shrimpAgent: ShrimpAgent;
   toolProviderFactory: ToolProviderFactory;
   maxSteps: number;
   logger: LoggerPort;
@@ -20,7 +20,7 @@ export type JobConfig = {
 
 export class Job {
   private readonly board: BoardRepository;
-  private readonly mainAgent: ShrimpAgent;
+  private readonly shrimpAgent: ShrimpAgent;
   private readonly toolProviderFactory: ToolProviderFactory;
   private readonly maxSteps: number;
   private readonly logger: LoggerPort;
@@ -28,14 +28,14 @@ export class Job {
 
   constructor({
     board,
-    mainAgent,
+    shrimpAgent,
     toolProviderFactory,
     maxSteps,
     logger,
     telemetry,
   }: JobConfig) {
     this.board = board;
-    this.mainAgent = mainAgent;
+    this.shrimpAgent = shrimpAgent;
     this.toolProviderFactory = toolProviderFactory;
     this.maxSteps = maxSteps;
     this.logger = logger;
@@ -99,8 +99,8 @@ export class Job {
         tools,
       });
 
-      this.logger.debug("cycle invoking main agent", { taskId: task.id });
-      const result = await this.mainAgent.run({
+      this.logger.debug("cycle invoking shrimp agent", { taskId: task.id });
+      const result = await this.shrimpAgent.run({
         systemPrompt,
         userPrompt,
         tools: toolProvider.getTools(),
