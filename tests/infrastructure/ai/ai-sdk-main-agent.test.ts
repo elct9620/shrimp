@@ -10,12 +10,14 @@ import type { MainAgentInput } from "../../../src/use-cases/ports/main-agent";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 import { NoopTelemetry } from "../../../src/infrastructure/telemetry/noop-telemetry";
-import type { Tracer } from "@opentelemetry/api";
+import { SpanStatusCode, type Tracer } from "@opentelemetry/api";
 
 type RecordedSpan = {
   name: string;
   attributes: Record<string, unknown>;
   ended: boolean;
+  status?: { code: number; message?: string };
+  exceptions: unknown[];
 };
 
 function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
@@ -23,7 +25,12 @@ function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
   const tracer = {
     startActiveSpan(name: string, ...args: unknown[]): unknown {
       const fn = args[args.length - 1] as (span: unknown) => unknown;
-      const record: RecordedSpan = { name, attributes: {}, ended: false };
+      const record: RecordedSpan = {
+        name,
+        attributes: {},
+        ended: false,
+        exceptions: [],
+      };
       spans.push(record);
       const span = {
         setAttribute(key: string, value: unknown) {
@@ -34,10 +41,12 @@ function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
           Object.assign(record.attributes, attrs);
           return span;
         },
-        setStatus() {
+        setStatus(status: { code: number; message?: string }) {
+          record.status = status;
           return span;
         },
-        recordException() {
+        recordException(exception: unknown) {
+          record.exceptions.push(exception);
           return span;
         },
         updateName() {
@@ -438,7 +447,7 @@ describe("AiSdkMainAgent.run", () => {
       expect(span!.attributes).not.toHaveProperty("gen_ai.completion");
     });
 
-    it("should end the span and rethrow when generate throws", async () => {
+    it("should record exception, set ERROR status, end the span, and rethrow when generate throws", async () => {
       const { tracer, spans } = makeRecordingTracer();
       const boom = new Error("upstream provider exploded");
       const model = new MockLanguageModelV3({
@@ -459,6 +468,9 @@ describe("AiSdkMainAgent.run", () => {
       const span = findMainAgentSpan(spans);
       expect(span).toBeDefined();
       expect(span!.ended).toBe(true);
+      expect(span!.status?.code).toBe(SpanStatusCode.ERROR);
+      expect(span!.exceptions).toContain(boom);
+      expect(span!.attributes).not.toHaveProperty("gen_ai.completion");
     });
   });
 

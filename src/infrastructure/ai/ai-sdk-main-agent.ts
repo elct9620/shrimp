@@ -6,6 +6,16 @@ import {
   type ToolSet as AiToolSet,
 } from "ai";
 import { SpanStatusCode, type Tracer } from "@opentelemetry/api";
+
+// OTel GenAI semantic convention attribute names. These are deprecated in the
+// upstream spec (superseded by gen_ai.input.messages / gen_ai.output.messages
+// / gen_ai.provider.name) but remain the only names that backends like
+// Langfuse map to trace-level input/output today. Keeping them hardcoded
+// (rather than importing the deprecated constants) avoids noisy TS warnings
+// while the ecosystem transitions.
+const ATTR_GEN_AI_SYSTEM = "gen_ai.system";
+const ATTR_GEN_AI_PROMPT = "gen_ai.prompt";
+const ATTR_GEN_AI_COMPLETION = "gen_ai.completion";
 import type {
   MainAgent,
   MainAgentInput,
@@ -77,10 +87,10 @@ export class AiSdkMainAgent implements MainAgent {
     // semantic conventions so backends that don't speak AI SDK's `ai.*`
     // attributes (e.g. Langfuse, Phoenix) still surface prompt/completion.
     return this.tracer.startActiveSpan("shrimp.main-agent", async (span) => {
-      span.setAttribute("gen_ai.system", this.providerName);
+      span.setAttribute(ATTR_GEN_AI_SYSTEM, this.providerName);
       if (this.recordInputs) {
         span.setAttribute(
-          "gen_ai.prompt",
+          ATTR_GEN_AI_PROMPT,
           JSON.stringify([
             { role: "system", content: input.systemPrompt },
             { role: "user", content: input.userPrompt },
@@ -90,31 +100,30 @@ export class AiSdkMainAgent implements MainAgent {
 
       const agent = new ToolLoopAgent(this.buildToolLoopAgentOptions(input));
 
-      let result;
       try {
-        result = await agent.generate({ prompt: input.userPrompt });
+        const result = await agent.generate({ prompt: input.userPrompt });
+
+        if (this.recordOutputs) {
+          span.setAttribute(ATTR_GEN_AI_COMPLETION, result.text);
+        }
+
+        const reason = mapFinishReason(result.finishReason);
+        this.logger.info("main agent run finished", {
+          finishReason: result.finishReason,
+          reason,
+        });
+
+        return { reason };
       } catch (err) {
         span.recordException(err as Error);
         span.setStatus({ code: SpanStatusCode.ERROR });
-        span.end();
         this.logger.error("main agent run failed", {
           error: err instanceof Error ? err.message : String(err),
         });
         throw err;
+      } finally {
+        span.end();
       }
-
-      if (this.recordOutputs) {
-        span.setAttribute("gen_ai.completion", result.text);
-      }
-
-      const reason = mapFinishReason(result.finishReason);
-      this.logger.info("main agent run finished", {
-        finishReason: result.finishReason,
-        reason,
-      });
-
-      span.end();
-      return { reason };
     });
   }
 }
