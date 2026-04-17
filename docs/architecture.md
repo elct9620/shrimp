@@ -218,13 +218,13 @@ Migration strategy:
 
 **Consequence**: Pure logic like `TaskSelector` lives naturally in `entities/`; any orchestration that touches I/O moves up to `use-cases/`.
 
-### D2. ProcessingCycle orchestrates; the Main Agent is a black box
+### D2. Job orchestrates; the Shrimp Agent is a black box
 
-**Decision**: SPEC's "Processing Cycle" is realized in code as a `ProcessingCycle` use case that selects a task, assembles prompts, and invokes the `MainAgent` port **exactly once** per heartbeat. SPEC's "Main Agent" is the `MainAgent` port (implemented by `AiSdkMainAgent`). Everything the model does — calling tools, deciding when the task is done, iterating — happens inside that single adapter call. Shrimp does not interject between tool calls and does not re-enter the loop.
+**Decision**: SPEC's "Job" is realized in code as a `Job` use case (the Job Worker) that selects a task, assembles prompts, and invokes the `ShrimpAgent` port **exactly once** per Heartbeat. SPEC's "Shrimp Agent" is the `ShrimpAgent` port (implemented by `AiSdkShrimpAgent`). Everything the model does — calling tools, deciding when the task is done, iterating — happens inside that single adapter call. Shrimp does not interject between tool calls and does not re-enter the loop.
 
-**Rationale**: The AI SDK (and most agent libraries in the same shape) exposes the tool-calling loop as a single function: you pass prompts and a tool set, it runs to completion internally. Trying to model the SPEC steps as a step-by-step orchestration inside the AI execution engine would fight the library and make the code diverge from what's actually possible at runtime. The honest framing is: the loop is an adapter we invoke, not a state machine we drive. Separating `ProcessingCycle` (orchestrator) from `MainAgent` (executor) makes the split explicit in code.
+**Rationale**: The AI SDK (and most agent libraries in the same shape) exposes the tool-calling loop as a single function: you pass prompts and a tool set, it runs to completion internally. Trying to model the SPEC steps as a step-by-step orchestration inside the AI execution engine would fight the library and make the code diverge from what's actually possible at runtime. The honest framing is: the loop is an adapter we invoke, not a state machine we drive. Separating `Job` (orchestrator) from `ShrimpAgent` (executor) makes the split explicit in code.
 
-**Consequence**: `ProcessingCycle` stays small (select a task, prepare prompt context, invoke once) and the real work lives inside the tools the agent can call. The use case becomes easy to unit-test with a fake `MainAgent` that simply records what it was given. Swapping AI providers means replacing the `MainAgent` implementation; the `ProcessingCycle` is untouched.
+**Consequence**: `Job` stays small (select a task, prepare prompt context, invoke once) and the real work lives inside the tools the agent can call. The use case becomes easy to unit-test with a fake `ShrimpAgent` that simply records what it was given. Swapping AI providers means replacing the `ShrimpAgent` implementation; the `Job` is untouched.
 
 ### D3. Built-in tools are inbound adapters, not use-case classes
 
@@ -234,7 +234,7 @@ Migration strategy:
 
 **Consequence**: Adding a new built-in tool is a one-file change in `adapters/tools/built-in/`. The tool's business-level rules (if any ever appear) can always be promoted into a use case later without touching the adapter boundary.
 
-Note: D3 uses "agent loop" to describe the runtime behavior; the code-level name for this is now `MainAgent` (port) and `AiSdkMainAgent` (implementation).
+Note: D3 uses "agent loop" to describe the runtime behavior; the code-level name for this is now `ShrimpAgent` (port) and `AiSdkShrimpAgent` (implementation).
 
 ### D4. TaskQueue port in use-cases, implementation in infrastructure
 
