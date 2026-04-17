@@ -304,11 +304,11 @@ Shrimp is a single-process service composed of multiple collaborating components
 
 ### System Boundary
 
-| Dimension      | Inside                                                                  | Outside                                                              |
-| -------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Responsibility | HTTP routing, task serialization, AI execution loop, progress reporting | Scheduling heartbeats, Todoist project structure, AI model selection |
-| Interaction    | Receives `POST /heartbeat` and `GET /health`; returns JSON responses    | Caller's scheduling mechanism; Todoist API; AI provider endpoint     |
-| Control        | Task state transitions (Backlog → In Progress → Done), comment posting  | Todoist data model; AI model behavior; MCP tool implementations      |
+| Dimension      | Inside                                                                 | Outside                                                              |
+| -------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Responsibility | HTTP routing, job serialization, AI execution loop, progress reporting | Scheduling heartbeats, Todoist project structure, AI model selection |
+| Interaction    | Receives `POST /heartbeat` and `GET /health`; returns JSON responses   | Caller's scheduling mechanism; Todoist API; AI provider endpoint     |
+| Control        | Task state transitions (Backlog → In Progress → Done), comment posting | Todoist data model; AI model behavior; MCP tool implementations      |
 
 ### Component Dependencies
 
@@ -321,14 +321,15 @@ Each heartbeat traverses the following component chain:
 ```
 POST /heartbeat
   → Hono route handler
-  → Task Queue (accept or drop)
-    → Processing Cycle: select task, promote Backlog→InProgress, assemble prompts
-      → Main Agent: run tool-calling loop (execute, report progress, update status)
+  → Supervisor: accept or drop heartbeat
+  → Job Queue (accept or drop)
+    → Job Worker: select task, promote Backlog→InProgress, assemble prompts
+      → Shrimp Agent: run tool-calling loop (execute, report progress, update status)
         → Built-in Tools + MCP Tools
-    → Task Queue: release slot
+    → Job Queue: release slot
 ```
 
-`GET /health` is handled entirely within the Hono layer; it does not touch the queue or agent.
+`GET /health` is handled entirely within the Hono layer; it does not touch the Job Queue or the Shrimp Agent.
 
 ### Extension Model
 
