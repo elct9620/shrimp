@@ -45,11 +45,11 @@ src/
   use-cases/
     ports/
       board-repository.ts      # Todoist Board abstraction (outbound)
-      main-agent.ts             # Main Agent port: black-box tool-calling loop invocation (outbound)
+      shrimp-agent.ts           # Shrimp Agent port: black-box tool-calling loop invocation (outbound)
       task-queue.ts             # Concurrency gate abstraction (inbound, used by HTTP)
       telemetry.ts              # Telemetry port: runInSpan + shutdown (outbound)
       tool-provider.ts          # Merged tool-list provider (outbound)
-    processing-cycle.ts         # Processing Cycle orchestrator (SPEC §Processing Cycle)
+    job.ts                      # Job orchestrator (SPEC §Job) — executes one Job per Heartbeat
     prompt-assembler.ts         # Builds system prompt + user prompt
 
   adapters/
@@ -73,7 +73,7 @@ src/
       todoist-board-repository.ts  # BoardRepository implementation
     ai/
       ai-provider-factory.ts    # Creates an OpenAI-compatible provider
-      ai-sdk-main-agent.ts      # MainAgent implementation (AI SDK tool loop)
+      ai-sdk-shrimp-agent.ts    # ShrimpAgent implementation (AI SDK tool loop)
     mcp/
       mcp-tool-loader.ts        # Parses .mcp.json, starts MCP clients, exposes tools
     config/
