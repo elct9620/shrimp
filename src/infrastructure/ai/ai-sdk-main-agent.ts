@@ -6,20 +6,6 @@ import {
   type ToolSet as AiToolSet,
 } from "ai";
 import { SpanStatusCode, type Tracer } from "@opentelemetry/api";
-
-// OTel GenAI semantic convention attribute names. These are deprecated in the
-// upstream spec (superseded by gen_ai.input.messages / gen_ai.output.messages
-// / gen_ai.provider.name) but remain the only names that backends like
-// Langfuse map to trace-level input/output today. Keeping them hardcoded
-// (rather than importing the deprecated constants) avoids noisy TS warnings
-// while the ecosystem transitions.
-const ATTR_GEN_AI_SYSTEM = "gen_ai.system";
-const ATTR_GEN_AI_PROMPT = "gen_ai.prompt";
-const ATTR_GEN_AI_COMPLETION = "gen_ai.completion";
-const ATTR_GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
-const ATTR_GEN_AI_AGENT_NAME = "gen_ai.agent.name";
-const ATTR_GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
-const ATTR_ERROR_TYPE = "error.type";
 import type {
   MainAgent,
   MainAgentInput,
@@ -27,6 +13,11 @@ import type {
   MainAgentTerminationReason,
 } from "../../use-cases/ports/main-agent";
 import type { LoggerPort } from "../../use-cases/ports/logger";
+
+const ATTR_GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
+const ATTR_GEN_AI_AGENT_NAME = "gen_ai.agent.name";
+const ATTR_GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
+const ATTR_ERROR_TYPE = "error.type";
 
 export type AiSdkMainAgentOptions = {
   model: LanguageModel;
@@ -87,32 +78,15 @@ export class AiSdkMainAgent implements MainAgent {
       toolCount,
     });
 
-    // Wrap generate() in an active span annotated with OpenTelemetry GenAI
-    // semantic conventions so backends that don't speak AI SDK's `ai.*`
-    // attributes (e.g. Langfuse, Phoenix) still surface prompt/completion.
     return this.tracer.startActiveSpan("shrimp.main-agent", async (span) => {
-      span.setAttribute(ATTR_GEN_AI_SYSTEM, this.providerName);
       span.setAttribute(ATTR_GEN_AI_OPERATION_NAME, "invoke_agent");
       span.setAttribute(ATTR_GEN_AI_AGENT_NAME, "shrimp.main-agent");
       span.setAttribute(ATTR_GEN_AI_PROVIDER_NAME, this.providerName);
-      if (this.recordInputs) {
-        span.setAttribute(
-          ATTR_GEN_AI_PROMPT,
-          JSON.stringify([
-            { role: "system", content: input.systemPrompt },
-            { role: "user", content: input.userPrompt },
-          ]),
-        );
-      }
 
       const agent = new ToolLoopAgent(this.buildToolLoopAgentOptions(input));
 
       try {
         const result = await agent.generate({ prompt: input.userPrompt });
-
-        if (this.recordOutputs) {
-          span.setAttribute(ATTR_GEN_AI_COMPLETION, result.text);
-        }
 
         const reason = mapFinishReason(result.finishReason);
         this.logger.info("main agent run finished", {

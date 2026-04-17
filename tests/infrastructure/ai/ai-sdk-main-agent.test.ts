@@ -378,75 +378,6 @@ describe("AiSdkMainAgent.run", () => {
       return spans.find((s) => s.name === "shrimp.main-agent");
     }
 
-    it("should set gen_ai.system / gen_ai.prompt / gen_ai.completion on the main agent span", async () => {
-      const { tracer, spans } = makeRecordingTracer();
-      const model = makeModel("stop");
-      const agent = makeAgent(model, makeFakeLogger(), {
-        tracer,
-        providerName: "my-provider",
-        recordInputs: true,
-        recordOutputs: true,
-      });
-
-      await agent.run({
-        ...baseInput,
-        systemPrompt: "You are a helpful assistant.",
-        userPrompt: "Complete the task.",
-      });
-
-      const span = findMainAgentSpan(spans);
-      expect(span).toBeDefined();
-      expect(span!.ended).toBe(true);
-      expect(span!.attributes["gen_ai.system"]).toBe("my-provider");
-
-      const prompt = span!.attributes["gen_ai.prompt"];
-      expect(typeof prompt).toBe("string");
-      const parsed = JSON.parse(prompt as string) as Array<{
-        role: string;
-        content: string;
-      }>;
-      expect(parsed).toEqual([
-        { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: "Complete the task." },
-      ]);
-
-      expect(span!.attributes["gen_ai.completion"]).toBe("done");
-    });
-
-    it("should omit gen_ai.prompt when recordInputs is false", async () => {
-      const { tracer, spans } = makeRecordingTracer();
-      const model = makeModel("stop");
-      const agent = makeAgent(model, makeFakeLogger(), {
-        tracer,
-        recordInputs: false,
-        recordOutputs: true,
-      });
-
-      await agent.run(baseInput);
-
-      const span = findMainAgentSpan(spans);
-      expect(span).toBeDefined();
-      expect(span!.attributes).not.toHaveProperty("gen_ai.prompt");
-      expect(span!.attributes["gen_ai.completion"]).toBe("done");
-    });
-
-    it("should omit gen_ai.completion when recordOutputs is false", async () => {
-      const { tracer, spans } = makeRecordingTracer();
-      const model = makeModel("stop");
-      const agent = makeAgent(model, makeFakeLogger(), {
-        tracer,
-        recordInputs: true,
-        recordOutputs: false,
-      });
-
-      await agent.run(baseInput);
-
-      const span = findMainAgentSpan(spans);
-      expect(span).toBeDefined();
-      expect(span!.attributes["gen_ai.prompt"]).toEqual(expect.any(String));
-      expect(span!.attributes).not.toHaveProperty("gen_ai.completion");
-    });
-
     it("should record exception, set ERROR status, end the span, and rethrow when generate throws", async () => {
       const { tracer, spans } = makeRecordingTracer();
       const boom = new Error("upstream provider exploded");
@@ -470,7 +401,6 @@ describe("AiSdkMainAgent.run", () => {
       expect(span!.ended).toBe(true);
       expect(span!.status?.code).toBe(SpanStatusCode.ERROR);
       expect(span!.exceptions).toContain(boom);
-      expect(span!.attributes).not.toHaveProperty("gen_ai.completion");
     });
 
     it("should set gen_ai.operation.name to invoke_agent on success", async () => {
