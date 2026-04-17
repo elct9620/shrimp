@@ -105,18 +105,18 @@ Enqueues one Job in the background.
 - If no actionable task is found, the Job ends immediately with no side effects.
 - Task progress reporting and status updates happen asynchronously within the background Job.
 
-### In-Memory Task Queue
+### In-Memory Job Queue
 
-Concurrency gate that ensures only one Processing Cycle runs at a time. The queue does not select tasks, execute them, or report progress — all of that belongs to the Processing Cycle and Main Agent.
+Concurrency gate that ensures only one Job runs at a time. The Job Queue does not select tasks, execute them, or report progress — all of that belongs to the Job (orchestrated by a Job Worker) and the Shrimp Agent.
 
 **Behavior rules:**
 
-- The queue holds at most one pending job. If a heartbeat arrives while a Processing Cycle is already running, the new request is silently dropped (no error, no queuing).
-- The slot is occupied from the moment a job is accepted until the Processing Cycle completes or fails. Any heartbeat arriving during this window is dropped.
-- On acceptance, the queue starts a Processing Cycle; on completion or failure, it releases the slot. The queue has no knowledge of what happens during the cycle.
-- If the Processing Cycle fails for any reason, Fail-Open Recovery applies.
-- The queue lives in process memory. On container restart, any in-flight work is lost; Todoist remains the source of truth and the task will be picked up again on the next heartbeat.
-- No retry logic inside the queue. A failed cycle is retried naturally on the next heartbeat.
+- The Job Queue holds at most one pending Job. If a Heartbeat arrives while a Job is already running, the new request is silently dropped (no error, no queuing).
+- The slot is occupied from the moment a Job is accepted until the Job completes or fails. Any Heartbeat arriving during this window is dropped.
+- On acceptance, the Job Queue starts a Job (executed by a Job Worker); on completion or failure, it releases the slot. The Job Queue has no knowledge of what happens during the Job.
+- If the Job fails for any reason, Fail-Open Recovery applies.
+- The Job Queue lives in process memory. On container restart, any in-flight work is lost; Todoist remains the source of truth and the task will be picked up again on the next Heartbeat.
+- No retry logic inside the Job Queue. A failed Job is retried naturally on the next Heartbeat.
 
 ### Event-Driven Trigger Flow
 
