@@ -9,7 +9,7 @@ import type { ToolProviderFactory } from "./ports/tool-provider-factory";
 import type { LoggerPort } from "./ports/logger";
 import type { TelemetryPort } from "./ports/telemetry";
 
-export type ProcessingCycleConfig = {
+export type JobConfig = {
   board: BoardRepository;
   mainAgent: ShrimpAgent;
   toolProviderFactory: ToolProviderFactory;
@@ -18,7 +18,7 @@ export type ProcessingCycleConfig = {
   telemetry: TelemetryPort;
 };
 
-export class ProcessingCycle {
+export class Job {
   private readonly board: BoardRepository;
   private readonly mainAgent: ShrimpAgent;
   private readonly toolProviderFactory: ToolProviderFactory;
@@ -33,7 +33,7 @@ export class ProcessingCycle {
     maxSteps,
     logger,
     telemetry,
-  }: ProcessingCycleConfig) {
+  }: JobConfig) {
     this.board = board;
     this.mainAgent = mainAgent;
     this.toolProviderFactory = toolProviderFactory;
@@ -47,7 +47,7 @@ export class ProcessingCycle {
     // currently returns v4 which is the acceptable fallback per spec.
     const jobId = randomUUID();
 
-    return this.telemetry.runInSpan("shrimp.processing-cycle", async () => {
+    return this.telemetry.runInSpan("shrimp.job", async () => {
       this.logger.info("cycle started");
 
       let inProgressTasks, backlogTasks;

@@ -4,7 +4,7 @@ import { pinoHttp } from "pino-http";
 import type { Logger } from "pino";
 import type { AppEnv } from "./context-variables";
 import type { TaskQueue } from "../../use-cases/ports/task-queue";
-import type { ProcessingCycle } from "../../use-cases/processing-cycle";
+import type { Job } from "../../use-cases/job";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import { createHealthRoute } from "./routes/health";
 import { createHeartbeatRoute } from "./routes/heartbeat";
@@ -12,7 +12,7 @@ import { createHeartbeatRoute } from "./routes/heartbeat";
 export type CreateAppDeps = {
   pinoInstance: Logger;
   taskQueue: TaskQueue;
-  processingCycle: ProcessingCycle;
+  processingCycle: Job;
   logger: LoggerPort;
 };
 

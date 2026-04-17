@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../context-variables";
 import type { TaskQueue } from "../../../use-cases/ports/task-queue";
-import type { ProcessingCycle } from "../../../use-cases/processing-cycle";
+import type { Job } from "../../../use-cases/job";
 import type { LoggerPort } from "../../../use-cases/ports/logger";
 
 export function createHeartbeatRoute(deps: {
   taskQueue: TaskQueue;
-  processingCycle: ProcessingCycle;
+  processingCycle: Job;
   logger: LoggerPort;
 }): Hono<AppEnv> {
   const app = new Hono<AppEnv>();

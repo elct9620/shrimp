@@ -20,7 +20,7 @@ import {
 import { InMemoryTaskQueue } from "./infrastructure/queue/in-memory-task-queue";
 import { BuiltInToolFactory } from "./adapters/tools/built-in-tool-factory";
 import { ToolProviderFactoryImpl } from "./adapters/tools/tool-provider-factory-impl";
-import { ProcessingCycle } from "./use-cases/processing-cycle";
+import { Job } from "./use-cases/job";
 import { createPinoLogger } from "./infrastructure/logger/pino-logger";
 import type { BoardRepository } from "./use-cases/ports/board-repository";
 import type { LoggerPort } from "./use-cases/ports/logger";
@@ -68,17 +68,15 @@ container.register(TOKENS.ShrimpAgent, {
 // TaskQueue
 container.register(TOKENS.TaskQueue, { useClass: InMemoryTaskQueue });
 
-// ProcessingCycle — Use Case: registered via useFactory, no @inject
-container.register(ProcessingCycle, {
+// Job — Use Case: registered via useFactory, no @inject
+container.register(Job, {
   useFactory: (c) =>
-    new ProcessingCycle({
+    new Job({
       board: c.resolve<BoardRepository>(TOKENS.BoardRepository),
       mainAgent: c.resolve<ShrimpAgent>(TOKENS.ShrimpAgent),
       toolProviderFactory: c.resolve(TOKENS.ToolProviderFactory),
       maxSteps: c.resolve<EnvConfig>(TOKENS.EnvConfig).aiMaxSteps,
-      logger: c
-        .resolve<LoggerPort>(TOKENS.Logger)
-        .child({ module: "ProcessingCycle" }),
+      logger: c.resolve<LoggerPort>(TOKENS.Logger).child({ module: "Job" }),
       telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
     }),
 });

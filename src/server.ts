@@ -4,7 +4,7 @@ import { serve } from "@hono/node-server";
 import { container, bootstrap } from "./container";
 import { TOKENS } from "./infrastructure/container/tokens";
 import { McpToolLoader } from "./infrastructure/mcp/mcp-tool-loader";
-import { ProcessingCycle } from "./use-cases/processing-cycle";
+import { Job } from "./use-cases/job";
 import type { TelemetryPort } from "./use-cases/ports/telemetry";
 import { createApp } from "./adapters/http/app";
 
@@ -18,7 +18,7 @@ async function main() {
     import("./infrastructure/config/env-config").EnvConfig
   >(TOKENS.EnvConfig);
   const mcpToolLoader = container.resolve(McpToolLoader);
-  const processingCycle = container.resolve(ProcessingCycle);
+  const processingCycle = container.resolve(Job);
   const telemetry = container.resolve<TelemetryPort>(TOKENS.Telemetry);
   // Raw pino instance registered during bootstrap for pino-http middleware
   const pinoInstance = container.resolve<import("pino").Logger>(

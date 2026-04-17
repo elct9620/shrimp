@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { ProcessingCycle } from "../../src/use-cases/processing-cycle";
+import { Job } from "../../src/use-cases/job";
 import { BoardSectionMissingError } from "../../src/use-cases/ports/board-repository";
 import type { BoardRepository } from "../../src/use-cases/ports/board-repository";
 import type {
@@ -95,13 +95,13 @@ function makeToolProviderFactory(provider?: ToolProvider): ToolProviderFactory {
 
 // --- Tests ---
 
-describe("ProcessingCycle.run", () => {
+describe("Job.run", () => {
   let board: ReturnType<typeof makeBoardRepository>;
   let mainAgent: ReturnType<typeof makeMainAgent>;
   let toolProvider: ToolProvider;
   let toolProviderFactory: ToolProviderFactory;
   let logger: LoggerPort;
-  let cycle: ProcessingCycle;
+  let cycle: Job;
 
   beforeEach(() => {
     board = makeBoardRepository();
@@ -109,7 +109,7 @@ describe("ProcessingCycle.run", () => {
     toolProvider = makeToolProvider();
     toolProviderFactory = makeToolProviderFactory(toolProvider);
     logger = makeFakeLogger();
-    cycle = new ProcessingCycle({
+    cycle = new Job({
       board,
       mainAgent,
       toolProviderFactory,
@@ -214,7 +214,7 @@ describe("ProcessingCycle.run", () => {
 
     it("should generate a distinct jobId for each successive cycle", async () => {
       const secondAgent = makeMainAgent();
-      const secondCycle = new ProcessingCycle({
+      const secondCycle = new Job({
         board,
         mainAgent: secondAgent,
         toolProviderFactory,
@@ -464,9 +464,9 @@ describe("ProcessingCycle.run", () => {
   });
 
   describe("telemetry span wrapping", () => {
-    it("should wrap the cycle in a span named shrimp.processing-cycle", async () => {
+    it("should wrap the cycle in a span named shrimp.job", async () => {
       const telemetry = makeFakeTelemetry();
-      const localCycle = new ProcessingCycle({
+      const localCycle = new Job({
         board,
         mainAgent,
         toolProviderFactory,
@@ -478,7 +478,7 @@ describe("ProcessingCycle.run", () => {
       await localCycle.run();
 
       expect(telemetry.runInSpan).toHaveBeenCalledWith(
-        "shrimp.processing-cycle",
+        "shrimp.job",
         expect.any(Function),
       );
       expect(telemetry.runInSpan).toHaveBeenCalledTimes(1);
@@ -489,7 +489,7 @@ describe("ProcessingCycle.run", () => {
       board.validateSections = vi
         .fn()
         .mockRejectedValue(new BoardSectionMissingError("Done"));
-      const localCycle = new ProcessingCycle({
+      const localCycle = new Job({
         board,
         mainAgent,
         toolProviderFactory,
@@ -505,7 +505,7 @@ describe("ProcessingCycle.run", () => {
       const telemetry = makeFakeTelemetry();
       const boom = new Error("boom");
       board.getTasks = vi.fn().mockRejectedValue(boom);
-      const localCycle = new ProcessingCycle({
+      const localCycle = new Job({
         board,
         mainAgent,
         toolProviderFactory,
