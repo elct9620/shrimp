@@ -228,6 +228,8 @@ Each span carries attributes sourced from two overlapping conventions that AI SD
 
 Tool call spans additionally carry: `ai.toolCall.name`, `ai.toolCall.id`, `ai.toolCall.args`, and `ai.toolCall.result` (present only when the call succeeds and the result is serializable).
 
+`GenAiBridgeSpanProcessor` supplements AI SDK's native emission with full OTel gen_ai semconv coverage: LLM-call spans receive `gen_ai.operation.name=chat`, structured `gen_ai.input.messages` and `gen_ai.output.messages`; tool-call spans receive `gen_ai.operation.name=execute_tool` and `gen_ai.tool.*` attrs. The `shrimp.main-agent` span carries `gen_ai.operation.name=invoke_agent`, `gen_ai.agent.name`, `gen_ai.provider.name`, and `error.type` on failure.
+
 **Function identification:**
 
 Shrimp sets a stable `ai.telemetry.functionId` on the Main Agent invocation so operators can filter traces by logical operation. The assigned identifier is `shrimp.main-agent`.
@@ -335,13 +337,14 @@ Telemetry is a process-level concern: the OpenTelemetry tracer provider and expo
 
 **Component responsibilities:**
 
-| Component         | Telemetry responsibility                                                                                           |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Process startup   | Initialize the tracer provider and exporter pipeline before the HTTP server accepts heartbeats                     |
-| Processing Cycle  | Own the root span lifecycle: start the span when the cycle begins, propagate OTel context, end when the cycle ends |
-| Main Agent (port) | Telemetry-agnostic at the port level; the port contract has no tracing parameters                                  |
-| AiSdkMainAgent    | Forward telemetry settings into AI SDK's `experimental_telemetry` option on each invocation                        |
-| Tool Layer        | No instrumentation required; AI SDK emits `ai.toolCall` spans for every Built-in and MCP tool call automatically   |
+| Component                | Telemetry responsibility                                                                                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Process startup          | Initialize the tracer provider and exporter pipeline before the HTTP server accepts heartbeats                                                                        |
+| Processing Cycle         | Own the root span lifecycle: start the span when the cycle begins, propagate OTel context, end when the cycle ends                                                    |
+| Main Agent (port)        | Telemetry-agnostic at the port level; the port contract has no tracing parameters                                                                                     |
+| AiSdkMainAgent           | Forward telemetry settings into AI SDK's `experimental_telemetry`; annotate the `shrimp.main-agent` span with agent-level gen_ai attrs (`invoke_agent`, `error.type`) |
+| GenAiBridgeSpanProcessor | Translate AI SDK's `ai.*` span attrs to OTel gen_ai semconv (`gen_ai.*`) on span end; single translation point for all LLM-call and tool-call spans                   |
+| Tool Layer               | No instrumentation required; AI SDK emits `ai.toolCall` spans for every Built-in and MCP tool call automatically                                                      |
 
 **Inside vs. outside Shrimp:**
 

@@ -14,6 +14,11 @@ import type {
 } from "../../use-cases/ports/main-agent";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 
+// Agent-level gen_ai attributes only: operation.name=invoke_agent, agent.name,
+// provider.name, and error.type on failure. All LLM-call and tool-call gen_ai
+// attrs — including structured gen_ai.input/output.messages — are emitted by
+// GenAiBridgeSpanProcessor translating AI SDK's ai.* attrs on span end.
+// See src/infrastructure/telemetry/gen-ai-bridge-span-processor.ts
 const ATTR_GEN_AI_OPERATION_NAME = "gen_ai.operation.name";
 const ATTR_GEN_AI_AGENT_NAME = "gen_ai.agent.name";
 const ATTR_GEN_AI_PROVIDER_NAME = "gen_ai.provider.name";
