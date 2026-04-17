@@ -366,34 +366,34 @@ Swapping `AiSdkMainAgent` for an alternative implementation requires no port cha
 - **MCP server connection failure at startup**: the failed MCP server is excluded; the agent continues startup with the remaining servers. If no MCP servers connect successfully, the agent runs with Built-in Tools only.
 - **Runtime AI/MCP failure during task processing**: Fail-Open Recovery applies.
 
-### Processing Cycle
+### Job
 
-The Processing Cycle is the orchestration unit triggered by each heartbeat. It runs inside the Task Queue's single slot and is responsible for everything that happens before and after the Main Agent executes.
+A **Job** is the orchestration unit triggered by each Heartbeat, executed by a **Job Worker** inside the **Job Queue's** single slot. The Job Worker is responsible for everything that happens before and after the Shrimp Agent executes.
 
 **Role contract:**
 
-| Contract            | Description                                                                                                          |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Trigger             | Started by the Task Queue when a heartbeat is accepted                                                               |
-| Heartbeat ID        | Generates a Heartbeat ID (UUID v7) at cycle start and threads it through to the Main Agent invocation                |
-| Task selection      | Selects one task: In Progress first by priority, then Backlog by priority; if none, cycle ends immediately           |
-| Backlog promotion   | If the selected task is in Backlog, moves it to In Progress before proceeding                                        |
-| Comment retrieval   | Fetches the task's comment history via the Built-in Get Comments tool to provide execution context                   |
-| Prompt assembly     | Assembles the system prompt (goal + tool descriptions) and user prompt (task context + comment history)              |
-| Main Agent dispatch | Invokes the Main Agent exactly once with the assembled prompts, the full tool set (Built-in + MCP), and Heartbeat ID |
-| Completion          | The cycle ends when the Main Agent returns. The Task Queue releases the slot regardless of success or failure        |
+| Contract              | Description                                                                                                      |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Trigger               | Started by the Job Queue when a Heartbeat is accepted (the Job Worker takes the slot)                            |
+| Job ID                | Generates a **Job ID** (UUID v7) at Job start and threads it through to the Shrimp Agent invocation              |
+| Task selection        | Selects one task: In Progress first by priority, then Backlog by priority; if none, Job ends immediately         |
+| Backlog promotion     | If the selected task is in Backlog, moves it to In Progress before proceeding                                    |
+| Comment retrieval     | Fetches the task's comment history via the Built-in Get Comments tool to provide execution context               |
+| Prompt assembly       | Assembles the system prompt (goal + tool descriptions) and user prompt (task context + comment history)          |
+| Shrimp Agent dispatch | Invokes the Shrimp Agent exactly once with the assembled prompts, the full tool set (Built-in + MCP), and Job ID |
+| Completion            | The Job ends when the Shrimp Agent returns. The Job Queue releases the slot regardless of success or failure     |
 
 **Execution lifecycle:**
 
-| Step | Actor            | Action                                                                                                                                                                                       |
-| ---- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Processing Cycle | Select one task: In Progress first by priority, then Backlog by priority; if none, cycle ends immediately                                                                                    |
-| 2    | Processing Cycle | If task is in Backlog, move to In Progress via Built-in Move Task tool                                                                                                                       |
-| 3    | Processing Cycle | Retrieve task comments via Built-in Get Comments tool                                                                                                                                        |
-| 4    | Processing Cycle | Assemble system prompt (goal + tools) and user prompt (task context + comment history)                                                                                                       |
-| 5    | Main Agent       | Run the tool-calling loop with the assembled prompts and all available tools; loop continues until done, max steps reached, or error; posts progress comment; moves task to Done if complete |
+| Step | Actor        | Action                                                                                                                                                                                       |
+| ---- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Job Worker   | Select one task: In Progress first by priority, then Backlog by priority; if none, Job ends immediately                                                                                      |
+| 2    | Job Worker   | If task is in Backlog, move to In Progress via Built-in Move Task tool                                                                                                                       |
+| 3    | Job Worker   | Retrieve task comments via Built-in Get Comments tool                                                                                                                                        |
+| 4    | Job Worker   | Assemble system prompt (goal + tools) and user prompt (task context + comment history)                                                                                                       |
+| 5    | Shrimp Agent | Run the tool-calling loop with the assembled prompts and all available tools; loop continues until done, max steps reached, or error; posts progress comment; moves task to Done if complete |
 
-The Task Queue only starts the cycle and releases the slot when the cycle returns.
+The Job Queue only starts the Job and releases the slot when the Job returns.
 
 **Prompt structure:**
 
@@ -404,29 +404,29 @@ The Task Queue only starts the cycle and releases the slot when the cycle return
 
 **Prompt rules:**
 
-- The system prompt is assembled at each task execution. It describes the agent's goal and lists available tools (names and capabilities) so the model understands what actions it can take. Tool definitions for function calling are provided separately via AI SDK's tools parameter; the system prompt provides the human-readable context that guides tool usage.
-- The user prompt uses a fixed template to present Todoist task content in a structured format. It includes the task's comment history to provide execution context — this allows the agent to understand prior progress and avoid repeating work.
+- The system prompt is assembled at each task execution. It describes the Shrimp Agent's goal and lists available tools (names and capabilities) so the model understands what actions it can take. Tool definitions for function calling are provided separately via AI SDK's tools parameter; the system prompt provides the human-readable context that guides tool usage.
+- The user prompt uses a fixed template to present Todoist task content in a structured format. It includes the task's comment history to provide execution context — this allows the Shrimp Agent to understand prior progress and avoid repeating work.
 - When assembling comment history, comments prefixed with the Comment Tag are labeled as bot-authored; all other comments are labeled as user-authored. The Comment Tag prefix is stripped from the display text so the AI model sees only the original content.
 
-**Heartbeat ID:**
+**Job ID:**
 
-The Processing Cycle generates a Heartbeat ID at the very start of each cycle — before task selection — and carries it through to the Main Agent invocation via `MainAgentInput`.
+The Job Worker generates a **Job ID** at the very start of each Job — before task selection — and carries it through to the Shrimp Agent invocation via `JobInput`.
 
-| Aspect       | Contract                                                                                                                                                                                                                                                                                                                                   |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Purpose      | Domain-scoped correlation key that groups all spans and logs produced by a single Processing Cycle; specifically the source of `gen_ai.conversation.id` on the `shrimp.main-agent` span                                                                                                                                                    |
-| Generation   | UUID v7 (time-ordered; v4 is an acceptable fallback if the runtime does not expose v7). Generated by Shrimp, not by external callers                                                                                                                                                                                                       |
-| Lifetime     | Per-cycle only. A new cycle generates a new ID. The ID is not persisted, not stored in Todoist, and not carried forward to subsequent cycles                                                                                                                                                                                               |
-| Propagation  | `ProcessingCycle` generates the ID and passes it to the Main Agent as `MainAgentInput.heartbeatId: string`. The Main Agent implementation writes it to the `gen_ai.conversation.id` span attribute on the `shrimp.main-agent` span                                                                                                         |
-| OTel mapping | `gen_ai.conversation.id` (OTel GenAI semconv). This is a business-domain correlation key, not a user conversation or session. Shrimp has no conversation history; each heartbeat is an isolated LLM invocation. The Heartbeat ID satisfies the "group all spans for one invocation" use case that `gen_ai.conversation.id` is designed for |
-| Failure      | UUID generation failure is not expected from a standard library; if it occurs, the cycle fails fast. No fallback to empty string or zero UUID — a missing or blank ID would silently corrupt downstream correlation                                                                                                                        |
+| Aspect       | Contract                                                                                                                                                                                                                                                                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Purpose      | Domain-scoped correlation key that groups all spans and logs produced by a single Job; specifically the source of `gen_ai.conversation.id` on the `shrimp.job` span                                                                                                                                                                  |
+| Generation   | UUID v7 (time-ordered; v4 is an acceptable fallback if the runtime does not expose v7). Generated by Shrimp, not by external callers                                                                                                                                                                                                 |
+| Lifetime     | Per-Job only. A new Job generates a new ID. The ID is not persisted, not stored in Todoist, and not carried forward to subsequent Jobs                                                                                                                                                                                               |
+| Propagation  | The Job Worker generates the ID and passes it to the Shrimp Agent as `JobInput.jobId: string`. The Shrimp Agent implementation writes it to the `gen_ai.conversation.id` span attribute on the `shrimp.job` span                                                                                                                     |
+| OTel mapping | `gen_ai.conversation.id` (OTel GenAI semconv). This is a business-domain correlation key, not a user conversation or session. Shrimp has no conversation history; each Heartbeat is an isolated LLM invocation. The Job ID satisfies the "group all spans for one invocation" use case that `gen_ai.conversation.id` is designed for |
+| Failure      | UUID generation failure is not expected from a standard library; if it occurs, the Job fails fast. No fallback to empty string or zero UUID — a missing or blank ID would silently corrupt downstream correlation                                                                                                                    |
 
 **IS NOT:**
 
 - Not a user session ID or conversation history identifier
-- Not an OTel trace ID — OTel already provides trace IDs for distributed tracing; the Heartbeat ID is the business-domain grouping key
+- Not an OTel trace ID — OTel already provides trace IDs for distributed tracing; the **Job ID** is the business-domain grouping key
 - Not persisted to Todoist or any storage
-- Not correlated across Shrimp restarts or across separate Processing Cycles
+- Not correlated across Shrimp restarts or across separate Jobs
 - Not supplied by external callers (heartbeat callers have no knowledge of it)
 
 ### Main Agent
