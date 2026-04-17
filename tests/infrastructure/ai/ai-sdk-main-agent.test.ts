@@ -49,7 +49,8 @@ function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
           record.exceptions.push(exception);
           return span;
         },
-        updateName() {
+        updateName(newName: string) {
+          record.name = newName;
           return span;
         },
         end() {
@@ -376,8 +377,22 @@ describe("AiSdkMainAgent.run", () => {
 
   describe("gen_ai semantic conventions", () => {
     function findMainAgentSpan(spans: RecordedSpan[]) {
-      return spans.find((s) => s.name === "shrimp.main-agent");
+      return spans.find(
+        (s) =>
+          s.name === "invoke_agent shrimp.main-agent" ||
+          s.name === "shrimp.main-agent",
+      );
     }
+
+    it("should rename outer span to 'invoke_agent shrimp.main-agent' per semconv", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), { tracer });
+
+      await agent.run(baseInput);
+
+      expect(spans[0].name).toBe("invoke_agent shrimp.main-agent");
+    });
 
     it("should record exception, set ERROR status, end the span, and rethrow when generate throws", async () => {
       const { tracer, spans } = makeRecordingTracer();

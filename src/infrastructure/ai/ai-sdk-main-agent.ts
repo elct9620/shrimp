@@ -88,6 +88,12 @@ export class AiSdkMainAgent implements MainAgent {
     });
 
     return this.tracer.startActiveSpan("shrimp.main-agent", async (span) => {
+      // Rename to semconv SHOULD form: "{gen_ai.operation.name} {gen_ai.agent.name}"
+      // per gen_ai-agent-spans spec. updateName is called before any setAttribute
+      // so the canonical name applies from the span's first moment. The initial
+      // name passed to startActiveSpan acts as fallback on tracers that do not
+      // implement updateName.
+      span.updateName("invoke_agent shrimp.main-agent");
       span.setAttribute(ATTR_GEN_AI_OPERATION_NAME, "invoke_agent");
       span.setAttribute(ATTR_GEN_AI_AGENT_NAME, "shrimp.main-agent");
       span.setAttribute(ATTR_GEN_AI_PROVIDER_NAME, this.providerName);

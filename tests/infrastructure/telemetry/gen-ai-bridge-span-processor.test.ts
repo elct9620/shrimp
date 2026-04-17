@@ -775,4 +775,82 @@ describe("GenAiBridgeSpanProcessor", () => {
       expect(attrs["gen_ai.tool.definitions"]).toBe(singleString);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Span name canonicalization (item #14)
+  // ---------------------------------------------------------------------------
+
+  describe("span name canonicalization", () => {
+    function endAndGetName(
+      processor: GenAiBridgeSpanProcessor,
+      span: ReadableSpan,
+    ): string {
+      processor.onEnd(span);
+      return (span as unknown as { name: string }).name;
+    }
+
+    it("renames a chat span to 'chat {model}' when gen_ai.request.model is present", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "gen_ai.request.model": "gpt-4o",
+          "gen_ai.system": "openai",
+        },
+      });
+
+      const name = endAndGetName(processor, span);
+
+      expect(name).toBe("chat gpt-4o");
+    });
+
+    it("does NOT rename a chat span when gen_ai.request.model is absent", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "gen_ai.system": "openai" },
+      });
+
+      const name = endAndGetName(processor, span);
+
+      expect(name).toBe("ai.generateText.doGenerate");
+    });
+
+    it("renames a tool-call span to 'execute_tool {name}' when gen_ai.tool.name is present", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: { "ai.toolCall.name": "my_tool", "ai.toolCall.id": "c1" },
+      });
+
+      const name = endAndGetName(processor, span);
+
+      expect(name).toBe("execute_tool my_tool");
+    });
+
+    it("does NOT rename a tool-call span when gen_ai.tool.name is absent", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      // Span with only id, no name — gen_ai.tool.name won't be set
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: { "ai.toolCall.id": "c1" },
+      });
+
+      const name = endAndGetName(processor, span);
+
+      expect(name).toBe("ai.toolCall");
+    });
+
+    it("does NOT rename a span that does not start with 'ai.' (foreign span protection)", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "http.server.request",
+        attributes: { "gen_ai.request.model": "gpt-4o" },
+      });
+
+      const name = endAndGetName(processor, span);
+
+      expect(name).toBe("http.server.request");
+    });
+  });
 });

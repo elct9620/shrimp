@@ -26,6 +26,7 @@ export class GenAiBridgeSpanProcessor implements SpanProcessor {
     translateChatSpan(span);
     translateChatMessages(span);
     translateChatTools(span);
+    renameToCanonicalForm(span);
   }
 
   shutdown(): Promise<void> {
@@ -386,6 +387,51 @@ function translateChatMessages(span: ReadableSpan): void {
       "gen_ai.output.messages",
       JSON.stringify(outputMessages),
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Span name canonicalization (item #14)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rewrites AI SDK span names to the OTel gen_ai semconv SHOULD form:
+ *   chat spans   → `chat {gen_ai.request.model}`
+ *   tool-call spans → `execute_tool {gen_ai.tool.name}`
+ *
+ * WHY direct `name` assignment: `ReadableSpan.name` is `readonly` in the
+ * TypeScript interface, but `SpanImpl.name` is a plain public field at runtime
+ * (node_modules/@opentelemetry/sdk-trace-base/build/src/Span.d.ts line 42).
+ * `SpanImpl.updateName()` guards against writes after `_ended` is true (Span.js
+ * line 241), making it a silent no-op inside `onEnd` — the same constraint as
+ * `setAttribute`. Direct assignment via cast is the only viable mutation path,
+ * using the same pattern already applied to `span.attributes` elsewhere in this
+ * file.
+ *
+ * Foreign-span guard: only rewrites spans whose name starts with `ai.` — spans
+ * from other libraries are left untouched.
+ */
+function renameToCanonicalForm(span: ReadableSpan): void {
+  // Protect non-AI-SDK spans from accidental renaming.
+  if (!span.name.startsWith("ai.")) return;
+
+  const attrs = span.attributes;
+  const mutable = span as unknown as { name: string };
+
+  if (isChatSpan(span)) {
+    const model = attrs["gen_ai.request.model"];
+    if (model != null) {
+      mutable.name = `chat ${String(model)}`;
+    }
+    return;
+  }
+
+  if (isToolCallSpan(span)) {
+    // gen_ai.tool.name is written by translateToolCallSpan before this runs.
+    const toolName = attrs["gen_ai.tool.name"];
+    if (toolName != null) {
+      mutable.name = `execute_tool ${String(toolName)}`;
+    }
   }
 }
 
