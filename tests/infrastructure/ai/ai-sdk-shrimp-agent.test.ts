@@ -133,6 +133,7 @@ const baseInput: JobInput = {
   tools: { my_tool: {} },
   maxSteps: 3,
   jobId: "00000000-0000-0000-0000-000000000001",
+  history: [],
 };
 
 describe("AiSdkShrimpAgent.run", () => {
@@ -288,6 +289,64 @@ describe("AiSdkShrimpAgent.run", () => {
 
       expect(result1.reason).toBe("finished");
       expect(result2.reason).toBe("finished");
+    });
+  });
+
+  describe("history passthrough", () => {
+    it("should prepend history messages before the user prompt in the AI SDK call", async () => {
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger());
+
+      await agent.run({
+        ...baseInput,
+        history: [
+          { role: "user", content: "Hello" },
+          { role: "assistant", content: "Hi there" },
+        ],
+        userPrompt: "Follow-up question.",
+      });
+
+      const callOptions = model.doGenerateCalls[0];
+      const roles = callOptions.prompt.map((m: { role: string }) => m.role);
+      // system, user (history[0]), assistant (history[1]), user (current prompt)
+      expect(roles).toEqual(["system", "user", "assistant", "user"]);
+    });
+
+    it("should return newMessages with the assistant final text", async () => {
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger());
+
+      const result = await agent.run(baseInput);
+
+      expect(result.newMessages).toHaveLength(1);
+      expect(result.newMessages[0]).toEqual({
+        role: "assistant",
+        content: "done",
+      });
+    });
+
+    it("should return empty newMessages when text is empty", async () => {
+      const emptyModel = new MockLanguageModelV3({
+        doGenerate: async () => ({
+          content: [{ type: "text" as const, text: "" }],
+          finishReason: { unified: "stop" as const, raw: undefined },
+          usage: {
+            inputTokens: {
+              total: 0,
+              noCache: 0,
+              cacheRead: undefined,
+              cacheWrite: undefined,
+            },
+            outputTokens: { total: 0, text: 0, reasoning: undefined },
+          },
+          warnings: [],
+        }),
+      });
+      const agent = makeAgent(emptyModel, makeFakeLogger());
+
+      const result = await agent.run(baseInput);
+
+      expect(result.newMessages).toHaveLength(0);
     });
   });
 

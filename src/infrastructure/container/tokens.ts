@@ -10,6 +10,7 @@ import type { ToolProviderFactory } from "../../use-cases/ports/tool-provider-fa
 import type { EnvConfig } from "../config/env-config";
 import type { McpConfig } from "../config/mcp-config";
 import type { McpClientFactory } from "../mcp/mcp-tool-loader";
+import type { HeartbeatJob } from "../../use-cases/heartbeat-job";
 
 export const TOKENS = {
   Logger: Symbol.for("shrimp.LoggerPort"),
@@ -24,6 +25,7 @@ export const TOKENS = {
   EnvConfig: Symbol.for("shrimp.EnvConfig"),
   McpConfig: Symbol.for("shrimp.McpConfig"),
   McpClientFactory: Symbol.for("shrimp.McpClientFactory"),
+  HeartbeatJob: Symbol.for("shrimp.HeartbeatJob"),
 } as const;
 
 export type TokenRegistry = {
@@ -39,4 +41,5 @@ export type TokenRegistry = {
   [TOKENS.EnvConfig]: EnvConfig;
   [TOKENS.McpConfig]: McpConfig;
   [TOKENS.McpClientFactory]: McpClientFactory;
+  [TOKENS.HeartbeatJob]: HeartbeatJob;
 };

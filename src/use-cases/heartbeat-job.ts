@@ -9,7 +9,7 @@ import type { ToolProviderFactory } from "./ports/tool-provider-factory";
 import type { LoggerPort } from "./ports/logger";
 import type { TelemetryPort } from "./ports/telemetry";
 
-export type JobConfig = {
+export type HeartbeatJobConfig = {
   board: BoardRepository;
   shrimpAgent: ShrimpAgent;
   toolProviderFactory: ToolProviderFactory;
@@ -18,7 +18,7 @@ export type JobConfig = {
   telemetry: TelemetryPort;
 };
 
-export class Job {
+export class HeartbeatJob {
   private readonly board: BoardRepository;
   private readonly shrimpAgent: ShrimpAgent;
   private readonly toolProviderFactory: ToolProviderFactory;
@@ -33,7 +33,7 @@ export class Job {
     maxSteps,
     logger,
     telemetry,
-  }: JobConfig) {
+  }: HeartbeatJobConfig) {
     this.board = board;
     this.shrimpAgent = shrimpAgent;
     this.toolProviderFactory = toolProviderFactory;
@@ -106,6 +106,7 @@ export class Job {
         tools: toolProvider.getTools(),
         maxSteps: this.maxSteps,
         jobId,
+        history: [],
       });
 
       this.logger.info("cycle finished", {

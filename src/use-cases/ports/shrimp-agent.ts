@@ -1,3 +1,4 @@
+import type { ConversationMessage } from "../../entities/conversation-message";
 import type { ToolSet } from "./tool-set";
 
 export type ShrimpAgentTerminationReason =
@@ -18,10 +19,28 @@ export type JobInput = {
    * per cycle.
    */
   jobId: string;
+  /**
+   * Conversation history preceding this invocation.
+   * HeartbeatJob always passes an empty array.
+   * ChannelJob passes the Session's prior messages so the agent
+   * can maintain multi-turn context.
+   */
+  history: readonly ConversationMessage[];
+  /**
+   * Session identifier for ChannelJob only; absent for HeartbeatJob.
+   * Passed through to the agent for telemetry purposes.
+   */
+  sessionId?: string;
 };
 
 export type ShrimpAgentResult = {
   reason: ShrimpAgentTerminationReason;
+  /**
+   * Assistant turn(s) produced during this invocation.
+   * ChannelJob appends these to the Session after the agent returns.
+   * HeartbeatJob ignores this field.
+   */
+  newMessages: readonly ConversationMessage[];
 };
 
 export interface ShrimpAgent {

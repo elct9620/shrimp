@@ -20,7 +20,7 @@ import {
 import { InMemoryJobQueue } from "./infrastructure/queue/in-memory-job-queue";
 import { BuiltInToolFactory } from "./adapters/tools/built-in-tool-factory";
 import { ToolProviderFactoryImpl } from "./adapters/tools/tool-provider-factory-impl";
-import { Job } from "./use-cases/job";
+import { HeartbeatJob } from "./use-cases/heartbeat-job";
 import { createPinoLogger } from "./infrastructure/logger/pino-logger";
 import type { BoardRepository } from "./use-cases/ports/board-repository";
 import type { LoggerPort } from "./use-cases/ports/logger";
@@ -68,15 +68,17 @@ container.register(TOKENS.ShrimpAgent, {
 // JobQueue
 container.register(TOKENS.JobQueue, { useClass: InMemoryJobQueue });
 
-// Job — Use Case: registered via useFactory, no @inject
-container.register(Job, {
+// HeartbeatJob — Use Case: registered via useFactory, no @inject
+container.register(TOKENS.HeartbeatJob, {
   useFactory: (c) =>
-    new Job({
+    new HeartbeatJob({
       board: c.resolve<BoardRepository>(TOKENS.BoardRepository),
       shrimpAgent: c.resolve<ShrimpAgent>(TOKENS.ShrimpAgent),
       toolProviderFactory: c.resolve(TOKENS.ToolProviderFactory),
       maxSteps: c.resolve<EnvConfig>(TOKENS.EnvConfig).aiMaxSteps,
-      logger: c.resolve<LoggerPort>(TOKENS.Logger).child({ module: "Job" }),
+      logger: c
+        .resolve<LoggerPort>(TOKENS.Logger)
+        .child({ module: "HeartbeatJob" }),
       telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
     }),
 });

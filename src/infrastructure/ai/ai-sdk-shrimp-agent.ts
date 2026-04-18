@@ -1,6 +1,7 @@
 import {
   ToolLoopAgent,
   stepCountIs,
+  type ModelMessage,
   type LanguageModel,
   type ToolLoopAgentSettings,
   type ToolSet as AiToolSet,
@@ -12,6 +13,7 @@ import type {
   ShrimpAgentResult,
   ShrimpAgentTerminationReason,
 } from "../../use-cases/ports/shrimp-agent";
+import type { ConversationMessage } from "../../entities/conversation-message";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import { toGenAiOutputMessages } from "../telemetry/gen-ai-bridge-span-processor";
 import pkg from "../../../package.json";
@@ -120,13 +122,20 @@ export class AiSdkShrimpAgent implements ShrimpAgent {
       // Correlation ID — always recorded regardless of recordInputs/recordOutputs
       // because it is trace glue, not sensitive content.
       span.setAttribute(ATTR_GEN_AI_CONVERSATION_ID, input.jobId);
+      // TODO(item 12): stamp gen_ai.conversation.id = input.sessionId when present
+      // to surface the Session ID for ChannelJob traces.
 
       if (this.recordInputs) {
+        const historyMessages = input.history.map((m) => ({
+          role: m.role,
+          parts: [{ type: "text", content: m.content }],
+        }));
         const inputMessages = [
           {
             role: "system",
             parts: [{ type: "text", content: input.systemPrompt }],
           },
+          ...historyMessages,
           {
             role: "user",
             parts: [{ type: "text", content: input.userPrompt }],
@@ -138,10 +147,28 @@ export class AiSdkShrimpAgent implements ShrimpAgent {
         );
       }
 
+      // Convert history + current user prompt to ModelMessage format.
+      // When history is present we must use `messages` (not `prompt`) because
+      // the AI SDK generate API treats them as mutually exclusive.
+      const historyMessages: ModelMessage[] = input.history.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
       const agent = new ToolLoopAgent(this.buildToolLoopAgentOptions(input));
 
       try {
-        const result = await agent.generate({ prompt: input.userPrompt });
+        const callParams =
+          historyMessages.length > 0
+            ? {
+                messages: [
+                  ...historyMessages,
+                  { role: "user" as const, content: input.userPrompt },
+                ],
+              }
+            : { prompt: input.userPrompt };
+
+        const result = await agent.generate(callParams);
 
         if (this.recordOutputs) {
           const outputMessages = toGenAiOutputMessages(result.text, []);
@@ -159,7 +186,13 @@ export class AiSdkShrimpAgent implements ShrimpAgent {
           reason,
         });
 
-        return { reason };
+        // Collect the assistant's final text as the new message for ChannelJob to persist.
+        const newMessages: ConversationMessage[] =
+          result.text.length > 0
+            ? [{ role: "assistant", content: result.text }]
+            : [];
+
+        return { reason, newMessages };
       } catch (err) {
         span.recordException(err as Error);
         span.setAttribute(
