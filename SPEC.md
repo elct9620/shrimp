@@ -29,7 +29,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 - No Web UI or dashboard
 - No management of Todoist Project structure (only reads from a designated Board)
 - No cross-Board or multi-Board integration
-- Persistent or distributed task queue — current implementation uses in-memory only; tasks are lost on restart. Future extension remains open. Session conversation history is separately persisted (see Session Lifecycle).
+- Persistent or distributed Job Queue — current implementation uses in-memory only; in-flight Jobs are lost on restart. Future extension remains open. Session conversation history is separately persisted (see Session Lifecycle).
 
 ## Glossary
 
@@ -62,8 +62,8 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 | Feature                             | Description                                                                                                                              |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| In-memory task queue                | A single-slot in-memory queue that serializes task processing; one task at a time                                                        |
-| Heartbeat-triggered task selection  | On `/heartbeat`, enqueue a processing cycle: select one task (In Progress first, then Backlog)                                           |
+| In-memory Job Queue                 | Single-slot concurrency gate; admits one Job at a time                                                                                   |
+| Heartbeat-triggered task selection  | On `/heartbeat`, dispatch a HeartbeatJob that selects one task (In Progress first, then Backlog)                                         |
 | AI-driven task execution            | The Shrimp Agent executes the selected task via built-in and MCP tools until the task is complete, max steps reached, or an error occurs |
 | Progress reporting via comments     | Agent posts a Todoist comment with status after each execution                                                                           |
 | Task completion                     | Agent marks the task Done when it determines the task is finished                                                                        |
@@ -79,8 +79,8 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 | Excluded                             | Reason                                                                                                                           |
 | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| Parallel task processing             | Queue processes one task at a time; concurrent execution is out of scope                                                         |
-| Persistent or distributed queue      | Queue is in-memory only; tasks are lost on restart (Todoist is the source of truth)                                              |
+| Parallel Job processing              | Job Queue admits one Job at a time; concurrent execution is out of scope                                                         |
+| Persistent or distributed Job Queue  | Job Queue is in-memory only; in-flight Jobs are lost on restart (Todoist is the source of truth)                                 |
 | Proactive scheduling                 | No cron or timer inside Shrimp; heartbeat is always externally triggered                                                         |
 | Todoist Project/Board management     | Shrimp reads from and writes to the configured Board only; it does not create or modify Board structure                          |
 | Multi-Board or multi-account support | Single configured board per instance                                                                                             |
@@ -105,24 +105,24 @@ Enqueues one **HeartbeatJob** in the background. Channel-triggered Jobs use a se
 
 | Scenario                              | Status         | Body                       |
 | ------------------------------------- | -------------- | -------------------------- |
-| Job Queue slot is free — Job enqueued | `202 Accepted` | `{ "status": "accepted" }` |
+| Job Queue slot is free — Job accepted | `202 Accepted` | `{ "status": "accepted" }` |
 | Job Queue slot is busy — Job dropped  | `202 Accepted` | `{ "status": "accepted" }` |
 
 **Behavior rules:**
 
 - Always returns `202 Accepted` immediately, regardless of whether the background Job was enqueued or dropped. The caller cannot distinguish the two cases; this is intentional fire-and-forget semantics.
-- Returns immediately after enqueuing; does not wait for task processing to complete.
+- Returns immediately after accepting; does not wait for Job processing to complete.
 - Each Job selects at most one task: an In Progress task takes priority over a Backlog task.
 - If no actionable task is found, the Job ends immediately with no side effects.
 - Task progress reporting and status updates happen asynchronously within the background Job.
 
 ### In-Memory Job Queue
 
-Concurrency gate that ensures only one Job runs at a time. The Job Queue accepts both **HeartbeatJob** (from the HTTP heartbeat path) and **ChannelJob** (from the Channel adapter) into the same single slot; it does not distinguish variants for queuing purposes. The Job Queue does not select tasks, load Sessions, assemble prompts, or report progress — all of that belongs to the Job Worker and the Shrimp Agent.
+Concurrency gate that ensures only one Job runs at a time. The Job Queue accepts both **HeartbeatJob** (from the HTTP heartbeat path) and **ChannelJob** (from the Channel adapter) into the same single slot; it does not distinguish variants when accepting. The Job Queue does not select tasks, load Sessions, assemble prompts, or report progress — all of that belongs to the Job Worker and the Shrimp Agent.
 
 **Behavior rules:**
 
-- The Job Queue holds at most one pending Job. If a Heartbeat or Channel message arrives while a Job is already running, the new request is silently dropped (no error, no queuing). The drop semantics are identical for both variants.
+- The Job Queue admits at most one running Job. If a Heartbeat or Channel message arrives while a Job is already running, the new request is silently dropped (no error, no buffering, no queuing). The drop semantics are identical for both variants.
 - The slot is occupied from the moment a Job is accepted until the Job completes or fails. Any Heartbeat or Channel message event arriving during this window is dropped.
 - On acceptance, the Job Queue starts a Job (executed by a Job Worker); on completion or failure, it releases the slot. The Job Queue has no knowledge of what happens during the Job, nor which variant is running.
 - If the Job fails for any reason, Fail-Open Recovery applies.
@@ -231,7 +231,7 @@ Channel is a generic contract for inbound event delivery. Telegram (via webhook)
 
 | Event type    | Trigger                            | Handling                                                                                           |
 | ------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Message       | User message not prefixed with `/` | Produces a `ChannelJob` enqueued in the Job Queue                                                  |
+| Message       | User message not prefixed with `/` | Produces a `ChannelJob` dispatched through the Job Queue                                           |
 | Slash Command | User message prefixed with `/`     | Handled by the Channel adapter directly; no Job is enqueued. See [Slash Commands](#slash-commands) |
 
 **Delivery mode:**
@@ -385,7 +385,7 @@ Telemetry is controlled at startup. The following rules govern how configuration
 **Exporter failure is fail-open:**
 
 - Exporter errors — including network failure, backend unavailability, timeout, and serialization error — must never propagate into the Job. The Job completes its work; task state in Todoist is never affected by telemetry failures.
-- This is consistent with the Fail-Open Recovery pattern applied to Todoist and AI provider failures during task processing.
+- This is consistent with the Fail-Open Recovery pattern applied to Todoist and AI provider failures during Job processing.
 - Dropped spans are lost. Shrimp has no local span buffer beyond what the OpenTelemetry SDK provides internally, and does not retry, persist, or re-queue spans on behalf of a failing exporter.
 
 **Startup validation:**
@@ -662,7 +662,7 @@ Shrimp runs as a single container. There is no multi-instance or multi-tenant de
 **Container invariants:**
 
 - One container, one Todoist Board, one AI provider.
-- Container restart causes in-flight task work to be lost; Todoist remains the source of truth and the task is retried on the next heartbeat.
+- Container restart causes in-flight Job work to be lost; Todoist remains the source of truth and the task is retried on the next heartbeat.
 - In Docker deployments, `dotenv` is not active; all variables are supplied via Docker's env injection mechanisms.
 
 ### Development Setup
