@@ -494,45 +494,56 @@ Swapping `AiSdkShrimpAgent` for an alternative implementation requires no port c
 
 ### Job
 
-A **Job** is the orchestration unit triggered by each Heartbeat, executed by a **Job Worker** inside the **Job Queue's** single slot. The Job Worker is responsible for everything that happens before and after the Shrimp Agent executes.
+A **Job** is the orchestration unit triggered by either a Heartbeat (**HeartbeatJob**) or a Channel message event (**ChannelJob**), executed by a **Job Worker** inside the **Job Queue's** single slot. Both variants share the same Job Worker skeleton and the same single slot; the Job Worker is responsible for everything that happens before and after the Shrimp Agent executes.
 
 **Role contract:**
 
-| Contract              | Description                                                                                                      |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Trigger               | Started by the Job Queue when a Heartbeat is accepted (the Job Worker takes the slot)                            |
-| Job ID                | Generates a **Job ID** (UUID v7) at Job start and threads it through to the Shrimp Agent invocation              |
-| Task selection        | Selects one task: In Progress first by priority, then Backlog by priority; if none, Job ends immediately         |
-| Backlog promotion     | If the selected task is in Backlog, moves it to In Progress before proceeding                                    |
-| Comment retrieval     | Fetches the task's comment history via the Built-in Get Comments tool to provide execution context               |
-| Prompt assembly       | Assembles the system prompt (goal + tool descriptions) and user prompt (task context + comment history)          |
-| Shrimp Agent dispatch | Invokes the Shrimp Agent exactly once with the assembled prompts, the full tool set (Built-in + MCP), and Job ID |
-| Completion            | The Job ends when the Shrimp Agent returns. The Job Queue releases the slot regardless of success or failure     |
+| Contract              | Description                                                                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Trigger               | HeartbeatJob: started when a Heartbeat is accepted into the Job Queue. ChannelJob: started when a Channel message event is accepted (after Slash Command filtering by the Channel adapter). Same single slot.             |
+| Job ID                | Generates a **Job ID** (UUID v7) at Job start and threads it through to the Shrimp Agent invocation                                                                                                                       |
+| Task selection        | HeartbeatJob only: selects one task (In Progress first by priority, then Backlog by priority); if none, Job ends immediately                                                                                              |
+| Backlog promotion     | HeartbeatJob only: if the selected task is in Backlog, moves it to In Progress before proceeding                                                                                                                          |
+| Comment retrieval     | HeartbeatJob only: fetches the task's comment history via the Built-in Get Comments tool to provide execution context                                                                                                     |
+| Prompt assembly       | Assembles system and user prompts; user prompt contents differ by variant (HeartbeatJob: task context + comment history; ChannelJob: incoming Channel message, with Session history passed separately as `history` input) |
+| Shrimp Agent dispatch | Invokes the Shrimp Agent exactly once with the assembled prompts, conversation history, the full tool set (Built-in + MCP), and Job ID                                                                                    |
+| Completion            | The Job ends when the Shrimp Agent returns. The Job Queue releases the slot regardless of success or failure                                                                                                              |
 
-**Execution lifecycle:**
+**HeartbeatJob execution lifecycle:**
 
 | Step | Actor        | Action                                                                                                                                                                                       |
 | ---- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1    | Job Worker   | Select one task: In Progress first by priority, then Backlog by priority; if none, Job ends immediately                                                                                      |
 | 2    | Job Worker   | If task is in Backlog, move to In Progress via Built-in Move Task tool                                                                                                                       |
 | 3    | Job Worker   | Retrieve task comments via Built-in Get Comments tool                                                                                                                                        |
-| 4    | Job Worker   | Assemble system prompt (goal + tools) and user prompt (task context + comment history)                                                                                                       |
+| 4    | Job Worker   | Assemble system prompt (goal + tools) and user prompt (task context + comment history); pass empty `history` to Shrimp Agent                                                                 |
 | 5    | Shrimp Agent | Run the tool-calling loop with the assembled prompts and all available tools; loop continues until done, max steps reached, or error; posts progress comment; moves task to Done if complete |
+
+**ChannelJob execution lifecycle:**
+
+| Step | Actor        | Action                                                                                                                                                          |
+| ---- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Job Worker   | Load the current Session (or create a new one if none exists — see [Session Lifecycle](#session-lifecycle)); append the incoming Channel message to the Session |
+| 2    | Job Worker   | Assemble system prompt (goal + tools) and user prompt (incoming Channel message); pass Session's ConversationMessage entries as `history` to the Shrimp Agent   |
+| 3    | Shrimp Agent | Run the tool-calling loop with the assembled prompts, Session history, and all available tools; the agent may emit replies via the Reply tool during the loop   |
+| 4    | Job Worker   | Append new ConversationMessage entries produced during the invocation back to the Session via the Session Repository                                            |
+| 5    | Job Queue    | Job ends; slot released regardless of success or failure                                                                                                        |
 
 The Job Queue only starts the Job and releases the slot when the Job returns.
 
 **Prompt structure:**
 
-| Prompt        | Assembly                         | Content                                                                                                                            |
-| ------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| System prompt | Dynamic, assembled per execution | Goal setting (complete the task, report progress) + available tools description (names and capabilities of built-in and MCP tools) |
-| User prompt   | Fixed template                   | Task context: id, title, description, current section, and comment history from prior executions                                   |
+| Prompt        | Assembly                         | HeartbeatJob content                                                                                                               | ChannelJob content                                                                                      |
+| ------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| System prompt | Dynamic, assembled per execution | Goal setting (complete the task, report progress) + available tools description (names and capabilities of built-in and MCP tools) | Same structure; goal framing reflects conversational context                                            |
+| User prompt   | Fixed template                   | Task context: id, title, description, current section, and comment history from prior executions                                   | The incoming Channel message text; Session history is passed as the `history` input, not in this prompt |
 
 **Prompt rules:**
 
-- The system prompt is assembled at each task execution. It describes the Shrimp Agent's goal and lists available tools (names and capabilities) so the model understands what actions it can take. Tool definitions for function calling are provided separately via AI SDK's tools parameter; the system prompt provides the human-readable context that guides tool usage.
-- The user prompt uses a fixed template to present Todoist task content in a structured format. It includes the task's comment history to provide execution context — this allows the Shrimp Agent to understand prior progress and avoid repeating work.
-- When assembling comment history, comments prefixed with the Comment Tag are labeled as bot-authored; all other comments are labeled as user-authored. The Comment Tag prefix is stripped from the display text so the AI model sees only the original content.
+- The system prompt is assembled at each Job execution. It describes the Shrimp Agent's goal and lists available tools (names and capabilities) so the model understands what actions it can take. Tool definitions for function calling are provided separately via AI SDK's tools parameter; the system prompt provides the human-readable context that guides tool usage.
+- HeartbeatJob: the user prompt uses a fixed template to present Todoist task content in a structured format. It includes the task's comment history to provide execution context — this allows the Shrimp Agent to understand prior progress and avoid repeating work.
+- ChannelJob: the user prompt contains the incoming Channel message. Conversation history is supplied separately as the `history` input to the Shrimp Agent (ordered ConversationMessage entries from the current Session), not embedded in the user prompt text.
+- When assembling comment history (HeartbeatJob only), comments prefixed with the Comment Tag are labeled as bot-authored; all other comments are labeled as user-authored. The Comment Tag prefix is stripped from the display text so the AI model sees only the original content.
 
 **Job ID:**
 
