@@ -41,6 +41,10 @@ src/
     priority.ts                # Priority value object: p1–p4 with ordering
     comment.ts                 # Comment value object: text + timestamp
     task-selector.ts           # Pure selection policy: In Progress first, then Backlog, by Priority
+    session.ts                 # Session read model: id + ordered ConversationMessage history
+    conversation-message.ts    # ConversationMessage value object: role + content
+    channel-message.ts         # ChannelMessage value object: ConversationRef + text
+    conversation-ref.ts        # ConversationRef value object: channel identity for reply routing
 
   use-cases/
     ports/
@@ -49,7 +53,12 @@ src/
       job-queue.ts              # Concurrency gate abstraction (inbound, used by HTTP)
       telemetry.ts              # Telemetry port: runInSpan + shutdown (outbound)
       tool-provider.ts          # Merged tool-list provider (outbound)
-    job.ts                      # Job orchestrator (SPEC §Job) — executes one Job per Heartbeat
+      session-repository.ts     # Session persistence abstraction (outbound)
+      channel-gateway.ts        # Channel send abstraction (outbound)
+    jobs/
+      heartbeat-job.ts          # Job orchestrator (SPEC §HeartbeatJob) — executes one Job per Heartbeat
+      channel-job.ts            # Job orchestrator (SPEC §ChannelJob) — processes one inbound Channel message
+    start-new-session.ts        # Rotates the current Session: archives previous, creates fresh
     prompt-assembler.ts         # Builds system prompt + user prompt
 
   adapters/
@@ -57,12 +66,14 @@ src/
       routes/
         health.ts               # GET /health
         heartbeat.ts            # POST /heartbeat
+        telegram-webhook.ts     # POST /telegram/webhook — receives Telegram updates, dispatches ChannelJob or Slash Command
     tools/
       built-in/
         get-tasks.ts            # Inbound adapter → BoardRepository.getTasks
         get-comments.ts         # Inbound adapter → BoardRepository.getComments
         post-comment.ts         # Inbound adapter → BoardRepository.postComment
         move-task.ts            # Inbound adapter → BoardRepository.moveTask
+        reply.ts                # Inbound adapter → ChannelGateway.send (no-op when ConversationRef is null)
       tool-registry.ts          # Merges built-in + MCP tools (ToolProvider impl)
 
   infrastructure/
@@ -84,6 +95,10 @@ src/
       otel-telemetry.ts              # OtelTelemetry adapter (NodeSDK + OTLP HTTP exporter)
       gen-ai-bridge-span-processor.ts # Translates ai.* attrs → gen_ai semconv on span end
       telemetry-factory.ts           # createTelemetry(env, logger): selects Noop vs Otel
+    session/
+      jsonl-session-repository.ts  # SessionRepository implementation: append-only JSONL per session + state.json
+    channel/
+      telegram-channel.ts          # ChannelGateway implementation: Telegram Bot API send
 
   container.ts                  # tsyringe bindings (composition root)
   app.ts                        # Hono app composition
