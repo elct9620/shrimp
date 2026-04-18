@@ -19,89 +19,44 @@ describe("createMoveTaskTool", () => {
     expect(t.description!.length).toBeGreaterThan(0);
   });
 
-  it("should accept valid taskId and Backlog section", () => {
-    const schema = createMoveTaskTool(repo, makeFakeLogger())
-      .inputSchema as unknown as ParseableSchema;
-    expect(
-      schema.safeParse({ taskId: "task-123", section: "Backlog" }).success,
-    ).toBe(true);
-  });
+  it.each(["Backlog", "InProgress", "Done"])(
+    "should accept valid taskId + section '%s'",
+    (section) => {
+      const schema = createMoveTaskTool(repo, makeFakeLogger())
+        .inputSchema as unknown as ParseableSchema;
+      expect(schema.safeParse({ taskId: "task-123", section }).success).toBe(
+        true,
+      );
+    },
+  );
 
-  it("should accept InProgress section", () => {
-    const schema = createMoveTaskTool(repo, makeFakeLogger())
-      .inputSchema as unknown as ParseableSchema;
-    expect(
-      schema.safeParse({ taskId: "task-123", section: "InProgress" }).success,
-    ).toBe(true);
-  });
-
-  it("should accept Done section", () => {
-    const schema = createMoveTaskTool(repo, makeFakeLogger())
-      .inputSchema as unknown as ParseableSchema;
-    expect(
-      schema.safeParse({ taskId: "task-123", section: "Done" }).success,
-    ).toBe(true);
-  });
-
-  it("should reject missing taskId", () => {
+  it("should reject missing fields and raw Todoist section name", () => {
     const schema = createMoveTaskTool(repo, makeFakeLogger())
       .inputSchema as unknown as ParseableSchema;
     expect(schema.safeParse({ section: "Backlog" }).success).toBe(false);
-  });
-
-  it("should reject missing section", () => {
-    const schema = createMoveTaskTool(repo, makeFakeLogger())
-      .inputSchema as unknown as ParseableSchema;
     expect(schema.safeParse({ taskId: "task-123" }).success).toBe(false);
-  });
-
-  it('should reject raw Todoist section name "In Progress"', () => {
-    const schema = createMoveTaskTool(repo, makeFakeLogger())
-      .inputSchema as unknown as ParseableSchema;
     expect(
       schema.safeParse({ taskId: "task-123", section: "In Progress" }).success,
     ).toBe(false);
   });
 
-  it("should call repo.moveTask with taskId and Section.Backlog when section is Backlog", async () => {
-    vi.mocked(repo.moveTask).mockResolvedValue(undefined);
-    const t = createMoveTaskTool(repo, makeFakeLogger());
-    await t.execute!(
-      { taskId: "task-123", section: "Backlog" },
-      { toolCallId: "test", messages: [] },
-    );
-    expect(repo.moveTask).toHaveBeenCalledWith("task-123", Section.Backlog);
-  });
-
-  it("should call repo.moveTask with Section.InProgress when section is InProgress", async () => {
-    vi.mocked(repo.moveTask).mockResolvedValue(undefined);
-    const t = createMoveTaskTool(repo, makeFakeLogger());
-    await t.execute!(
-      { taskId: "task-123", section: "InProgress" },
-      { toolCallId: "test", messages: [] },
-    );
-    expect(repo.moveTask).toHaveBeenCalledWith("task-123", Section.InProgress);
-  });
-
-  it("should call repo.moveTask with Section.Done when section is Done", async () => {
-    vi.mocked(repo.moveTask).mockResolvedValue(undefined);
-    const t = createMoveTaskTool(repo, makeFakeLogger());
-    await t.execute!(
-      { taskId: "task-123", section: "Done" },
-      { toolCallId: "test", messages: [] },
-    );
-    expect(repo.moveTask).toHaveBeenCalledWith("task-123", Section.Done);
-  });
-
-  it("should return { ok: true }", async () => {
-    vi.mocked(repo.moveTask).mockResolvedValue(undefined);
-    const t = createMoveTaskTool(repo, makeFakeLogger());
-    const result = await t.execute!(
-      { taskId: "task-123", section: "Done" },
-      { toolCallId: "test", messages: [] },
-    );
-    expect(result).toEqual({ ok: true });
-  });
+  it.each([
+    ["Backlog", Section.Backlog],
+    ["InProgress", Section.InProgress],
+    ["Done", Section.Done],
+  ] as const)(
+    "should call repo.moveTask with Section.%s and return { ok: true }",
+    async (input, expected) => {
+      vi.mocked(repo.moveTask).mockResolvedValue(undefined);
+      const t = createMoveTaskTool(repo, makeFakeLogger());
+      const result = await t.execute!(
+        { taskId: "task-123", section: input },
+        { toolCallId: "test", messages: [] },
+      );
+      expect(repo.moveTask).toHaveBeenCalledWith("task-123", expected);
+      expect(result).toEqual({ ok: true });
+    },
+  );
 
   it("should propagate errors from repo", async () => {
     vi.mocked(repo.moveTask).mockRejectedValue(new Error("Move failed"));

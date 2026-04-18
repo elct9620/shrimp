@@ -43,44 +43,22 @@ describe("loadEnvConfig", () => {
       });
     });
 
-    it("should throw EnvConfigError when OPENAI_BASE_URL is missing", () => {
-      const { OPENAI_BASE_URL: _, ...env } = REQUIRED_ENV;
-
-      expect(() => loadEnvConfig(env)).toThrow(EnvConfigError);
-      expect(() => loadEnvConfig(env)).toThrow("OPENAI_BASE_URL");
-    });
-
-    it("should throw EnvConfigError when OPENAI_API_KEY is missing", () => {
-      const { OPENAI_API_KEY: _, ...env } = REQUIRED_ENV;
-
-      expect(() => loadEnvConfig(env)).toThrow(EnvConfigError);
-      expect(() => loadEnvConfig(env)).toThrow("OPENAI_API_KEY");
-    });
-
-    it("should throw EnvConfigError when AI_MODEL is missing", () => {
-      const { AI_MODEL: _, ...env } = REQUIRED_ENV;
-
-      expect(() => loadEnvConfig(env)).toThrow(EnvConfigError);
-      expect(() => loadEnvConfig(env)).toThrow("AI_MODEL");
-    });
-
-    it("should throw EnvConfigError when TODOIST_API_TOKEN is missing", () => {
-      const { TODOIST_API_TOKEN: _, ...env } = REQUIRED_ENV;
-
-      expect(() => loadEnvConfig(env)).toThrow(EnvConfigError);
-      expect(() => loadEnvConfig(env)).toThrow("TODOIST_API_TOKEN");
-    });
-
-    it("should throw EnvConfigError when TODOIST_PROJECT_ID is missing", () => {
-      const { TODOIST_PROJECT_ID: _, ...env } = REQUIRED_ENV;
-
-      expect(() => loadEnvConfig(env)).toThrow(EnvConfigError);
-      expect(() => loadEnvConfig(env)).toThrow("TODOIST_PROJECT_ID");
-    });
+    it.each([
+      "OPENAI_BASE_URL",
+      "OPENAI_API_KEY",
+      "AI_MODEL",
+      "TODOIST_API_TOKEN",
+      "TODOIST_PROJECT_ID",
+    ] as const)(
+      "should throw EnvConfigError mentioning %s when it is missing",
+      (key) => {
+        const { [key]: _, ...env } = REQUIRED_ENV;
+        expect(() => loadEnvConfig(env)).toThrow(EnvConfigError);
+        expect(() => loadEnvConfig(env)).toThrow(key);
+      },
+    );
 
     it("should throw ONE EnvConfigError listing all missing required variables", () => {
-      expect(() => loadEnvConfig({})).toThrow(EnvConfigError);
-
       let error: EnvConfigError | undefined;
       try {
         loadEnvConfig({});
@@ -302,65 +280,29 @@ describe("loadEnvConfig", () => {
     });
   });
 
-  describe("TELEMETRY_RECORD_INPUTS", () => {
-    it("should default to true when TELEMETRY_RECORD_INPUTS is absent", () => {
+  describe.each([
+    {
+      envKey: "TELEMETRY_RECORD_INPUTS" as const,
+      configKey: "telemetryRecordInputs" as const,
+    },
+    {
+      envKey: "TELEMETRY_RECORD_OUTPUTS" as const,
+      configKey: "telemetryRecordOutputs" as const,
+    },
+  ])("$envKey", ({ envKey, configKey }) => {
+    it("should default to true when absent", () => {
       const config = loadEnvConfig(REQUIRED_ENV);
-      expect(config.telemetryRecordInputs).toBe(true);
+      expect(config[configKey]).toBe(true);
     });
 
-    it('should parse "false" as false', () => {
-      const config = loadEnvConfig({
-        ...REQUIRED_ENV,
-        TELEMETRY_RECORD_INPUTS: "false",
-      });
-      expect(config.telemetryRecordInputs).toBe(false);
-    });
-
-    it('should parse "0" as false', () => {
-      const config = loadEnvConfig({
-        ...REQUIRED_ENV,
-        TELEMETRY_RECORD_INPUTS: "0",
-      });
-      expect(config.telemetryRecordInputs).toBe(false);
+    it.each(["false", "0"])('should parse "%s" as false', (value) => {
+      const config = loadEnvConfig({ ...REQUIRED_ENV, [envKey]: value });
+      expect(config[configKey]).toBe(false);
     });
 
     it("should parse any other value as true", () => {
-      const config = loadEnvConfig({
-        ...REQUIRED_ENV,
-        TELEMETRY_RECORD_INPUTS: "yes",
-      });
-      expect(config.telemetryRecordInputs).toBe(true);
-    });
-  });
-
-  describe("TELEMETRY_RECORD_OUTPUTS", () => {
-    it("should default to true when TELEMETRY_RECORD_OUTPUTS is absent", () => {
-      const config = loadEnvConfig(REQUIRED_ENV);
-      expect(config.telemetryRecordOutputs).toBe(true);
-    });
-
-    it('should parse "false" as false', () => {
-      const config = loadEnvConfig({
-        ...REQUIRED_ENV,
-        TELEMETRY_RECORD_OUTPUTS: "false",
-      });
-      expect(config.telemetryRecordOutputs).toBe(false);
-    });
-
-    it('should parse "0" as false', () => {
-      const config = loadEnvConfig({
-        ...REQUIRED_ENV,
-        TELEMETRY_RECORD_OUTPUTS: "0",
-      });
-      expect(config.telemetryRecordOutputs).toBe(false);
-    });
-
-    it("should parse any other value as true", () => {
-      const config = loadEnvConfig({
-        ...REQUIRED_ENV,
-        TELEMETRY_RECORD_OUTPUTS: "yes",
-      });
-      expect(config.telemetryRecordOutputs).toBe(true);
+      const config = loadEnvConfig({ ...REQUIRED_ENV, [envKey]: "yes" });
+      expect(config[configKey]).toBe(true);
     });
   });
 

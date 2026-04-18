@@ -24,72 +24,39 @@ describe("createGetTasksTool", () => {
     expect(t.description!.length).toBeGreaterThan(0);
   });
 
-  it("should accept valid Backlog section input", () => {
-    const schema = createGetTasksTool(repo, makeFakeLogger())
-      .inputSchema as unknown as ParseableSchema;
-    expect(schema.safeParse({ section: "Backlog" }).success).toBe(true);
-  });
+  it.each(["Backlog", "InProgress", "Done"])(
+    "should accept valid section '%s' and reject invalid enum values",
+    (section) => {
+      const schema = createGetTasksTool(repo, makeFakeLogger())
+        .inputSchema as unknown as ParseableSchema;
+      expect(schema.safeParse({ section }).success).toBe(true);
+    },
+  );
 
-  it("should accept InProgress section", () => {
-    const schema = createGetTasksTool(repo, makeFakeLogger())
-      .inputSchema as unknown as ParseableSchema;
-    expect(schema.safeParse({ section: "InProgress" }).success).toBe(true);
-  });
-
-  it("should accept Done section", () => {
-    const schema = createGetTasksTool(repo, makeFakeLogger())
-      .inputSchema as unknown as ParseableSchema;
-    expect(schema.safeParse({ section: "Done" }).success).toBe(true);
-  });
-
-  it("should reject missing section field", () => {
+  it("should reject missing or invalid section in schema", () => {
     const schema = createGetTasksTool(repo, makeFakeLogger())
       .inputSchema as unknown as ParseableSchema;
     expect(schema.safeParse({}).success).toBe(false);
-  });
-
-  it("should reject invalid enum value", () => {
-    const schema = createGetTasksTool(repo, makeFakeLogger())
-      .inputSchema as unknown as ParseableSchema;
     expect(schema.safeParse({ section: "NotASection" }).success).toBe(false);
   });
 
-  it("should call repo.getTasks with Section.Backlog when section is Backlog", async () => {
-    vi.mocked(repo.getTasks).mockResolvedValue(sampleTasks);
-    const t = createGetTasksTool(repo, makeFakeLogger());
-    await t.execute!(
-      { section: "Backlog" },
-      { toolCallId: "test", messages: [] },
-    );
-    expect(repo.getTasks).toHaveBeenCalledWith(Section.Backlog);
-  });
-
-  it("should call repo.getTasks with Section.InProgress when section is InProgress", async () => {
-    vi.mocked(repo.getTasks).mockResolvedValue([]);
-    const t = createGetTasksTool(repo, makeFakeLogger());
-    await t.execute!(
-      { section: "InProgress" },
-      { toolCallId: "test", messages: [] },
-    );
-    expect(repo.getTasks).toHaveBeenCalledWith(Section.InProgress);
-  });
-
-  it("should call repo.getTasks with Section.Done when section is Done", async () => {
-    vi.mocked(repo.getTasks).mockResolvedValue([]);
-    const t = createGetTasksTool(repo, makeFakeLogger());
-    await t.execute!({ section: "Done" }, { toolCallId: "test", messages: [] });
-    expect(repo.getTasks).toHaveBeenCalledWith(Section.Done);
-  });
-
-  it("should return array of tasks", async () => {
-    vi.mocked(repo.getTasks).mockResolvedValue(sampleTasks);
-    const t = createGetTasksTool(repo, makeFakeLogger());
-    const result = await t.execute!(
-      { section: "Backlog" },
-      { toolCallId: "test", messages: [] },
-    );
-    expect(result).toEqual(sampleTasks);
-  });
+  it.each([
+    ["Backlog", Section.Backlog],
+    ["InProgress", Section.InProgress],
+    ["Done", Section.Done],
+  ] as const)(
+    "should call repo.getTasks with Section.%s and return results",
+    async (input, expected) => {
+      vi.mocked(repo.getTasks).mockResolvedValue(sampleTasks);
+      const t = createGetTasksTool(repo, makeFakeLogger());
+      const result = await t.execute!(
+        { section: input },
+        { toolCallId: "test", messages: [] },
+      );
+      expect(repo.getTasks).toHaveBeenCalledWith(expected);
+      expect(result).toEqual(sampleTasks);
+    },
+  );
 
   it("should propagate errors from repo", async () => {
     vi.mocked(repo.getTasks).mockRejectedValue(new Error("API failure"));
