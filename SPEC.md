@@ -275,6 +275,35 @@ When the `/new` Slash Command is received, a new Session is created and becomes 
 | Current Session JSONL file missing or unreadable | Current Session is discarded; the next Channel message creates a fresh one; the broken file is left on disk for inspection                                                                          |
 | JSONL append failure during a Job                | Fail-Open Recovery — the Job is not failed solely because a conversation entry could not be persisted; the loss is logged and the next message continues from the last successfully persisted entry |
 
+### Slash Commands
+
+Slash Commands are Channel messages whose text begins with `/`. The Channel adapter intercepts them and handles them directly — no Job is enqueued and the Shrimp Agent is not invoked.
+
+**Parsing rules:**
+
+- A message is a Slash Command if and only if its text begins with `/` as the first character.
+- The command name is the token immediately after `/`, up to the first whitespace or end of message; comparison is case-insensitive (normalized to lowercase).
+- Text after the first whitespace is accepted as arguments; no current command uses arguments.
+- An unrecognised command produces a short reply to the Channel informing the user the command is unknown. No Job is enqueued; no Session is modified.
+
+**Supported commands:**
+
+| Command | Effect                                                                                                                                                                                                                   |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/new`  | Creates a new Session that becomes current. The previous Session is retained on disk as an archive (see [Session Lifecycle](#session-lifecycle)). The adapter replies to the Channel confirming the new Session started. |
+
+No other commands are supported in this iteration. Future commands (e.g., `/status`, `/reset`) are out of scope.
+
+**Dispatch semantics:**
+
+- Slash Commands are handled entirely by the Channel adapter; they do not enter the Job Queue.
+- Because they bypass the Job Queue, a Slash Command is processed even when the Job Queue slot is busy.
+- The adapter sends its reply back to the originating Channel conversation via the ConversationRef, using the same outbound path as the Reply tool.
+
+**Failure handling:**
+
+If a command handler fails (e.g., `/new` cannot create a new Session), the adapter replies to the Channel with a short failure message and logs the error. No Job is created. Fail-Open Recovery applies — the process remains available for subsequent events.
+
 ### Telemetry Emission
 
 Every Job that runs produces one OTel trace. Spans within that trace expose task selection, agent execution, and each tool call as separately timed, attributable units of work that downstream collectors and dashboards can query.
