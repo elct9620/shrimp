@@ -66,7 +66,7 @@ export class ChannelJob {
       // transcript is preserved even if the agent call fails (Fail-Open per SPEC).
       await this.sessionRepository.append(session.id, [userMsg]);
 
-      const toolProvider = this.toolProviderFactory.create();
+      const toolProvider = this.toolProviderFactory.create({ ref: event.ref });
 
       this.logger.debug("cycle invoking shrimp agent", {
         sessionId: session.id,

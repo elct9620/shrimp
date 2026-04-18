@@ -57,7 +57,9 @@ function makeShrimpAgent(
   return agent;
 }
 
-function makeToolProviderFactory(): ToolProviderFactory {
+function makeToolProviderFactory(): ToolProviderFactory & {
+  create: ReturnType<typeof vi.fn>;
+} {
   const provider: ToolProvider = {
     getTools: vi.fn().mockReturnValue({}),
     getToolDescriptions: vi.fn().mockReturnValue([]),
@@ -69,11 +71,12 @@ function makeJob(
   sessionRepo: SessionRepository,
   shrimpAgent: ShrimpAgent,
   logger: LoggerPort,
+  toolProviderFactory?: ToolProviderFactory,
 ): ChannelJob {
   return new ChannelJob({
     sessionRepository: sessionRepo,
     shrimpAgent,
-    toolProviderFactory: makeToolProviderFactory(),
+    toolProviderFactory: toolProviderFactory ?? makeToolProviderFactory(),
     maxSteps: 10,
     logger,
     telemetry: new NoopTelemetry(),
@@ -156,6 +159,16 @@ describe("ChannelJob.run", () => {
     await expect(
       job.run({ message: "Trigger error", ref: makeRef() }),
     ).rejects.toThrow("agent exploded");
+  });
+
+  it("toolProviderFactory.create is called with the event ref so ReplyTool can send replies", async () => {
+    const ref = makeRef();
+    const factory = makeToolProviderFactory();
+    const j = makeJob(sessionRepo, agent, logger, factory);
+
+    await j.run({ message: "Hi", ref });
+
+    expect(factory.create).toHaveBeenCalledWith({ ref });
   });
 
   it("user msg is appended before agent invocation so transcript is preserved on agent failure", async () => {

@@ -21,6 +21,7 @@ import { InMemoryJobQueue } from "./infrastructure/queue/in-memory-job-queue";
 import { BuiltInToolFactory } from "./adapters/tools/built-in-tool-factory";
 import { ToolProviderFactoryImpl } from "./adapters/tools/tool-provider-factory-impl";
 import { HeartbeatJob } from "./use-cases/heartbeat-job";
+import { NoopChannelGateway } from "./infrastructure/channel/noop-channel-gateway";
 import { createPinoLogger } from "./infrastructure/logger/pino-logger";
 import type { BoardRepository } from "./use-cases/ports/board-repository";
 import type { LoggerPort } from "./use-cases/ports/logger";
@@ -35,6 +36,16 @@ import type { ToolDescription } from "./use-cases/ports/tool-description";
 // factories are called each resolve. In production, each token is resolved
 // once in main(), so effective behaviour is singleton.
 // ---------------------------------------------------------------------------
+
+// ChannelGateway — Noop stub; item 11 will swap in TelegramChannelGateway when CHANNELS_ENABLED is true.
+container.register(TOKENS.ChannelGateway, {
+  useFactory: (c) =>
+    new NoopChannelGateway(
+      c
+        .resolve<LoggerPort>(TOKENS.Logger)
+        .child({ module: "NoopChannelGateway" }),
+    ),
+});
 
 // BoardRepository: scalar deps resolved from container at resolve time
 container.register(TOKENS.BoardRepository, {

@@ -7,6 +7,7 @@ import type { ShrimpAgent } from "../../use-cases/ports/shrimp-agent";
 import type { JobQueue } from "../../use-cases/ports/job-queue";
 import type { TelemetryPort } from "../../use-cases/ports/telemetry";
 import type { ToolProviderFactory } from "../../use-cases/ports/tool-provider-factory";
+import type { ChannelGateway } from "../../use-cases/ports/channel-gateway";
 import type { EnvConfig } from "../config/env-config";
 import type { McpConfig } from "../config/mcp-config";
 import type { McpClientFactory } from "../mcp/mcp-tool-loader";
@@ -26,6 +27,7 @@ export const TOKENS = {
   McpConfig: Symbol.for("shrimp.McpConfig"),
   McpClientFactory: Symbol.for("shrimp.McpClientFactory"),
   HeartbeatJob: Symbol.for("shrimp.HeartbeatJob"),
+  ChannelGateway: Symbol.for("shrimp.ChannelGateway"),
 } as const;
 
 export type TokenRegistry = {
@@ -42,4 +44,5 @@ export type TokenRegistry = {
   [TOKENS.McpConfig]: McpConfig;
   [TOKENS.McpClientFactory]: McpClientFactory;
   [TOKENS.HeartbeatJob]: HeartbeatJob;
+  [TOKENS.ChannelGateway]: ChannelGateway;
 };
