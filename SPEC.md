@@ -97,7 +97,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 ### `POST /heartbeat`
 
-Enqueues one **HeartbeatJob** in the background. Channel-triggered Jobs use a separate path; see [Channel Integration](#channel-integration).
+Dispatches one **HeartbeatJob** in the background. Channel-triggered Jobs use a separate path; see [Channel Integration](#channel-integration).
 
 **Request:** no body required.
 
@@ -110,7 +110,7 @@ Enqueues one **HeartbeatJob** in the background. Channel-triggered Jobs use a se
 
 **Behavior rules:**
 
-- Always returns `202 Accepted` immediately, regardless of whether the background Job was enqueued or dropped. The caller cannot distinguish the two cases; this is intentional fire-and-forget semantics.
+- Always returns `202 Accepted` immediately, regardless of whether the background Job was accepted or dropped. The caller cannot distinguish the two cases; this is intentional fire-and-forget semantics.
 - Returns immediately after accepting; does not wait for Job processing to complete.
 - Each Job selects at most one task: an In Progress task takes priority over a Backlog task.
 - If no actionable task is found, the Job ends immediately with no side effects.
@@ -149,7 +149,7 @@ End-to-end sequence from external trigger to agent invocation. Two trigger sourc
 
 | Step | Actor           | Action                        | Outcome                                                                                                                                                                                  |
 | ---- | --------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Channel adapter | Receive inbound message event | Non-command message (see [Channel Integration](#channel-integration)); ConversationRef captured; enqueue a ChannelJob                                                                    |
+| 1    | Channel adapter | Receive inbound message event | Non-command message (see [Channel Integration](#channel-integration)); ConversationRef captured; dispatch a ChannelJob                                                                   |
 | 2    | Job Queue       | Accept or drop the event      | If queue slot is free, start a ChannelJob; if busy, silently drop; see [In-Memory Job Queue](#in-memory-job-queue)                                                                       |
 | 3    | Job Worker      | Load Session                  | Read the current Session via the `SessionRepository`, or create a new Session if this is the first message; see [Session Lifecycle](#session-lifecycle)                                  |
 | 4    | Job Worker      | Assemble prompts              | Assemble the system prompt and a user prompt from the Session's conversation history plus the incoming Channel message                                                                   |
