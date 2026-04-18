@@ -27,7 +27,7 @@ async function main() {
 
   const app = createApp({
     pinoInstance,
-    taskQueue: container.resolve(TOKENS.TaskQueue),
+    jobQueue: container.resolve(TOKENS.JobQueue),
     job,
     logger: logger.child({ module: "http.heartbeat" }),
   });

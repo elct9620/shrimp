@@ -17,7 +17,7 @@ import {
   McpToolLoader,
   createMcpClient,
 } from "./infrastructure/mcp/mcp-tool-loader";
-import { InMemoryTaskQueue } from "./infrastructure/queue/in-memory-task-queue";
+import { InMemoryJobQueue } from "./infrastructure/queue/in-memory-job-queue";
 import { BuiltInToolFactory } from "./adapters/tools/built-in-tool-factory";
 import { ToolProviderFactoryImpl } from "./adapters/tools/tool-provider-factory-impl";
 import { Job } from "./use-cases/job";
@@ -65,8 +65,8 @@ container.register(TOKENS.ShrimpAgent, {
   },
 });
 
-// TaskQueue
-container.register(TOKENS.TaskQueue, { useClass: InMemoryTaskQueue });
+// JobQueue
+container.register(TOKENS.JobQueue, { useClass: InMemoryJobQueue });
 
 // Job — Use Case: registered via useFactory, no @inject
 container.register(Job, {

@@ -4,7 +4,7 @@ import type { Tracer } from "@opentelemetry/api";
 import type { BoardRepository } from "../../use-cases/ports/board-repository";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import type { ShrimpAgent } from "../../use-cases/ports/shrimp-agent";
-import type { TaskQueue } from "../../use-cases/ports/task-queue";
+import type { JobQueue } from "../../use-cases/ports/job-queue";
 import type { TelemetryPort } from "../../use-cases/ports/telemetry";
 import type { ToolProviderFactory } from "../../use-cases/ports/tool-provider-factory";
 import type { EnvConfig } from "../config/env-config";
@@ -16,7 +16,7 @@ export const TOKENS = {
   PinoInstance: Symbol.for("shrimp.PinoInstance"),
   BoardRepository: Symbol.for("shrimp.BoardRepository"),
   ShrimpAgent: Symbol.for("shrimp.ShrimpAgent"),
-  TaskQueue: Symbol.for("shrimp.TaskQueue"),
+  JobQueue: Symbol.for("shrimp.JobQueue"),
   Telemetry: Symbol.for("shrimp.TelemetryPort"),
   Tracer: Symbol.for("shrimp.Tracer"),
   ToolProviderFactory: Symbol.for("shrimp.ToolProviderFactory"),
@@ -31,7 +31,7 @@ export type TokenRegistry = {
   [TOKENS.PinoInstance]: Logger;
   [TOKENS.BoardRepository]: BoardRepository;
   [TOKENS.ShrimpAgent]: ShrimpAgent;
-  [TOKENS.TaskQueue]: TaskQueue;
+  [TOKENS.JobQueue]: JobQueue;
   [TOKENS.Telemetry]: TelemetryPort;
   [TOKENS.Tracer]: Tracer;
   [TOKENS.ToolProviderFactory]: ToolProviderFactory;

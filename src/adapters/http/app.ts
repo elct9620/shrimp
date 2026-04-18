@@ -3,7 +3,7 @@ import { requestId } from "hono/request-id";
 import { pinoHttp } from "pino-http";
 import type { Logger } from "pino";
 import type { AppEnv } from "./context-variables";
-import type { TaskQueue } from "../../use-cases/ports/task-queue";
+import type { JobQueue } from "../../use-cases/ports/job-queue";
 import type { Job } from "../../use-cases/job";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import { createHealthRoute } from "./routes/health";
@@ -11,7 +11,7 @@ import { createHeartbeatRoute } from "./routes/heartbeat";
 
 export type CreateAppDeps = {
   pinoInstance: Logger;
-  taskQueue: TaskQueue;
+  jobQueue: JobQueue;
   job: Job;
   logger: LoggerPort;
 };
@@ -43,7 +43,7 @@ export function createApp(deps: CreateAppDeps): Hono<AppEnv> {
   app.route(
     "/",
     createHeartbeatRoute({
-      taskQueue: deps.taskQueue,
+      jobQueue: deps.jobQueue,
       job: deps.job,
       logger: deps.logger,
     }),

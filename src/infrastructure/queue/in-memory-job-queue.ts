@@ -1,15 +1,15 @@
 import { injectable, inject } from "tsyringe";
-import type { TaskQueue } from "../../use-cases/ports/task-queue";
+import type { JobQueue } from "../../use-cases/ports/job-queue";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import { TOKENS } from "../container/tokens";
 
 @injectable()
-export class InMemoryTaskQueue implements TaskQueue {
+export class InMemoryJobQueue implements JobQueue {
   private busy = false;
   private readonly logger: LoggerPort;
 
   constructor(@inject(TOKENS.Logger) logger: LoggerPort) {
-    this.logger = logger.child({ module: "InMemoryTaskQueue" });
+    this.logger = logger.child({ module: "InMemoryJobQueue" });
   }
 
   tryEnqueue(job: () => Promise<void>): boolean {

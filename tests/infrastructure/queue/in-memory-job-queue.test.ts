@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryTaskQueue } from "../../../src/infrastructure/queue/in-memory-task-queue";
+import { InMemoryJobQueue } from "../../../src/infrastructure/queue/in-memory-job-queue";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 
-describe("InMemoryTaskQueue", () => {
+describe("InMemoryJobQueue", () => {
   it("should return true when slot is free", () => {
-    const queue = new InMemoryTaskQueue(makeFakeLogger());
+    const queue = new InMemoryJobQueue(makeFakeLogger());
     const job = vi.fn().mockResolvedValue(undefined);
 
     const result = queue.tryEnqueue(job);
@@ -13,7 +13,7 @@ describe("InMemoryTaskQueue", () => {
   });
 
   it("should return false when a job is already in-flight", () => {
-    const queue = new InMemoryTaskQueue(makeFakeLogger());
+    const queue = new InMemoryJobQueue(makeFakeLogger());
     let resolveFirst: () => void;
     const firstJob = () =>
       new Promise<void>((resolve) => {
@@ -30,7 +30,7 @@ describe("InMemoryTaskQueue", () => {
   });
 
   it("should return false for multiple consecutive enqueue attempts while busy", () => {
-    const queue = new InMemoryTaskQueue(makeFakeLogger());
+    const queue = new InMemoryJobQueue(makeFakeLogger());
     let resolveFirst: () => void;
     const firstJob = () =>
       new Promise<void>((resolve) => {
@@ -52,7 +52,7 @@ describe("InMemoryTaskQueue", () => {
   });
 
   it("should release slot after successful job completion", async () => {
-    const queue = new InMemoryTaskQueue(makeFakeLogger());
+    const queue = new InMemoryJobQueue(makeFakeLogger());
     let resolveFirst: () => void;
     const firstJob = () =>
       new Promise<void>((resolve) => {
@@ -72,7 +72,7 @@ describe("InMemoryTaskQueue", () => {
   });
 
   it("should release slot after job throws", async () => {
-    const queue = new InMemoryTaskQueue(makeFakeLogger());
+    const queue = new InMemoryJobQueue(makeFakeLogger());
     let rejectFirst: (err: Error) => void;
     const failingJob = () =>
       new Promise<void>((_resolve, reject) => {
@@ -92,7 +92,7 @@ describe("InMemoryTaskQueue", () => {
   });
 
   it("should not propagate errors from the job out of tryEnqueue", async () => {
-    const queue = new InMemoryTaskQueue(makeFakeLogger());
+    const queue = new InMemoryJobQueue(makeFakeLogger());
     const failingJob = vi.fn().mockRejectedValue(new Error("boom"));
 
     // tryEnqueue is fire-and-forget; errors must not surface here
@@ -105,7 +105,7 @@ describe("InMemoryTaskQueue", () => {
   describe("logging", () => {
     it('should log debug "queue job accepted" when enqueue succeeds', () => {
       const logger = makeFakeLogger();
-      const queue = new InMemoryTaskQueue(logger);
+      const queue = new InMemoryJobQueue(logger);
 
       queue.tryEnqueue(vi.fn().mockResolvedValue(undefined));
 
@@ -114,7 +114,7 @@ describe("InMemoryTaskQueue", () => {
 
     it('should log debug "queue job rejected" with reason busy when slot is taken', () => {
       const logger = makeFakeLogger();
-      const queue = new InMemoryTaskQueue(logger);
+      const queue = new InMemoryJobQueue(logger);
       let resolveFirst: () => void;
       const firstJob = () =>
         new Promise<void>((resolve) => {
@@ -134,7 +134,7 @@ describe("InMemoryTaskQueue", () => {
 
     it('should log debug "queue job completed" after successful run', async () => {
       const logger = makeFakeLogger();
-      const queue = new InMemoryTaskQueue(logger);
+      const queue = new InMemoryJobQueue(logger);
 
       queue.tryEnqueue(vi.fn().mockResolvedValue(undefined));
 
@@ -147,7 +147,7 @@ describe("InMemoryTaskQueue", () => {
 
     it('should log warn "queue job failed" with the error message when job rejects', async () => {
       const logger = makeFakeLogger();
-      const queue = new InMemoryTaskQueue(logger);
+      const queue = new InMemoryJobQueue(logger);
       const failingJob = vi.fn().mockRejectedValue(new Error("boom"));
 
       queue.tryEnqueue(failingJob);

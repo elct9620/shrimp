@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../context-variables";
-import type { TaskQueue } from "../../../use-cases/ports/task-queue";
+import type { JobQueue } from "../../../use-cases/ports/job-queue";
 import type { Job } from "../../../use-cases/job";
 import type { LoggerPort } from "../../../use-cases/ports/logger";
 
 export function createHeartbeatRoute(deps: {
-  taskQueue: TaskQueue;
+  jobQueue: JobQueue;
   job: Job;
   logger: LoggerPort;
 }): Hono<AppEnv> {
@@ -13,9 +13,7 @@ export function createHeartbeatRoute(deps: {
 
   app.post("/heartbeat", (c) => {
     deps.logger.info("heartbeat received");
-    const accepted = deps.taskQueue.tryEnqueue(() =>
-      deps.job.run(),
-    );
+    const accepted = deps.jobQueue.tryEnqueue(() => deps.job.run());
     deps.logger.info("heartbeat enqueued", { accepted });
     return c.json({ status: "accepted" }, 202);
   });
