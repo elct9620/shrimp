@@ -1,15 +1,7 @@
 import { TodoistApi } from "@doist/todoist-sdk";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { Priority } from "../../../src/entities/priority";
 import { Section } from "../../../src/entities/section";
 import { BoardSectionMissingError } from "../../../src/use-cases/ports/board-repository";
@@ -137,56 +129,29 @@ describe("TodoistBoardRepository.validateSections", () => {
     await expect(repo.validateSections()).resolves.toBeUndefined();
   });
 
-  it("should throw BoardSectionMissingError when Backlog is missing", async () => {
-    server.use(
-      http.get(`${BASE}/sections`, () =>
-        HttpResponse.json({
-          results: ALL_SECTIONS_HTTP.filter((s) => s.name !== "Backlog"),
-          next_cursor: null,
-        }),
-      ),
-    );
-    const api = new TodoistApi("test-token");
-    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger());
+  it.each(["Backlog", "Done", "In Progress"])(
+    "should throw BoardSectionMissingError when %s is missing",
+    async (missing) => {
+      server.use(
+        http.get(`${BASE}/sections`, () =>
+          HttpResponse.json({
+            results: ALL_SECTIONS_HTTP.filter((s) => s.name !== missing),
+            next_cursor: null,
+          }),
+        ),
+      );
+      const api = new TodoistApi("test-token");
+      const repo = new TodoistBoardRepository(
+        api,
+        PROJECT_ID,
+        makeFakeLogger(),
+      );
 
-    await expect(repo.validateSections()).rejects.toThrow(
-      BoardSectionMissingError,
-    );
-  });
-
-  it("should throw BoardSectionMissingError when Done is missing", async () => {
-    server.use(
-      http.get(`${BASE}/sections`, () =>
-        HttpResponse.json({
-          results: ALL_SECTIONS_HTTP.filter((s) => s.name !== "Done"),
-          next_cursor: null,
-        }),
-      ),
-    );
-    const api = new TodoistApi("test-token");
-    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger());
-
-    await expect(repo.validateSections()).rejects.toThrow(
-      BoardSectionMissingError,
-    );
-  });
-
-  it("should throw BoardSectionMissingError when In Progress is missing", async () => {
-    server.use(
-      http.get(`${BASE}/sections`, () =>
-        HttpResponse.json({
-          results: ALL_SECTIONS_HTTP.filter((s) => s.name !== "In Progress"),
-          next_cursor: null,
-        }),
-      ),
-    );
-    const api = new TodoistApi("test-token");
-    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger());
-
-    await expect(repo.validateSections()).rejects.toThrow(
-      BoardSectionMissingError,
-    );
-  });
+      await expect(repo.validateSections()).rejects.toThrow(
+        BoardSectionMissingError,
+      );
+    },
+  );
 });
 
 // ─── getTasks ─────────────────────────────────────────────────────────────────
@@ -225,57 +190,41 @@ describe("TodoistBoardRepository.getTasks", () => {
     });
   });
 
-  it("should map Todoist priority 4 to domain p1 (highest)", async () => {
-    withAllSections();
-    server.use(
-      http.get(`${BASE}/tasks`, () =>
-        HttpResponse.json({
-          results: [
-            makeTask({
-              id: "task-p1",
-              content: "Urgent task",
-              description: "",
-              section_id: "sec-inprogress",
-              priority: 4,
-            }),
-          ],
-          next_cursor: null,
-        }),
-      ),
-    );
-    const api = new TodoistApi("test-token");
-    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger());
+  it.each([
+    [4, Priority.p1, "highest"],
+    [1, Priority.p4, "lowest"],
+  ])(
+    "should map Todoist priority %i to domain %s (%s)",
+    async (todoistPriority, expectedDomain, _label) => {
+      withAllSections();
+      server.use(
+        http.get(`${BASE}/tasks`, () =>
+          HttpResponse.json({
+            results: [
+              makeTask({
+                id: "task-priority",
+                content: "Task",
+                description: "",
+                section_id: "sec-inprogress",
+                priority: todoistPriority,
+              }),
+            ],
+            next_cursor: null,
+          }),
+        ),
+      );
+      const api = new TodoistApi("test-token");
+      const repo = new TodoistBoardRepository(
+        api,
+        PROJECT_ID,
+        makeFakeLogger(),
+      );
 
-    const tasks = await repo.getTasks(Section.InProgress);
+      const tasks = await repo.getTasks(Section.InProgress);
 
-    expect(tasks[0].priority).toBe(Priority.p1);
-  });
-
-  it("should map Todoist priority 1 to domain p4 (lowest)", async () => {
-    withAllSections();
-    server.use(
-      http.get(`${BASE}/tasks`, () =>
-        HttpResponse.json({
-          results: [
-            makeTask({
-              id: "task-p4",
-              content: "Low priority task",
-              description: "",
-              section_id: "sec-inprogress",
-              priority: 1,
-            }),
-          ],
-          next_cursor: null,
-        }),
-      ),
-    );
-    const api = new TodoistApi("test-token");
-    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger());
-
-    const tasks = await repo.getTasks(Section.InProgress);
-
-    expect(tasks[0].priority).toBe(Priority.p4);
-  });
+      expect(tasks[0].priority).toBe(expectedDomain);
+    },
+  );
 
   it("should map Todoist task with empty description to undefined", async () => {
     withAllSections();
@@ -334,93 +283,64 @@ describe("TodoistBoardRepository.getTasks", () => {
     expect(capturedUrl!.searchParams.get("project_id")).toBe(PROJECT_ID);
   });
 
-  it("should call tasks endpoint with resolved sectionId for Backlog", async () => {
-    withAllSections();
-    let capturedUrl: URL | null = null;
-    server.use(
-      http.get(`${BASE}/tasks`, ({ request }) => {
-        capturedUrl = new URL(request.url);
-        return HttpResponse.json({ results: [], next_cursor: null });
-      }),
-    );
-    const api = new TodoistApi("test-token");
-    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger());
-
-    await repo.getTasks(Section.Backlog);
-
-    expect(capturedUrl).not.toBeNull();
-    expect(capturedUrl!.searchParams.get("section_id")).toBe("sec-backlog");
-    expect(capturedUrl!.searchParams.get("project_id")).toBe(PROJECT_ID);
-  });
-
-  it("should call tasks endpoint with resolved sectionId for In Progress using exact name match", async () => {
-    withAllSections();
-    let capturedUrl: URL | null = null;
-    server.use(
-      http.get(`${BASE}/tasks`, ({ request }) => {
-        capturedUrl = new URL(request.url);
-        return HttpResponse.json({ results: [], next_cursor: null });
-      }),
-    );
-    const api = new TodoistApi("test-token");
-    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger());
-
-    await repo.getTasks(Section.InProgress);
-
-    expect(capturedUrl).not.toBeNull();
-    expect(capturedUrl!.searchParams.get("section_id")).toBe("sec-inprogress");
-  });
-
-  it("should throw BoardSectionMissingError when Backlog section is missing", async () => {
-    server.use(
-      http.get(`${BASE}/sections`, () =>
-        HttpResponse.json({
-          results: ALL_SECTIONS_HTTP.filter((s) => s.name !== "Backlog"),
-          next_cursor: null,
+  it.each([
+    [Section.Backlog, "sec-backlog"],
+    [Section.InProgress, "sec-inprogress"],
+  ])(
+    "should call tasks endpoint with resolved sectionId for %s",
+    async (section, expectedSectionId) => {
+      withAllSections();
+      let capturedUrl: URL | null = null;
+      server.use(
+        http.get(`${BASE}/tasks`, ({ request }) => {
+          capturedUrl = new URL(request.url);
+          return HttpResponse.json({ results: [], next_cursor: null });
         }),
-      ),
-    );
-    const api = new TodoistApi("test-token");
-    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger());
+      );
+      const api = new TodoistApi("test-token");
+      const repo = new TodoistBoardRepository(
+        api,
+        PROJECT_ID,
+        makeFakeLogger(),
+      );
 
-    await expect(repo.getTasks(Section.Backlog)).rejects.toThrow(
-      BoardSectionMissingError,
-    );
-  });
+      await repo.getTasks(section);
 
-  it("should throw BoardSectionMissingError when In Progress section is missing", async () => {
-    server.use(
-      http.get(`${BASE}/sections`, () =>
-        HttpResponse.json({
-          results: ALL_SECTIONS_HTTP.filter((s) => s.name !== "In Progress"),
-          next_cursor: null,
-        }),
-      ),
-    );
-    const api = new TodoistApi("test-token");
-    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger());
+      expect(capturedUrl).not.toBeNull();
+      expect(capturedUrl!.searchParams.get("section_id")).toBe(
+        expectedSectionId,
+      );
+      expect(capturedUrl!.searchParams.get("project_id")).toBe(PROJECT_ID);
+    },
+  );
 
-    await expect(repo.getTasks(Section.InProgress)).rejects.toThrow(
-      BoardSectionMissingError,
-    );
-  });
+  it.each([
+    ["Backlog", Section.Backlog],
+    ["In Progress", Section.InProgress],
+    ["Done", Section.Done],
+  ] as const)(
+    "should throw BoardSectionMissingError when %s section is missing",
+    async (missing, section) => {
+      server.use(
+        http.get(`${BASE}/sections`, () =>
+          HttpResponse.json({
+            results: ALL_SECTIONS_HTTP.filter((s) => s.name !== missing),
+            next_cursor: null,
+          }),
+        ),
+      );
+      const api = new TodoistApi("test-token");
+      const repo = new TodoistBoardRepository(
+        api,
+        PROJECT_ID,
+        makeFakeLogger(),
+      );
 
-  it("should throw BoardSectionMissingError when Done section is missing", async () => {
-    server.use(
-      http.get(`${BASE}/sections`, () =>
-        HttpResponse.json({
-          results: ALL_SECTIONS_HTTP.filter((s) => s.name !== "Done"),
-          next_cursor: null,
-        }),
-      ),
-    );
-    const api = new TodoistApi("test-token");
-    const repo = new TodoistBoardRepository(api, PROJECT_ID, makeFakeLogger());
-
-    await expect(repo.getTasks(Section.Done)).rejects.toThrow(
-      BoardSectionMissingError,
-    );
-  });
+      await expect(repo.getTasks(section)).rejects.toThrow(
+        BoardSectionMissingError,
+      );
+    },
+  );
 
   it("should not match section by case-insensitive name — exact match only", async () => {
     server.use(
