@@ -223,6 +223,10 @@ Multiple tasks may exist in the In Progress section (e.g., due to manual user mo
 
 Channels are inbound event sources that let users push messages into Shrimp, producing Jobs that run through the same Job Queue as Heartbeat-triggered Jobs.
 
+**Prerequisites:**
+
+When a Channel is enabled, its webhook must be registered with the external provider before Shrimp can receive events; Shrimp does not perform this registration (see [Deployment & Configuration](#deployment--configuration)).
+
 **Channel concept:**
 
 Channel is a generic contract for inbound event delivery. Telegram (via webhook) is the first supported Channel. Additional Channels can be added without changes to the Job Queue or Shrimp Agent.
@@ -237,6 +241,20 @@ Channel is a generic contract for inbound event delivery. Telegram (via webhook)
 **Delivery mode:**
 
 Channels deliver events via push (webhook or equivalent server-initiated mechanism). Long polling is not supported.
+
+**Endpoint:**
+
+- The Telegram Channel accepts webhook callbacks at `POST /channels/telegram`.
+- Every inbound callback must carry a shared secret delivered via the external provider's webhook conventions (e.g., Telegram's secret-token header). Requests without a matching secret are rejected with `401 Unauthorized` per the Response table.
+- Inbound request headers and payload shape follow the external provider's webhook specification.
+
+**Response:**
+
+| Scenario                        | Status             | Body    |
+| ------------------------------- | ------------------ | ------- |
+| Event accepted (secret matches) | `200 OK`           | no body |
+| Secret missing or mismatch      | `401 Unauthorized` | no body |
+| Malformed payload               | `400 Bad Request`  | no body |
 
 **Dispatch rules:**
 
@@ -307,7 +325,7 @@ Slash Commands are Channel messages whose text begins with `/`. The Channel adap
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/new`  | Creates a new Session that becomes current. The previous Session is retained on disk as an archive (see [Session Lifecycle](#session-lifecycle)). The adapter replies to the Channel confirming the new Session started. |
 
-No other commands are supported in this iteration. Future commands (e.g., `/status`, `/reset`) are out of scope.
+Only `/new` is supported. Additional commands are out of scope (see [IS NOT](#is-not)).
 
 **Dispatch semantics:**
 
@@ -430,11 +448,11 @@ Shrimp is a single-process service composed of multiple collaborating components
 
 ### System Boundary
 
-| Dimension      | Inside                                                                 | Outside                                                              |
-| -------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Responsibility | HTTP routing, job serialization, AI execution loop, progress reporting | Scheduling heartbeats, Todoist project structure, AI model selection |
-| Interaction    | Receives `POST /heartbeat` and `GET /health`; returns JSON responses   | Caller's scheduling mechanism; Todoist API; AI provider endpoint     |
-| Control        | Task state transitions (Backlog → In Progress → Done), comment posting | Todoist data model; AI model behavior; MCP tool implementations      |
+| Dimension      | Inside                                                                                           | Outside                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Responsibility | HTTP routing, job serialization, AI execution loop, progress reporting                           | Scheduling heartbeats, Todoist project structure, AI model selection |
+| Interaction    | Receives `POST /heartbeat`, `POST /channels/telegram`, and `GET /health`; returns JSON responses | Caller's scheduling mechanism; Todoist API; AI provider endpoint     |
+| Control        | Task state transitions (Backlog → In Progress → Done), comment posting                           | Todoist data model; AI model behavior; MCP tool implementations      |
 
 ### Component Dependencies
 
@@ -647,6 +665,7 @@ Runtime configuration is supplied through environment variables and a `.mcp.json
 - **When `CHANNELS_ENABLED` is false or unset**, the `TELEGRAM_*` and `SHRIMP_STATE_DIR` variables are neither required nor read; startup validation is skipped for Channel-related configuration. See [Channel Integration](#channel-integration) for runtime rules.
 - **When `CHANNELS_ENABLED` is enabled but a required Telegram variable is missing or malformed**, the process fails fast at startup — consistent with the fail-fast pattern applied to other required variables.
 - **`SHRIMP_STATE_DIR` is read only when Channels are enabled.** If the directory does not exist at startup, Shrimp creates it; if creation fails, the process fails fast.
+- **Telegram webhook registration is external to Shrimp.** When the Telegram Channel is enabled, the operator registers the webhook with Telegram pointing at the publicly reachable URL for `POST /channels/telegram` and provides the same value as `TELEGRAM_WEBHOOK_SECRET`. Shrimp does not perform this registration.
 
 ### Docker Deployment
 
