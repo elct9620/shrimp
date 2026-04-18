@@ -204,6 +204,36 @@ Multiple tasks may exist in the In Progress section (e.g., due to manual user mo
 
 - Todoist is the authoritative state of all tasks. On restart, the next heartbeat re-reads Todoist to determine the current task.
 
+### Channel Integration
+
+Channels are inbound event sources that let users push messages into Shrimp, producing Jobs that run through the same Job Queue as Heartbeat-triggered Jobs.
+
+**Channel concept:**
+
+Channel is a generic contract for inbound event delivery. Telegram (via webhook) is the first supported Channel. Additional Channels can be added without changes to the Job Queue or Shrimp Agent.
+
+**Event types:**
+
+| Event type    | Trigger                            | Handling                                                                                           |
+| ------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Message       | User message not prefixed with `/` | Produces a `ChannelJob` enqueued in the Job Queue                                                  |
+| Slash Command | User message prefixed with `/`     | Handled by the Channel adapter directly; no Job is enqueued. See [Slash Commands](#slash-commands) |
+
+**Delivery mode:**
+
+Channels deliver events via push (webhook or equivalent server-initiated mechanism). Long polling is not supported.
+
+**Dispatch rules:**
+
+- Each Channel event carries a ConversationRef so outbound replies can be routed back to the originating Channel conversation.
+- Message events compete with Heartbeat for the single Job Queue slot. If the slot is busy, the event is dropped silently — the same drop semantics as `POST /heartbeat`. No retry inside Shrimp.
+- A Channel reply (sent by the agent via the Reply tool) is routed back to the originating Channel using the ConversationRef. Reply failures follow Fail-Open Recovery — the Job is not failed solely because a reply could not be delivered.
+- Session creation and conversation history for Channel-driven Jobs are governed by the [Session Lifecycle](#session-lifecycle) section.
+
+**Failure handling:**
+
+Webhook delivery failures (e.g., invalid payload, authentication failure) are the Channel adapter's responsibility and must not affect other Channels or the Heartbeat path.
+
 ### Telemetry Emission
 
 Every Job that runs produces one OTel trace. Spans within that trace expose task selection, agent execution, and each tool call as separately timed, attributable units of work that downstream collectors and dashboards can query.
