@@ -13,7 +13,7 @@ This document does **not** restate behavioral rules. All endpoint contracts, Job
 
 ## 2. Scope
 
-- **In scope**: layer structure, directory mapping, dependency rules, key ports, component contracts, naming conventions, failure handling placement.
+- **In scope**: layer structure, dependency rules, key ports, component contracts, naming conventions, failure handling placement.
 - **Out of scope**: concrete algorithms, API signatures, database schemas (Shrimp owns no persistence), deployment details (see `SPEC.md` §Deployment).
 
 `SPEC.md` is the source of truth. If this document and the SPEC disagree, the SPEC wins — update this document to match.
@@ -31,83 +31,7 @@ Shrimp follows the four-layer Clean Architecture model. Each layer has a clear r
 
 **Naming choice**: the two inner layers use the literal Clean Architecture names (`entities/`, `use-cases/`) for precision; the two outer layers use the most common community conventions (`adapters/`, `infrastructure/`), since the literal names ("Interface Adapters", "Frameworks & Drivers") are awkward or ambiguous as directory names.
 
-## 4. Directory Mapping
-
-```
-src/
-  entities/
-    task.ts                    # Task read model: id / title / description / priority / section
-    section.ts                 # Section enum: Backlog / InProgress / Done
-    priority.ts                # Priority value object: p1–p4 with ordering
-    comment.ts                 # Comment value object: text + timestamp
-    task-selector.ts           # Pure selection policy: In Progress first, then Backlog, by Priority
-    session.ts                 # Session read model: id + ordered messages
-    conversation-message.ts    # ConversationMessage value object: role + content
-    channel-message.ts         # ChannelMessage value object: ConversationRef + text
-    conversation-ref.ts        # ConversationRef value object: channel identity for routing
-
-  use-cases/
-    ports/
-      board-repository.ts      # Todoist Board abstraction (outbound)
-      shrimp-agent.ts           # Shrimp Agent port: black-box tool-calling loop invocation (outbound)
-      job-queue.ts              # Concurrency gate abstraction (inbound, used by HTTP)
-      telemetry.ts              # Telemetry port: runInSpan + shutdown (outbound)
-      tool-provider.ts          # Merged tool-list provider (outbound)
-      session-repository.ts     # Session read/write abstraction (outbound)
-      channel-gateway.ts        # Outbound reply-delivery abstraction
-    jobs/
-      heartbeat-job.ts          # HeartbeatJob: selects task, invokes ShrimpAgent
-      channel-job.ts            # ChannelJob: loads Session, invokes ShrimpAgent
-    start-new-session.ts        # Rotates current Session; invoked by Channel adapter on /new
-    prompt-assembler.ts         # Builds system prompt + user prompt
-
-  adapters/
-    http/
-      routes/
-        health.ts               # GET /health
-        heartbeat.ts            # POST /heartbeat
-        telegram-webhook.ts     # POST /telegram/webhook — routes to ChannelJob or Slash Command handler
-    tools/
-      built-in/
-        get-tasks.ts            # Inbound adapter → BoardRepository.getTasks
-        get-comments.ts         # Inbound adapter → BoardRepository.getComments
-        post-comment.ts         # Inbound adapter → BoardRepository.postComment
-        move-task.ts            # Inbound adapter → BoardRepository.moveTask
-        reply.ts                # Inbound adapter → ChannelGateway.send; no-op when ConversationRef is null
-      tool-registry.ts          # Merges built-in + MCP tools (ToolProvider impl)
-
-  infrastructure/
-    queue/
-      in-memory-job-queue.ts    # Single-slot JobQueue implementation
-    todoist/
-      todoist-client.ts         # Raw Todoist REST client
-      todoist-board-repository.ts  # BoardRepository implementation
-    ai/
-      ai-provider-factory.ts    # Creates an OpenAI-compatible provider
-      ai-sdk-shrimp-agent.ts    # ShrimpAgent implementation (AI SDK tool loop)
-    mcp/
-      mcp-tool-loader.ts        # Parses .mcp.json, starts MCP clients, exposes tools
-    config/
-      env.ts                    # Environment variable loading and validation
-      mcp-config.ts             # .mcp.json parsing
-    telemetry/
-      noop-telemetry.ts              # NoopTelemetry adapter (TELEMETRY_ENABLED=false path)
-      otel-telemetry.ts              # OtelTelemetry adapter (NodeSDK + OTLP HTTP exporter)
-      gen-ai-bridge-span-processor.ts # Translates ai.* attrs → gen_ai semconv on span end
-      telemetry-factory.ts           # createTelemetry(env, logger): selects Noop vs Otel
-    session/
-      jsonl-session-repository.ts  # SessionRepository: JSONL per session + state.json pointer
-    channel/
-      telegram-channel.ts          # ChannelGateway: Telegram Bot API send
-
-  container.ts                  # tsyringe bindings (composition root)
-  app.ts                        # Hono app composition
-  server.ts                     # Process entry (loads dotenv, starts server)
-```
-
-Maximum depth is three levels (`src/<layer>/<sub-module>/<file>`) to avoid excessive nesting.
-
-## 5. Dependency Rules
+## 4. Dependency Rules
 
 Dependencies always point inward:
 
@@ -131,7 +55,7 @@ Specific rules:
 
 `server.ts`, `app.ts`, and `container.ts` are the three composition roots — the only files allowed to reach into every layer.
 
-## 6. Key Ports
+## 5. Key Ports
 
 The components defined in `SPEC.md` §Architecture Overview are abstracted in code via ports. The Job (Job Worker) is not among them — it is a use-case class that orchestrates these ports. `TelemetryPort` is not itself a SPEC component either, but is listed here because it is the contract that use-cases depend on to emit spans without taking any third-party dependency:
 
@@ -147,7 +71,7 @@ The components defined in `SPEC.md` §Architecture Overview are abstracted in co
 
 Every port has at least one infrastructure implementation and can be substituted with a fake during testing.
 
-## 7. Component Contracts
+## 6. Component Contracts
 
 SPEC.md §Architecture Overview lists six components: HTTP Layer, Supervisor, Job Queue, Job Worker, Shrimp Agent, and Tool Layer. This section maps those components to concrete modules.
 
@@ -180,7 +104,7 @@ SPEC.md §Architecture Overview lists six components: HTTP Layer, Supervisor, Jo
 | HTTP composition         | `app.ts`                                                                     | Composition Root  | Creates the Hono app and mounts routes                                                                                                                                                                                                                                                                                                                                                                                                         | `adapters/http/*`                                                                                              |
 | Entry point              | `server.ts`                                                                  | Composition Root  | Loads dotenv, builds the container, starts the server                                                                                                                                                                                                                                                                                                                                                                                          | Everything                                                                                                     |
 
-## 8. Naming & File Conventions
+## 7. Naming & File Conventions
 
 | Aspect                      | Rule                                                                                                                                            |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -192,7 +116,7 @@ SPEC.md §Architecture Overview lists six components: HTTP Layer, Supervisor, Jo
 | Directory names             | Singular (`entities/`, `use-cases/`); subdirectories grouped by feature (`queue/`, `todoist/`, `ai/`)                                           |
 | Imports                     | Relative paths; never import from an outer layer into an inner one                                                                              |
 
-## 9. Failure Handling Placement
+## 8. Failure Handling Placement
 
 The failure modes listed in `SPEC.md` are handled at the layer that is closest to their cause.
 
@@ -209,90 +133,3 @@ The failure modes listed in `SPEC.md` are handled at the layer that is closest t
 | Telemetry exporter failure (§Telemetry Configuration → Exporter failure is fail-open) | Infrastructure (`OtelTelemetry.shutdown` + AI SDK runtime) | Errors during span export or shutdown are caught and logged at warn; never propagated into the Job                                                                                                         |
 
 **Core principle**: configuration errors at startup are fail-fast in Infrastructure; runtime errors reaching external systems are Fail-Open Recovery in the Use Case layer. Entities and Interface Adapters perform no failure handling — they assume their inputs have already been validated.
-
-## 10. Transitional Notes
-
-`src/` is still in its initialization-phase flat layout:
-
-```
-src/
-  app.ts
-  server.ts
-  routes/
-    health.ts
-```
-
-Migration strategy:
-
-- **New modules start in the target layout.** When implementing `/heartbeat`, create `src/adapters/http/routes/heartbeat.ts` directly and move the existing `src/routes/health.ts` to `src/adapters/http/routes/health.ts` in the same change.
-- **`app.ts` and `server.ts` stay at `src/` root.** They are composition roots and do not belong to any single layer.
-- **`container.ts` is introduced when tsyringe lands**, together with the `/heartbeat` or Shrimp Agent work.
-- Prefer **one kind of migration per PR** so structural moves are never bundled with behavioral changes.
-
-## 11. Decision Log
-
-### D1. No persistence → Entities are read models
-
-**Decision**: Types under `entities/` — Task, Section, Priority, etc. — expose no setters, perform no mutation, and enforce no write-side invariants.
-
-**Rationale**: Shrimp never owns the write path for any of this data. Every state transition is pushed back to Todoist via `BoardRepository`. Forcing DDD aggregate semantics on top of read-only data would create dual state (local vs. Todoist) without solving any actual problem. Keeping entities as plain data plus pure-function policies matches reality.
-
-**Consequence**: Pure logic like `TaskSelector` lives naturally in `entities/`; any orchestration that touches I/O moves up to `use-cases/`.
-
-### D2. Job orchestrates; the Shrimp Agent is a black box
-
-**Decision**: SPEC's "Job" is realized in code as two Job Worker variants — `HeartbeatJob` and `ChannelJob` — each of which assembles prompts and invokes the `ShrimpAgent` port **exactly once** per triggering event. SPEC's "Shrimp Agent" is the `ShrimpAgent` port (implemented by `AiSdkShrimpAgent`). Everything the model does — calling tools, deciding when the task is done, iterating — happens inside that single adapter call. Shrimp does not interject between tool calls and does not re-enter the loop.
-
-**Rationale**: The AI SDK (and most agent libraries in the same shape) exposes the tool-calling loop as a single function: you pass prompts and a tool set, it runs to completion internally. Trying to model the SPEC steps as a step-by-step orchestration inside the AI execution engine would fight the library and make the code diverge from what's actually possible at runtime. The honest framing is: the loop is an adapter we invoke, not a state machine we drive. Separating the Job Worker (orchestrator) from `ShrimpAgent` (executor) makes the split explicit in code.
-
-**Consequence**: Each Job Worker stays small (prepare context, invoke once) and the real work lives inside the tools the agent can call. The use cases become easy to unit-test with a fake `ShrimpAgent` that simply records what it was given. Swapping AI providers means replacing the `ShrimpAgent` implementation; neither Job Worker is touched.
-
-### D3. Built-in tools are inbound adapters, not use-case classes
-
-**Decision**: Each built-in Todoist operation (Get Tasks, Get Comments, Post Comment, Move Task) is implemented as a single-file **inbound adapter** under `adapters/tools/built-in/`. The adapter defines the AI SDK tool schema, validates arguments, invokes `BoardRepository` directly, and formats the result back for the model. There is no per-operation use case class in between.
-
-**Rationale**: Because the agent loop (D2) is the actual orchestrator of multi-step work, each tool call is a single boundary crossing — "the agent asked for X, do X, return the result." Inserting an intermediate `GetTasksUseCase` / `PostCommentUseCase` layer would be empty pass-through code that adds indirection without encoding any application rule. The tools are inbound adapters in the same sense that HTTP route handlers are: an external caller (the agent, via AI SDK) invokes the application's ports, and the adapter translates between the caller's format and the port's contract.
-
-**Consequence**: Adding a new built-in tool is a one-file change in `adapters/tools/built-in/`. The tool's business-level rules (if any ever appear) can always be promoted into a use case later without touching the adapter boundary.
-
-Note: D3 uses "agent loop" to describe the runtime behavior; the code-level name for this is now `ShrimpAgent` (port) and `AiSdkShrimpAgent` (implementation).
-
-### D4. JobQueue port in use-cases, implementation in infrastructure
-
-**Decision**: The `JobQueue` interface lives in `use-cases/ports/`; `InMemoryJobQueue` lives in `infrastructure/queue/`. HTTP handlers depend on the port; tsyringe binds the implementation at the composition root.
-
-**Rationale**: SPEC explicitly leaves room for the queue to become something other than in-memory in the future. The HTTP layer should not be coupled to today's implementation. Even with only one implementation in sight, the cost of an interface file is trivial compared with the cost of a future refactor. It also lets `HeartbeatRoute` be tested with a fake queue to verify the "slot busy → still 202" semantics.
-
-**Consequence**: `HeartbeatRoute` does not know about `InMemoryJobQueue`. Adding a new implementation later (e.g., `RedisJobQueue`) only requires changing the binding in `container.ts`.
-
-### D5. Telemetry is a process-level port, not a use case
-
-**Decision**: OpenTelemetry support is exposed to `use-cases/` through a `TelemetryPort` interface (`runInSpan`, `shutdown`) that carries no `@opentelemetry/api` types on its surface. Two infrastructure adapters implement it: `NoopTelemetry` (span is a passthrough when telemetry is disabled) and `OtelTelemetry` (wraps `NodeSDK` + `OTLPTraceExporter`; owns the full span lifecycle inside `runInSpan`). The `Tracer` itself — which AI SDK needs via `experimental_telemetry` — is exposed as a separate DI binding (`TOKENS.Tracer`) resolved only by `AiSdkShrimpAgent`, which lives in `infrastructure/ai/` and is allowed to import `@opentelemetry/api` directly. `AiSdkShrimpAgent` also takes the `recordInputs` / `recordOutputs` booleans directly from env via DI — they are AI-SDK-specific switches that have no meaning for other port consumers, so they stay off the port. Selection happens once at process startup in `bootstrap()` based on `TELEMETRY_ENABLED`; both the port and the tracer are registered from the same factory result so their lifecycles stay aligned.
-
-**Rationale**: Tracing is a cross-cutting concern with a single, process-wide lifecycle: the tracer provider and exporter pipeline are initialised before the HTTP server accepts traffic and torn down on SIGINT/SIGTERM. Modelling this as a use case would force every consumer to handle enable/disable logic, exporter failure handling, and tracer wiring — none of which is application logic. Using a port instead keeps the dependency direction inward; hiding the `Tracer` behind a `runInSpan` method means `use-cases/` carries **zero** `@opentelemetry/api` imports (runtime or type), matching the stricter Clean Architecture rule that inner layers own no third-party knowledge. AI SDK already emits `ai.generateText`, `ai.generateText.doGenerate`, and the per-tool-call spans natively when given a tracer via `experimental_telemetry`; `AiSdkShrimpAgent` just forwards the tracer plus the two record-flag booleans it owns.
-
-**Consequence**: Disabling telemetry has zero observable effect on the Job — `runInSpan` becomes a plain passthrough, no exporter connections are opened, and no I/O is performed. Enabling it requires only environment variables; no code changes. Swapping the exporter (e.g. to gRPC or to a vendor-specific collector) is a one-file change inside `infrastructure/telemetry/` with no impact on `use-cases/` or any other adapter. A future change that needs richer span attributes (e.g. per-task metadata) extends the port method rather than leaking the `Span` type into `use-cases/`.
-
-### D6. Channel is an abstract Port; Slash Commands are dispatched at the adapter level
-
-**Decision**: The `Channel` concept is defined at the port level (`ChannelGateway`); Telegram (webhook) is the first concrete adapter. Messages prefixed with `/` are parsed by the Channel adapter and routed directly to matching use-cases (e.g., `StartNewSession` for `/new`) — they do not enter the Job Queue and do not invoke the Shrimp Agent.
-
-**Rationale**: Coupling use-cases to Telegram types would leak third-party concerns inward; an abstract port keeps use-cases dependency-free and makes the Telegram path pluggable. Slash Commands are synchronous control-plane actions that must respond even when the Queue slot is busy, so routing them through the Queue would serialize them behind model-driven work with no benefit.
-
-**Consequence**: Channel-specific concerns live in `infrastructure/channel/`; use-cases see only `ChannelGateway`. Adding a second Channel or a new command requires adapter changes only — no port, Job, or Queue changes.
-
-### D7. Session persistence uses JSONL + state.json, behind SessionRepository
-
-**Decision**: The single global Session is stored as an append-only JSONL file under `SHRIMP_STATE_DIR/sessions/<id>.jsonl`; the current Session ID is recorded in `SHRIMP_STATE_DIR/state.json`. All persistence details are hidden behind the `SessionRepository` port.
-
-**Rationale**: Conversation history is inherently append-only; JSONL matches those semantics and a separate `state.json` keeps the current-pointer update atomic. Hiding both files behind a port preserves the dependency-free use-case rule — filesystem APIs do not leak past `infrastructure/session/`.
-
-**Consequence**: Swapping persistence (e.g., to SQLite) is a new `SessionRepository` implementation with no use-case changes; corruption handling is encapsulated inside `JsonlSessionRepository`.
-
-### D8. Reply tool uses DI Factory Method for per-Job ConversationRef
-
-**Decision**: `ReplyTool` is part of the universal tool set and constructed per-Job via a DI Factory Method that injects the current `ConversationRef`; when `ConversationRef` is null (`HeartbeatJob`), `Reply` returns a no-op result.
-
-**Rationale**: Tools need per-invocation context that a process-level singleton cannot carry; a Factory Method is the established convention for session-scoped objects in this codebase.
-
-**Consequence**: The AI SDK sees one stable tool schema regardless of Job variant; adding new Channel-aware tools follows the same Factory Method pattern.
