@@ -29,7 +29,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 - No Web UI or dashboard
 - No management of Todoist Project structure (only reads from a designated Board)
 - No cross-Board or multi-Board integration
-- No persistent or distributed task queue (the in-memory task queue is lost on restart; Session conversation history is separately persisted — see Session Lifecycle)
+- Persistent or distributed task queue — current implementation uses in-memory only; tasks are lost on restart. Future extension remains open. Session conversation history is separately persisted (see Session Lifecycle).
 
 ## Glossary
 
