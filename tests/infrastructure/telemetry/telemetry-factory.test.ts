@@ -41,6 +41,10 @@ const BASE_ENV: EnvConfig = {
   otelServiceName: undefined,
   otelExporterOtlpEndpoint: undefined,
   otelExporterOtlpHeaders: undefined,
+  channelsEnabled: false,
+  telegramBotToken: undefined,
+  telegramWebhookSecret: undefined,
+  shrimpStateDir: "/tmp/.shrimp",
 };
 
 describe("createTelemetry", () => {

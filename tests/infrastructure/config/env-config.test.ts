@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   EnvConfigError,
   loadEnvConfig,
@@ -33,6 +36,10 @@ describe("loadEnvConfig", () => {
         otelServiceName: undefined,
         otelExporterOtlpEndpoint: undefined,
         otelExporterOtlpHeaders: undefined,
+        channelsEnabled: false,
+        telegramBotToken: undefined,
+        telegramWebhookSecret: undefined,
+        shrimpStateDir: expect.any(String),
       });
     });
 
@@ -392,6 +399,103 @@ describe("loadEnvConfig", () => {
         if (e instanceof EnvConfigError) error = e;
       }
       expect(error!.name).toBe("EnvConfigError");
+    });
+  });
+
+  describe("CHANNELS_ENABLED", () => {
+    let testStateDir: string;
+
+    afterEach(() => {
+      if (testStateDir && existsSync(testStateDir)) {
+        rmSync(testStateDir, { recursive: true });
+      }
+    });
+
+    it("should disable channels, skip TELEGRAM_* validation, and return defaults when CHANNELS_ENABLED is absent", () => {
+      const config = loadEnvConfig(REQUIRED_ENV);
+
+      expect(config.channelsEnabled).toBe(false);
+      expect(config.telegramBotToken).toBeUndefined();
+      expect(config.telegramWebhookSecret).toBeUndefined();
+      expect(config.shrimpStateDir).toBe(
+        join(require("node:os").homedir(), ".shrimp"),
+      );
+    });
+
+    it("should succeed and create the state directory when CHANNELS_ENABLED=true and both TELEGRAM_* vars are set", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-${Date.now()}`);
+
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        CHANNELS_ENABLED: "true",
+        TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
+        TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
+        SHRIMP_STATE_DIR: testStateDir,
+      });
+
+      expect(config.channelsEnabled).toBe(true);
+      expect(config.telegramBotToken).toBe("bot123:TOKEN");
+      expect(config.telegramWebhookSecret).toBe("webhook-secret");
+      expect(config.shrimpStateDir).toBe(testStateDir);
+      expect(existsSync(testStateDir)).toBe(true);
+    });
+
+    it("should throw EnvConfigError mentioning TELEGRAM_BOT_TOKEN when CHANNELS_ENABLED=true and TELEGRAM_BOT_TOKEN is missing", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-${Date.now()}`);
+
+      expect(() =>
+        loadEnvConfig({
+          ...REQUIRED_ENV,
+          CHANNELS_ENABLED: "true",
+          TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
+          SHRIMP_STATE_DIR: testStateDir,
+        }),
+      ).toThrow(EnvConfigError);
+      expect(() =>
+        loadEnvConfig({
+          ...REQUIRED_ENV,
+          CHANNELS_ENABLED: "true",
+          TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
+          SHRIMP_STATE_DIR: testStateDir,
+        }),
+      ).toThrow("TELEGRAM_BOT_TOKEN");
+    });
+
+    it("should throw EnvConfigError mentioning TELEGRAM_WEBHOOK_SECRET when CHANNELS_ENABLED=true and TELEGRAM_WEBHOOK_SECRET is missing", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-${Date.now()}`);
+
+      expect(() =>
+        loadEnvConfig({
+          ...REQUIRED_ENV,
+          CHANNELS_ENABLED: "true",
+          TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
+          SHRIMP_STATE_DIR: testStateDir,
+        }),
+      ).toThrow(EnvConfigError);
+      expect(() =>
+        loadEnvConfig({
+          ...REQUIRED_ENV,
+          CHANNELS_ENABLED: "true",
+          TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
+          SHRIMP_STATE_DIR: testStateDir,
+        }),
+      ).toThrow("TELEGRAM_WEBHOOK_SECRET");
+    });
+
+    it("should throw EnvConfigError when CHANNELS_ENABLED=true and SHRIMP_STATE_DIR points to an existing file (not a dir)", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-${Date.now()}`);
+      // Create a file at the path so mkdir will fail
+      writeFileSync(testStateDir, "not a directory");
+
+      expect(() =>
+        loadEnvConfig({
+          ...REQUIRED_ENV,
+          CHANNELS_ENABLED: "true",
+          TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
+          TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
+          SHRIMP_STATE_DIR: testStateDir,
+        }),
+      ).toThrow(EnvConfigError);
     });
   });
 });

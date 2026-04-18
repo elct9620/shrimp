@@ -1,3 +1,7 @@
+import { mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 export type LogLevel =
   | "trace"
   | "debug"
@@ -23,6 +27,11 @@ export type EnvConfig = {
   otelServiceName?: string;
   otelExporterOtlpEndpoint?: string;
   otelExporterOtlpHeaders?: string;
+  channelsEnabled: boolean;
+  telegramBotToken?: string;
+  telegramWebhookSecret?: string;
+  // Always present; only meaningful when channelsEnabled is true.
+  shrimpStateDir: string;
 };
 
 export class EnvConfigError extends Error {
@@ -55,6 +64,13 @@ const REQUIRED_TELEMETRY_KEYS = [
   "OTEL_EXPORTER_OTLP_ENDPOINT",
 ] as const;
 
+const REQUIRED_CHANNEL_KEYS = [
+  "TELEGRAM_BOT_TOKEN",
+  "TELEGRAM_WEBHOOK_SECRET",
+] as const;
+
+const DEFAULT_SHRIMP_STATE_DIR = join(homedir(), ".shrimp");
+
 function parseLogLevel(value: string | undefined): LogLevel {
   if (value === undefined) return "info";
   if ((VALID_LOG_LEVELS as readonly string[]).includes(value))
@@ -79,6 +95,10 @@ function parseTelemetryRecordFlag(value: string | undefined): boolean {
   return value !== "false" && value !== "0";
 }
 
+function parseChannelsEnabled(value: string | undefined): boolean {
+  return value === "true" || value === "1";
+}
+
 export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   const missing = REQUIRED_KEYS.filter((key) => !env[key]);
   if (missing.length > 0) {
@@ -94,6 +114,33 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     if (missingTelemetry.length > 0) {
       throw new EnvConfigError(
         `Missing required environment variables: ${missingTelemetry.join(", ")}`,
+      );
+    }
+  }
+
+  const channelsEnabled = parseChannelsEnabled(env["CHANNELS_ENABLED"]);
+
+  let telegramBotToken: string | undefined;
+  let telegramWebhookSecret: string | undefined;
+  let shrimpStateDir = DEFAULT_SHRIMP_STATE_DIR;
+
+  if (channelsEnabled) {
+    const missingChannels = REQUIRED_CHANNEL_KEYS.filter((key) => !env[key]);
+    if (missingChannels.length > 0) {
+      throw new EnvConfigError(
+        `Missing required environment variables: ${missingChannels.join(", ")}`,
+      );
+    }
+
+    telegramBotToken = env["TELEGRAM_BOT_TOKEN"] as string;
+    telegramWebhookSecret = env["TELEGRAM_WEBHOOK_SECRET"] as string;
+    shrimpStateDir = env["SHRIMP_STATE_DIR"] || DEFAULT_SHRIMP_STATE_DIR;
+
+    try {
+      mkdirSync(shrimpStateDir, { recursive: true });
+    } catch (err) {
+      throw new EnvConfigError(
+        `Failed to create SHRIMP_STATE_DIR "${shrimpStateDir}": ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -118,5 +165,9 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     otelServiceName: env["OTEL_SERVICE_NAME"] || undefined,
     otelExporterOtlpEndpoint: env["OTEL_EXPORTER_OTLP_ENDPOINT"] || undefined,
     otelExporterOtlpHeaders: env["OTEL_EXPORTER_OTLP_HEADERS"] || undefined,
+    channelsEnabled,
+    telegramBotToken,
+    telegramWebhookSecret,
+    shrimpStateDir,
   };
 }
