@@ -12,7 +12,7 @@ import { createHeartbeatRoute } from "./routes/heartbeat";
 export type CreateAppDeps = {
   pinoInstance: Logger;
   taskQueue: TaskQueue;
-  processingCycle: Job;
+  job: Job;
   logger: LoggerPort;
 };
 
@@ -44,7 +44,7 @@ export function createApp(deps: CreateAppDeps): Hono<AppEnv> {
     "/",
     createHeartbeatRoute({
       taskQueue: deps.taskQueue,
-      processingCycle: deps.processingCycle,
+      job: deps.job,
       logger: deps.logger,
     }),
   );

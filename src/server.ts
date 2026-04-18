@@ -18,7 +18,7 @@ async function main() {
     import("./infrastructure/config/env-config").EnvConfig
   >(TOKENS.EnvConfig);
   const mcpToolLoader = container.resolve(McpToolLoader);
-  const processingCycle = container.resolve(Job);
+  const job = container.resolve(Job);
   const telemetry = container.resolve<TelemetryPort>(TOKENS.Telemetry);
   // Raw pino instance registered during bootstrap for pino-http middleware
   const pinoInstance = container.resolve<import("pino").Logger>(
@@ -28,7 +28,7 @@ async function main() {
   const app = createApp({
     pinoInstance,
     taskQueue: container.resolve(TOKENS.TaskQueue),
-    processingCycle,
+    job,
     logger: logger.child({ module: "http.heartbeat" }),
   });
 

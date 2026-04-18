@@ -6,7 +6,7 @@ import type { LoggerPort } from "../../../use-cases/ports/logger";
 
 export function createHeartbeatRoute(deps: {
   taskQueue: TaskQueue;
-  processingCycle: Job;
+  job: Job;
   logger: LoggerPort;
 }): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
@@ -14,7 +14,7 @@ export function createHeartbeatRoute(deps: {
   app.post("/heartbeat", (c) => {
     deps.logger.info("heartbeat received");
     const accepted = deps.taskQueue.tryEnqueue(() =>
-      deps.processingCycle.run(),
+      deps.job.run(),
     );
     deps.logger.info("heartbeat enqueued", { accepted });
     return c.json({ status: "accepted" }, 202);

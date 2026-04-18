@@ -20,10 +20,10 @@ function makeJob(runImpl?: () => Promise<void>): Job {
 describe("POST /heartbeat", () => {
   it("should return 202 with accepted status when queue slot is free", async () => {
     const taskQueue = makeTaskQueue(true);
-    const processingCycle = makeJob();
+    const job = makeJob();
     const app = createHeartbeatRoute({
       taskQueue,
-      processingCycle,
+      job,
       logger: makeFakeLogger(),
     });
 
@@ -35,10 +35,10 @@ describe("POST /heartbeat", () => {
 
   it("should return 202 with accepted status when queue slot is busy", async () => {
     const taskQueue = makeTaskQueue(false);
-    const processingCycle = makeJob();
+    const job = makeJob();
     const app = createHeartbeatRoute({
       taskQueue,
-      processingCycle,
+      job,
       logger: makeFakeLogger(),
     });
 
@@ -50,10 +50,10 @@ describe("POST /heartbeat", () => {
 
   it("should call tryEnqueue exactly once per request", async () => {
     const taskQueue = makeTaskQueue();
-    const processingCycle = makeJob();
+    const job = makeJob();
     const app = createHeartbeatRoute({
       taskQueue,
-      processingCycle,
+      job,
       logger: makeFakeLogger(),
     });
 
@@ -62,7 +62,7 @@ describe("POST /heartbeat", () => {
     expect(taskQueue.tryEnqueue).toHaveBeenCalledTimes(1);
   });
 
-  it("should pass a job closure that invokes processingCycle.run when executed", async () => {
+  it("should pass a job closure that invokes job.run when executed", async () => {
     let capturedJob: (() => Promise<void>) | undefined;
     const taskQueue: TaskQueue = {
       tryEnqueue: vi.fn().mockImplementation((job: () => Promise<void>) => {
@@ -70,10 +70,10 @@ describe("POST /heartbeat", () => {
         return true;
       }),
     };
-    const processingCycle = makeJob();
+    const job = makeJob();
     const app = createHeartbeatRoute({
       taskQueue,
-      processingCycle,
+      job,
       logger: makeFakeLogger(),
     });
 
@@ -81,10 +81,10 @@ describe("POST /heartbeat", () => {
 
     expect(capturedJob).toBeDefined();
     await capturedJob!();
-    expect(processingCycle.run).toHaveBeenCalledTimes(1);
+    expect(job.run).toHaveBeenCalledTimes(1);
   });
 
-  it("should return immediately even when processingCycle.run never resolves", async () => {
+  it("should return immediately even when job.run never resolves", async () => {
     let capturedJob: (() => Promise<void>) | undefined;
     const taskQueue: TaskQueue = {
       tryEnqueue: vi.fn().mockImplementation((job: () => Promise<void>) => {
@@ -93,10 +93,10 @@ describe("POST /heartbeat", () => {
       }),
     };
     // A run() that never resolves
-    const processingCycle = makeJob(() => new Promise<void>(() => {}));
+    const job = makeJob(() => new Promise<void>(() => {}));
     const app = createHeartbeatRoute({
       taskQueue,
-      processingCycle,
+      job,
       logger: makeFakeLogger(),
     });
 
@@ -110,10 +110,10 @@ describe("POST /heartbeat", () => {
 
   it("should accept and ignore an arbitrary request body", async () => {
     const taskQueue = makeTaskQueue();
-    const processingCycle = makeJob();
+    const job = makeJob();
     const app = createHeartbeatRoute({
       taskQueue,
-      processingCycle,
+      job,
       logger: makeFakeLogger(),
     });
 
@@ -129,10 +129,10 @@ describe("POST /heartbeat", () => {
 
   it("should not handle GET /heartbeat (returns 404 or 405)", async () => {
     const taskQueue = makeTaskQueue();
-    const processingCycle = makeJob();
+    const job = makeJob();
     const app = createHeartbeatRoute({
       taskQueue,
-      processingCycle,
+      job,
       logger: makeFakeLogger(),
     });
 
@@ -144,9 +144,9 @@ describe("POST /heartbeat", () => {
   describe("logging", () => {
     it('should log info "heartbeat received" on every POST', async () => {
       const taskQueue = makeTaskQueue(true);
-      const processingCycle = makeJob();
+      const job = makeJob();
       const logger = makeFakeLogger();
-      const app = createHeartbeatRoute({ taskQueue, processingCycle, logger });
+      const app = createHeartbeatRoute({ taskQueue, job, logger });
 
       await app.request("/heartbeat", { method: "POST" });
 
@@ -155,9 +155,9 @@ describe("POST /heartbeat", () => {
 
     it('should log info "heartbeat enqueued" with accepted=true when queue accepts', async () => {
       const taskQueue = makeTaskQueue(true);
-      const processingCycle = makeJob();
+      const job = makeJob();
       const logger = makeFakeLogger();
-      const app = createHeartbeatRoute({ taskQueue, processingCycle, logger });
+      const app = createHeartbeatRoute({ taskQueue, job, logger });
 
       await app.request("/heartbeat", { method: "POST" });
 
@@ -169,9 +169,9 @@ describe("POST /heartbeat", () => {
 
     it('should log info "heartbeat enqueued" with accepted=false when queue rejects', async () => {
       const taskQueue = makeTaskQueue(false);
-      const processingCycle = makeJob();
+      const job = makeJob();
       const logger = makeFakeLogger();
-      const app = createHeartbeatRoute({ taskQueue, processingCycle, logger });
+      const app = createHeartbeatRoute({ taskQueue, job, logger });
 
       await app.request("/heartbeat", { method: "POST" });
 
