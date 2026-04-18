@@ -1,0 +1,103 @@
+import { Hono } from "hono";
+import { z } from "zod";
+import type { AppEnv } from "../../context-variables";
+import type { JobQueue } from "../../../../use-cases/ports/job-queue";
+import type { ChannelJob } from "../../../../use-cases/channel-job";
+import type { StartNewSession } from "../../../../use-cases/start-new-session";
+import type { ChannelGateway } from "../../../../use-cases/ports/channel-gateway";
+import type { LoggerPort } from "../../../../use-cases/ports/logger";
+import type { ConversationRef } from "../../../../entities/conversation-ref";
+import { TELEGRAM_CHANNEL_NAME } from "../../../../infrastructure/channel/telegram-channel";
+
+const TelegramUpdate = z.object({
+  message: z
+    .object({
+      text: z.string(),
+      chat: z.object({ id: z.number() }),
+    })
+    .optional(),
+});
+
+async function handleSlashCommand(
+  name: string | undefined,
+  ref: ConversationRef,
+  deps: {
+    startNewSession: StartNewSession;
+    channelGateway: ChannelGateway;
+    logger: LoggerPort;
+  },
+): Promise<void> {
+  if (name === "new") {
+    try {
+      await deps.startNewSession.execute();
+      await deps.channelGateway.reply(ref, "Started a new session.");
+    } catch (err) {
+      deps.logger.error("slash command /new failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      await deps.channelGateway.reply(ref, "Failed to start a new session.");
+    }
+    return;
+  }
+
+  const commandName = name ?? "";
+  deps.logger.info("unknown slash command received", { command: commandName });
+  await deps.channelGateway.reply(ref, `Unknown command: /${commandName}`);
+}
+
+export function createTelegramRoute(deps: {
+  jobQueue: JobQueue;
+  channelJob: ChannelJob;
+  startNewSession: StartNewSession;
+  channelGateway: ChannelGateway;
+  webhookSecret: string;
+  logger: LoggerPort;
+}): Hono<AppEnv> {
+  const app = new Hono<AppEnv>();
+
+  app.post("/channels/telegram", async (c) => {
+    const secret = c.req.header("x-telegram-bot-api-secret-token");
+    if (!secret || secret !== deps.webhookSecret) {
+      return c.body(null, 401);
+    }
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.body(null, 400);
+    }
+
+    const parsed = TelegramUpdate.safeParse(body);
+    if (!parsed.success) {
+      return c.body(null, 400);
+    }
+
+    const msg = parsed.data.message;
+    if (!msg) {
+      return c.body(null, 200);
+    }
+
+    const ref: ConversationRef = {
+      channel: TELEGRAM_CHANNEL_NAME,
+      payload: { chatId: msg.chat.id },
+    };
+
+    if (msg.text.startsWith("/")) {
+      const name = msg.text.slice(1).split(/\s+/, 1)[0]?.toLowerCase();
+      await handleSlashCommand(name, ref, deps);
+      return c.body(null, 200);
+    }
+
+    const accepted = deps.jobQueue.tryEnqueue(() =>
+      deps.channelJob.run({ message: msg.text, ref }),
+    );
+    deps.logger.info("telegram message received", {
+      accepted,
+      chatId: msg.chat.id,
+    });
+    return c.body(null, 200);
+  });
+
+  return app;
+}
