@@ -274,3 +274,35 @@ Note: D3 uses "agent loop" to describe the runtime behavior; the code-level name
 **Rationale**: Tracing is a cross-cutting concern with a single, process-wide lifecycle: the tracer provider and exporter pipeline are initialised before the HTTP server accepts traffic and torn down on SIGINT/SIGTERM. Modelling this as a use case would force every consumer to handle enable/disable logic, exporter failure handling, and tracer wiring — none of which is application logic. Using a port instead keeps the dependency direction inward; hiding the `Tracer` behind a `runInSpan` method means `use-cases/` carries **zero** `@opentelemetry/api` imports (runtime or type), matching the stricter Clean Architecture rule that inner layers own no third-party knowledge. AI SDK already emits `ai.generateText`, `ai.generateText.doGenerate`, and the per-tool-call spans natively when given a tracer via `experimental_telemetry`; `AiSdkShrimpAgent` just forwards the tracer plus the two record-flag booleans it owns.
 
 **Consequence**: Disabling telemetry has zero observable effect on the Job — `runInSpan` becomes a plain passthrough, no exporter connections are opened, and no I/O is performed. Enabling it requires only environment variables; no code changes. Swapping the exporter (e.g. to gRPC or to a vendor-specific collector) is a one-file change inside `infrastructure/telemetry/` with no impact on `use-cases/` or any other adapter. A future change that needs richer span attributes (e.g. per-task metadata) extends the port method rather than leaking the `Span` type into `use-cases/`.
+
+### D6. Channel is an abstract Port; Telegram is the first implementation
+
+**Decision**: A `Channel` concept is defined at the port level as both an inbound event source and the outbound `ChannelGateway` port. Telegram (via webhook) is the first concrete Channel adapter; other Channels can be added without changes to the Job Queue, Shrimp Agent, or use-case layer.
+
+**Rationale**: Coupling use-cases to Telegram types would violate D3's inbound-adapter principle and leak third-party concerns inward. Separating the abstract Channel contract from the Telegram implementation keeps use-cases dependency-free and makes the Telegram path a pluggable module.
+
+**Consequence**: Channel-specific concerns (webhook validation, Telegram API formatting) live in `infrastructure/channel/`. Use-cases see only `ChannelGateway`. Adding a second Channel is a new adapter class and a `container.ts` binding — no port or use-case changes.
+
+### D7. Session persistence uses JSONL + state.json, behind SessionRepository
+
+**Decision**: The single global Session is stored as an append-only JSONL file under `SHRIMP_STATE_DIR/sessions/<id>.jsonl`; the current Session ID is recorded in `SHRIMP_STATE_DIR/state.json`. All persistence details are hidden behind the `SessionRepository` port; use-cases only see Session loading, creating, and appending.
+
+**Rationale**: Conversation history is inherently append-only and must survive process restarts. JSONL matches append semantics; a separate `state.json` keeps the current-pointer update atomic and small. Hiding both files behind a port preserves the dependency-free use-case rule (D3) — filesystem APIs and JSON serialization do not leak past `infrastructure/session/`.
+
+**Consequence**: Swapping to a different persistence strategy (e.g., SQLite) is a new `SessionRepository` implementation with no use-case changes. Corruption handling (`state.json` malformed → fail fast; JSONL missing → discard and start fresh) is encapsulated inside `JsonlSessionRepository`.
+
+### D8. Reply tool uses DI Factory Method for per-Job ConversationRef
+
+**Decision**: The `Reply` tool is part of the universal tool set (same `ToolProvider` as Todoist built-ins) and is constructed per-Job through a DI Factory Method that injects the current `ConversationRef`. For a `HeartbeatJob` (no active Channel conversation) the `ConversationRef` is null and `Reply` returns a no-op tool result.
+
+**Rationale**: Tools need per-invocation context that a process-level singleton cannot carry. Threading `ConversationRef` through every tool's AI SDK schema would pollute the tool contract. Using a Factory Method bound per Job is consistent with the existing "session-scoped objects use Factory Method" convention (see §6 `ChannelGateway`).
+
+**Consequence**: The AI SDK sees one stable tool schema regardless of Job variant; runtime behavior (real reply vs. no-op) follows from the Factory's context. Adding new Channel-aware tools follows the same pattern.
+
+### D9. Slash Commands are dispatched by the Channel adapter, bypassing the Job Queue
+
+**Decision**: Messages prefixed with `/` are parsed by the Channel adapter and routed directly to matching use-cases (e.g., `StartNewSession` for `/new`) — they do not enter the Job Queue and do not invoke the Shrimp Agent.
+
+**Rationale**: Slash Commands are synchronous control-plane actions that must respond even when the Queue slot is busy. Routing them through the Queue would serialize them behind model-driven work with no benefit; they are functionally closer to HTTP RPC than to agent turns.
+
+**Consequence**: Slash Commands are observable and testable without AI provider calls. Adding a new command means a new adapter parser entry plus a small use-case class; no Agent or Queue changes required.
