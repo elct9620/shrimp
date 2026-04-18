@@ -234,6 +234,47 @@ Channels deliver events via push (webhook or equivalent server-initiated mechani
 
 Webhook delivery failures (e.g., invalid payload, authentication failure) are the Channel adapter's responsibility and must not affect other Channels or the Heartbeat path.
 
+### Session Lifecycle
+
+A **Session** is the single global, persistent conversation archive shared by all Channel-triggered Jobs. It holds the message history that the Shrimp Agent reads at the start of each ChannelJob and appends to after each response.
+
+**Cardinality:**
+
+At most one Session is "current" at any time. A previously-current Session remains on disk as an archive; only one Session is active.
+
+**Lazy creation:**
+
+No Session exists at process startup. The first non-command Channel message creates the first Session. If no Channel message ever arrives, no Session file is created.
+
+**Identity and storage:**
+
+| Item                    | Value                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| Session identifier      | UUID assigned at creation                                                       |
+| Session file            | `~/.shrimp/sessions/<id>.jsonl` — append-only; one entry per message exchange   |
+| Current Session pointer | `~/.shrimp/state.json` — holds the active Session ID                            |
+| Base directory          | `~/.shrimp/` (default; see Deployment & Configuration for the override env var) |
+
+**Session rotation via `/new`:**
+
+When the `/new` Slash Command is received, a new Session is created and becomes current. The previous Session file is retained on disk as an archive. Full Slash Command parsing rules are defined in [Slash Commands](#slash-commands).
+
+**Participation in Jobs:**
+
+| Job type     | Session access                                                                        |
+| ------------ | ------------------------------------------------------------------------------------- |
+| ChannelJob   | Reads the current Session before invoking the Shrimp Agent; appends new entries after |
+| HeartbeatJob | Does not read or write any Session                                                    |
+
+**Failure handling:**
+
+| Failure condition                                | Behavior                                                                                                                                                                                            |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state.json` missing                             | Treated as "no current Session"; the next Channel message creates a fresh one                                                                                                                       |
+| `state.json` malformed (unparseable)             | Fail fast at startup                                                                                                                                                                                |
+| Current Session JSONL file missing or unreadable | Current Session is discarded; the next Channel message creates a fresh one; the broken file is left on disk for inspection                                                                          |
+| JSONL append failure during a Job                | Fail-Open Recovery — the Job is not failed solely because a conversation entry could not be persisted; the loss is logged and the next message continues from the last successfully persisted entry |
+
 ### Telemetry Emission
 
 Every Job that runs produces one OTel trace. Spans within that trace expose task selection, agent execution, and each tool call as separately timed, attributable units of work that downstream collectors and dashboards can query.
