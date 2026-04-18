@@ -242,20 +242,6 @@ Channel is a generic contract for inbound event delivery. Telegram (via webhook)
 
 Channels deliver events via push (webhook or equivalent server-initiated mechanism). Long polling is not supported.
 
-**Endpoint:**
-
-- The Telegram Channel accepts webhook callbacks at `POST /channels/telegram`.
-- Every inbound callback must carry a shared secret delivered via the external provider's webhook conventions (e.g., Telegram's secret-token header). Requests without a matching secret are rejected with `401 Unauthorized` per the Response table.
-- Inbound request headers and payload shape follow the external provider's webhook specification.
-
-**Response:**
-
-| Scenario                        | Status             | Body    |
-| ------------------------------- | ------------------ | ------- |
-| Event accepted (secret matches) | `200 OK`           | no body |
-| Secret missing or mismatch      | `401 Unauthorized` | no body |
-| Malformed payload               | `400 Bad Request`  | no body |
-
 **Dispatch rules:**
 
 - Each Channel event carries a ConversationRef so outbound replies can be routed back to the originating Channel conversation.
@@ -266,6 +252,24 @@ Channels deliver events via push (webhook or equivalent server-initiated mechani
 **Failure handling:**
 
 Webhook delivery failures (e.g., invalid payload, authentication failure) are the Channel adapter's responsibility and must not affect other Channels or the Heartbeat path.
+
+**Telegram Channel:**
+
+Telegram is the first supported Channel implementation.
+
+**Endpoint:**
+
+- The Telegram Channel accepts webhook callbacks at `POST /channels/telegram`.
+- Every inbound callback must carry a shared secret delivered via the external provider's webhook conventions (e.g., Telegram's secret-token header). Requests without a matching secret are rejected with `401 Unauthorized` per the Response table below.
+- Inbound request headers and payload shape follow the external provider's webhook specification.
+
+**Response:**
+
+| Scenario                        | Status             | Body    |
+| ------------------------------- | ------------------ | ------- |
+| Event accepted (secret matches) | `200 OK`           | no body |
+| Secret missing or mismatch      | `401 Unauthorized` | no body |
+| Malformed payload               | `400 Bad Request`  | no body |
 
 ### Session Lifecycle
 
