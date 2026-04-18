@@ -50,7 +50,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Channel             | An abstract inbound source of user-initiated events (messages and Slash Commands). Telegram (via webhook) is the first implementation. A Channel both delivers inbound events to the Supervisor and accepts outbound replies from the agent                                                                                                                                                                                             |
 | Session             | A single global, persistent conversation archive used by Channel-driven Jobs. Created lazily on the user's first non-command message. Identified by a UUID. Stored as an append-only JSONL file; `state.json` records the current Session ID                                                                                                                                                                                            |
 | ConversationMessage | Shrimp's own value object representing one entry in a Session's message history (role + content). Not an AI SDK type; translation to the provider's message format happens at the Infrastructure boundary                                                                                                                                                                                                                               |
-| ConversationRef     | An opaque value-object pointer to the reply destination for a given Channel event. Carried on each Channel-driven Job so the Reply tool knows where to send the response. Meaning is Channel-specific and is only interpreted by the Channel implementation                                                                                                                                                                             |
+| ConversationRef     | An opaque value-object pointer to the reply destination for a given Channel event. Carried on each Channel-driven Job so the Job Worker knows where to deliver the response via ChannelGateway. Meaning is Channel-specific and is only interpreted by the Channel implementation                                                                                                                                                       |
 | Slash Command       | A message starting with `/` (e.g., `/new`) received through a Channel. Parsed and handled by the Channel adapter before any Job is enqueued; does not reach the Shrimp Agent                                                                                                                                                                                                                                                            |
 | Trace               | The complete record of one Job's causally-related work, represented as a tree of Spans sharing a single trace identifier                                                                                                                                                                                                                                                                                                                |
 | Span                | One named, timed unit of work within a Trace — such as task selection, a Shrimp Agent run, or a single tool call — carrying attributes and a reference to its parent Span except at the root                                                                                                                                                                                                                                            |
@@ -147,15 +147,16 @@ End-to-end sequence from external trigger to agent invocation. Two trigger sourc
 
 **ChannelJob flow:**
 
-| Step | Actor           | Action                        | Outcome                                                                                                                                                                                  |
-| ---- | --------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Channel adapter | Receive inbound message event | Non-command message (see [Channel Integration](#channel-integration)); ConversationRef captured; dispatch a ChannelJob                                                                   |
-| 2    | Job Queue       | Accept or drop the event      | If queue slot is free, start a ChannelJob; if busy, silently drop; see [In-Memory Job Queue](#in-memory-job-queue)                                                                       |
-| 3    | Job Worker      | Load Session                  | Read the current Session via the `SessionRepository`, or create a new Session if this is the first message; see [Session Lifecycle](#session-lifecycle)                                  |
-| 4    | Job Worker      | Assemble prompts              | Assemble the system prompt and a user prompt from the Session's conversation history plus the incoming Channel message                                                                   |
-| 5    | Shrimp Agent    | Execute the conversation turn | Runs the tool-calling loop with the assembled prompts, Session history input, and full tool set (including Reply tool bound to ConversationRef); terminates on done, max steps, or error |
-| 6    | Job Worker      | Append to Session             | Append the new conversation entries to the current Session                                                                                                                               |
-| 7    | Job Queue       | Release queue slot            | Job is finished; queue is ready to accept the next event                                                                                                                                 |
+| Step | Actor           | Action                        | Outcome                                                                                                                                                                           |
+| ---- | --------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Channel adapter | Receive inbound message event | Non-command message (see [Channel Integration](#channel-integration)); ConversationRef captured; dispatch a ChannelJob                                                            |
+| 2    | Job Queue       | Accept or drop the event      | If queue slot is free, start a ChannelJob; if busy, silently drop; see [In-Memory Job Queue](#in-memory-job-queue)                                                                |
+| 3    | Job Worker      | Load Session                  | Read the current Session via the `SessionRepository`, or create a new Session if this is the first message; see [Session Lifecycle](#session-lifecycle)                           |
+| 4    | Job Worker      | Assemble prompts              | Assemble the system prompt and a user prompt from the Session's conversation history plus the incoming Channel message                                                            |
+| 5    | Shrimp Agent    | Execute the conversation turn | Runs the tool-calling loop with the assembled prompts, Session history input, and full tool set; terminates on done, max steps, or error                                          |
+| 5a   | Job Worker      | Deliver replies               | After the agent returns, delivers each assistant ConversationMessage to the originating Channel conversation via ChannelGateway using the ConversationRef; failures are Fail-Open |
+| 6    | Job Worker      | Append to Session             | Append the new conversation entries to the current Session                                                                                                                        |
+| 7    | Job Queue       | Release queue slot            | Job is finished; queue is ready to accept the next event                                                                                                                          |
 
 **Flow invariants (apply to both variants):**
 
@@ -246,7 +247,7 @@ Channels deliver events via push (webhook or equivalent server-initiated mechani
 
 - Each Channel event carries a ConversationRef so outbound replies can be routed back to the originating Channel conversation.
 - Message events compete with Heartbeat for the single Job Queue slot. If the slot is busy, the event is dropped silently — the same drop semantics as `POST /heartbeat`. No retry inside Shrimp.
-- A Channel reply (sent by the agent via the Reply tool) is routed back to the originating Channel using the ConversationRef. Reply failures follow Fail-Open Recovery — the Job is not failed solely because a reply could not be delivered.
+- A Channel reply is delivered by the Job Worker after the agent returns, routed back to the originating Channel conversation via ChannelGateway using the ConversationRef. Reply failures follow Fail-Open Recovery — the Job is not failed solely because a reply could not be delivered.
 - Session creation and conversation history for Channel-driven Jobs are governed by the [Session Lifecycle](#session-lifecycle) section.
 
 **Failure handling:**
@@ -335,7 +336,7 @@ Only `/new` is supported. Additional commands are out of scope (see [IS NOT](#is
 
 - Slash Commands are handled entirely by the Channel adapter; they do not enter the Job Queue.
 - Because they bypass the Job Queue, a Slash Command is processed even when the Job Queue slot is busy.
-- The adapter sends its reply back to the originating Channel conversation via the ConversationRef, using the same outbound path as the Reply tool.
+- The adapter sends its reply back to the originating Channel conversation via the ConversationRef, using ChannelGateway.
 
 **Failure handling:**
 
@@ -547,7 +548,8 @@ A **Job** is the orchestration unit triggered by either a Heartbeat (**Heartbeat
 | ---- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1    | Job Worker   | Load the current Session (or create a new one if none exists — see [Session Lifecycle](#session-lifecycle)); append the incoming Channel message to the Session |
 | 2    | Job Worker   | Assemble system prompt (goal + tools) and user prompt (incoming Channel message); pass Session's ConversationMessage entries as `history` to the Shrimp Agent   |
-| 3    | Shrimp Agent | Run the tool-calling loop with the assembled prompts, Session history, and all available tools; the agent may emit replies via the Reply tool during the loop   |
+| 3    | Shrimp Agent | Run the tool-calling loop with the assembled prompts, Session history, and all available tools; terminates on done, max steps, or error                         |
+| 3a   | Job Worker   | Deliver each assistant ConversationMessage returned by the agent to the originating Channel conversation via ChannelGateway; failures are Fail-Open             |
 | 4    | Job Worker   | Append new ConversationMessage entries produced during the invocation back to the Session via the Session Repository                                            |
 | 5    | Job Queue    | Job ends; slot released regardless of success or failure                                                                                                        |
 
