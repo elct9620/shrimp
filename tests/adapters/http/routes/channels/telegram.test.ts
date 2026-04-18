@@ -96,7 +96,7 @@ describe("POST /channels/telegram", () => {
     expect(startNewSession.execute).not.toHaveBeenCalled();
   });
 
-  it("returns 200 and skips dispatch for a message update missing text", async () => {
+  it("returns 200 and skips dispatch for a non-message update (e.g. edited_message)", async () => {
     const jobQueue = makeJobQueue();
     const startNewSession = makeStartNewSession();
     const app = makeApp({ jobQueue, startNewSession });
@@ -104,6 +104,21 @@ describe("POST /channels/telegram", () => {
     const res = await post(
       app,
       { edited_message: { text: "edit", chat: { id: 1 } } },
+      VALID_SECRET,
+    );
+    expect(res.status).toBe(200);
+    expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    expect(startNewSession.execute).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 and skips dispatch for a message without text (e.g. photo)", async () => {
+    const jobQueue = makeJobQueue();
+    const startNewSession = makeStartNewSession();
+    const app = makeApp({ jobQueue, startNewSession });
+    // photo-only message has no text field — should ack 200 per SPEC §Telegram Channel
+    const res = await post(
+      app,
+      { message: { photo: [{ file_id: "abc" }], chat: { id: 1 } } },
       VALID_SECRET,
     );
     expect(res.status).toBe(200);

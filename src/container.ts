@@ -22,6 +22,10 @@ import { BuiltInToolFactory } from "./adapters/tools/built-in-tool-factory";
 import { ToolProviderFactoryImpl } from "./adapters/tools/tool-provider-factory-impl";
 import { HeartbeatJob } from "./use-cases/heartbeat-job";
 import { NoopChannelGateway } from "./infrastructure/channel/noop-channel-gateway";
+import { TelegramChannel } from "./infrastructure/channel/telegram-channel";
+import { JsonlSessionRepository } from "./infrastructure/session/jsonl-session-repository";
+import { ChannelJob } from "./use-cases/channel-job";
+import { StartNewSession } from "./use-cases/start-new-session";
 import { createPinoLogger } from "./infrastructure/logger/pino-logger";
 import type { BoardRepository } from "./use-cases/ports/board-repository";
 import type { LoggerPort } from "./use-cases/ports/logger";
@@ -36,16 +40,6 @@ import type { ToolDescription } from "./use-cases/ports/tool-description";
 // factories are called each resolve. In production, each token is resolved
 // once in main(), so effective behaviour is singleton.
 // ---------------------------------------------------------------------------
-
-// ChannelGateway — Noop stub; item 11 will swap in TelegramChannelGateway when CHANNELS_ENABLED is true.
-container.register(TOKENS.ChannelGateway, {
-  useFactory: (c) =>
-    new NoopChannelGateway(
-      c
-        .resolve<LoggerPort>(TOKENS.Logger)
-        .child({ module: "NoopChannelGateway" }),
-    ),
-});
 
 // BoardRepository: scalar deps resolved from container at resolve time
 container.register(TOKENS.BoardRepository, {
@@ -125,6 +119,66 @@ export async function bootstrap(): Promise<void> {
   container.registerInstance(TOKENS.Telemetry, telemetry);
   container.registerInstance(TOKENS.Tracer, tracer);
   logger.info("telemetry initialized", { enabled: env.telemetryEnabled });
+
+  // 3a. ChannelGateway — TelegramChannel when enabled, NoopChannelGateway otherwise.
+  // Registered before step 8 (ToolProviderFactory) so BuiltInToolFactory can resolve it.
+  if (env.channelsEnabled) {
+    container.register(TOKENS.ChannelGateway, {
+      useFactory: () =>
+        new TelegramChannel(
+          env.telegramBotToken!,
+          logger.child({ module: "TelegramChannel" }),
+        ),
+    });
+
+    // SessionRepository
+    container.register(TOKENS.SessionRepository, {
+      useFactory: (c) =>
+        new JsonlSessionRepository({
+          stateDir: env.shrimpStateDir,
+          logger: c
+            .resolve<LoggerPort>(TOKENS.Logger)
+            .child({ module: "JsonlSessionRepository" }),
+        }),
+    });
+
+    // ChannelJob
+    container.register(TOKENS.ChannelJob, {
+      useFactory: (c) =>
+        new ChannelJob({
+          sessionRepository: c.resolve(TOKENS.SessionRepository),
+          shrimpAgent: c.resolve<ShrimpAgent>(TOKENS.ShrimpAgent),
+          toolProviderFactory: c.resolve(TOKENS.ToolProviderFactory),
+          maxSteps: env.aiMaxSteps,
+          logger: c
+            .resolve<LoggerPort>(TOKENS.Logger)
+            .child({ module: "ChannelJob" }),
+          telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
+        }),
+    });
+
+    // StartNewSession
+    container.register(TOKENS.StartNewSession, {
+      useFactory: (c) =>
+        new StartNewSession(
+          c.resolve(TOKENS.SessionRepository),
+          c
+            .resolve<LoggerPort>(TOKENS.Logger)
+            .child({ module: "StartNewSession" }),
+        ),
+    });
+
+    logger.info("channel feature enabled", { gateway: "telegram" });
+  } else {
+    container.register(TOKENS.ChannelGateway, {
+      useFactory: (c) =>
+        new NoopChannelGateway(
+          c
+            .resolve<LoggerPort>(TOKENS.Logger)
+            .child({ module: "NoopChannelGateway" }),
+        ),
+    });
+  }
 
   // 4. Language model
   const provider = createOpenAICompatible({

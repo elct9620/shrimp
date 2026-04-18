@@ -12,6 +12,9 @@ import type { EnvConfig } from "../config/env-config";
 import type { McpConfig } from "../config/mcp-config";
 import type { McpClientFactory } from "../mcp/mcp-tool-loader";
 import type { HeartbeatJob } from "../../use-cases/heartbeat-job";
+import type { SessionRepository } from "../../use-cases/ports/session-repository";
+import type { ChannelJob } from "../../use-cases/channel-job";
+import type { StartNewSession } from "../../use-cases/start-new-session";
 
 export const TOKENS = {
   Logger: Symbol.for("shrimp.LoggerPort"),
@@ -28,6 +31,9 @@ export const TOKENS = {
   McpClientFactory: Symbol.for("shrimp.McpClientFactory"),
   HeartbeatJob: Symbol.for("shrimp.HeartbeatJob"),
   ChannelGateway: Symbol.for("shrimp.ChannelGateway"),
+  SessionRepository: Symbol.for("shrimp.SessionRepository"),
+  ChannelJob: Symbol.for("shrimp.ChannelJob"),
+  StartNewSession: Symbol.for("shrimp.StartNewSession"),
 } as const;
 
 export type TokenRegistry = {
@@ -45,4 +51,7 @@ export type TokenRegistry = {
   [TOKENS.McpClientFactory]: McpClientFactory;
   [TOKENS.HeartbeatJob]: HeartbeatJob;
   [TOKENS.ChannelGateway]: ChannelGateway;
+  [TOKENS.SessionRepository]: SessionRepository;
+  [TOKENS.ChannelJob]: ChannelJob;
+  [TOKENS.StartNewSession]: StartNewSession;
 };

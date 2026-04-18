@@ -12,7 +12,7 @@ import { TELEGRAM_CHANNEL_NAME } from "../../../../infrastructure/channel/telegr
 const TelegramUpdate = z.object({
   message: z
     .object({
-      text: z.string(),
+      text: z.string().optional(),
       chat: z.object({ id: z.number() }),
     })
     .optional(),
@@ -74,23 +74,24 @@ export function createTelegramRoute(deps: {
     }
 
     const msg = parsed.data.message;
-    if (!msg) {
+    if (!msg?.text) {
       return c.body(null, 200);
     }
 
+    const text = msg.text;
     const ref: ConversationRef = {
       channel: TELEGRAM_CHANNEL_NAME,
       payload: { chatId: msg.chat.id },
     };
 
-    if (msg.text.startsWith("/")) {
-      const name = msg.text.slice(1).split(/\s+/, 1)[0]?.toLowerCase();
+    if (text.startsWith("/")) {
+      const name = text.slice(1).split(/\s+/, 1)[0]?.toLowerCase();
       await handleSlashCommand(name, ref, deps);
       return c.body(null, 200);
     }
 
     const accepted = deps.jobQueue.tryEnqueue(() =>
-      deps.channelJob.run({ message: msg.text, ref }),
+      deps.channelJob.run({ message: text, ref }),
     );
     deps.logger.info("telegram message received", {
       accepted,

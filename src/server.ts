@@ -6,6 +6,9 @@ import { TOKENS } from "./infrastructure/container/tokens";
 import { McpToolLoader } from "./infrastructure/mcp/mcp-tool-loader";
 import type { HeartbeatJob } from "./use-cases/heartbeat-job";
 import type { TelemetryPort } from "./use-cases/ports/telemetry";
+import type { ChannelJob } from "./use-cases/channel-job";
+import type { StartNewSession } from "./use-cases/start-new-session";
+import type { ChannelGateway } from "./use-cases/ports/channel-gateway";
 import { createApp } from "./adapters/http/app";
 
 async function main() {
@@ -25,11 +28,25 @@ async function main() {
     TOKENS.PinoInstance,
   );
 
+  const channels = env.channelsEnabled
+    ? {
+        channelJob: container.resolve<ChannelJob>(TOKENS.ChannelJob),
+        startNewSession: container.resolve<StartNewSession>(
+          TOKENS.StartNewSession,
+        ),
+        channelGateway: container.resolve<ChannelGateway>(
+          TOKENS.ChannelGateway,
+        ),
+        webhookSecret: env.telegramWebhookSecret!,
+      }
+    : undefined;
+
   const app = createApp({
     pinoInstance,
     jobQueue: container.resolve(TOKENS.JobQueue),
     heartbeatJob,
     logger: logger.child({ module: "http.heartbeat" }),
+    channels,
   });
 
   const server = serve({ fetch: app.fetch, port: env.port });

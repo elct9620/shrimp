@@ -6,14 +6,24 @@ import type { AppEnv } from "./context-variables";
 import type { JobQueue } from "../../use-cases/ports/job-queue";
 import type { HeartbeatJob } from "../../use-cases/heartbeat-job";
 import type { LoggerPort } from "../../use-cases/ports/logger";
+import type { ChannelJob } from "../../use-cases/channel-job";
+import type { StartNewSession } from "../../use-cases/start-new-session";
+import type { ChannelGateway } from "../../use-cases/ports/channel-gateway";
 import { createHealthRoute } from "./routes/health";
 import { createHeartbeatRoute } from "./routes/heartbeat";
+import { createTelegramRoute } from "./routes/channels/telegram";
 
 export type CreateAppDeps = {
   pinoInstance: Logger;
   jobQueue: JobQueue;
   heartbeatJob: HeartbeatJob;
   logger: LoggerPort;
+  channels?: {
+    channelJob: ChannelJob;
+    startNewSession: StartNewSession;
+    channelGateway: ChannelGateway;
+    webhookSecret: string;
+  };
 };
 
 export function createApp(deps: CreateAppDeps): Hono<AppEnv> {
@@ -48,6 +58,20 @@ export function createApp(deps: CreateAppDeps): Hono<AppEnv> {
       logger: deps.logger,
     }),
   );
+
+  if (deps.channels) {
+    app.route(
+      "/",
+      createTelegramRoute({
+        jobQueue: deps.jobQueue,
+        channelJob: deps.channels.channelJob,
+        startNewSession: deps.channels.startNewSession,
+        channelGateway: deps.channels.channelGateway,
+        webhookSecret: deps.channels.webhookSecret,
+        logger: deps.logger,
+      }),
+    );
+  }
 
   return app;
 }
