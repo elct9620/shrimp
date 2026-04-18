@@ -29,7 +29,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 - No Web UI or dashboard
 - No management of Todoist Project structure (only reads from a designated Board)
 - No cross-Board or multi-Board integration
-- No persistent or distributed task queue (in-memory only; lost on restart)
+- No persistent or distributed task queue (the in-memory task queue is lost on restart; Session conversation history is separately persisted — see Session Lifecycle)
 
 ## Glossary
 
@@ -60,17 +60,20 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 ### IS
 
-| Feature                            | Description                                                                                                                              |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| In-memory task queue               | A single-slot in-memory queue that serializes task processing; one task at a time                                                        |
-| Heartbeat-triggered task selection | On `/heartbeat`, enqueue a processing cycle: select one task (In Progress first, then Backlog)                                           |
-| AI-driven task execution           | The Shrimp Agent executes the selected task via built-in and MCP tools until the task is complete, max steps reached, or an error occurs |
-| Progress reporting via comments    | Agent posts a Todoist comment with status after each execution                                                                           |
-| Task completion                    | Agent marks the task Done when it determines the task is finished                                                                        |
-| Health check endpoint              | `/health` returns a liveness signal for Docker health check                                                                              |
-| Built-in Todoist tools             | Core Todoist operations (get tasks, get comments, post comment, move task) are built-in to the agent                                     |
-| MCP-based tool extension           | Additional capabilities can be added via MCP servers without modifying the agent                                                         |
-| Distributed tracing                | The Job, Shrimp Agent execution, and each tool call emit OpenTelemetry spans that downstream collectors can consume                      |
+| Feature                             | Description                                                                                                                              |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| In-memory task queue                | A single-slot in-memory queue that serializes task processing; one task at a time                                                        |
+| Heartbeat-triggered task selection  | On `/heartbeat`, enqueue a processing cycle: select one task (In Progress first, then Backlog)                                           |
+| AI-driven task execution            | The Shrimp Agent executes the selected task via built-in and MCP tools until the task is complete, max steps reached, or an error occurs |
+| Progress reporting via comments     | Agent posts a Todoist comment with status after each execution                                                                           |
+| Task completion                     | Agent marks the task Done when it determines the task is finished                                                                        |
+| Health check endpoint               | `/health` returns a liveness signal for Docker health check                                                                              |
+| Built-in Todoist tools              | Core Todoist operations (get tasks, get comments, post comment, move task) are built-in to the agent                                     |
+| MCP-based tool extension            | Additional capabilities can be added via MCP servers without modifying the agent                                                         |
+| Distributed tracing                 | The Job, Shrimp Agent execution, and each tool call emit OpenTelemetry spans that downstream collectors can consume                      |
+| Channel-triggered Jobs              | External Channels (e.g., Telegram) can push messages that produce Jobs in the same Job Queue as Heartbeat-triggered Jobs                 |
+| Session-scoped conversation history | Single global Session persisted as append-only JSONL; provides conversation history to the Shrimp Agent on each Channel-triggered Job    |
+| Slash Commands                      | `/`-prefixed messages received through a Channel are parsed by the Channel adapter; `/new` starts a new Session                          |
 
 ### IS NOT
 
@@ -86,6 +89,9 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Metrics and log export               | Shrimp emits traces only; RED metrics, histograms, and log shipping are not produced                                             |
 | Custom sampler or exporter plugins   | Sampler and exporter are configured entirely through the OpenTelemetry SDK environment; Shrimp ships no pluggable override       |
 | Trace visualization UI               | Shrimp does not host a trace viewer; an external backend (e.g., Jaeger, Tempo, or a vendor collector) is required to view traces |
+| Per-user or per-chat Sessions        | Single global Session only; multi-session support is out of scope                                                                |
+| Channel polling                      | Channels receive events via push (e.g., webhook for Telegram); long-polling is not supported                                     |
+| Slash Command extensibility          | Only `/new` is provided; user-defined or dynamically-registered Slash Commands are out of scope                                  |
 
 ## Behavior
 
