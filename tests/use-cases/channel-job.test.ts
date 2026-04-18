@@ -11,6 +11,7 @@ import type {
 import type { ToolProvider } from "../../src/use-cases/ports/tool-provider";
 import type { ToolProviderFactory } from "../../src/use-cases/ports/tool-provider-factory";
 import type { LoggerPort } from "../../src/use-cases/ports/logger";
+import type { ChannelGateway } from "../../src/use-cases/ports/channel-gateway";
 import { NoopTelemetry } from "../../src/infrastructure/telemetry/noop-telemetry";
 import { makeFakeLogger } from "../mocks/fake-logger";
 import type { ConversationMessage } from "../../src/entities/conversation-message";
@@ -67,14 +68,22 @@ function makeToolProviderFactory(): ToolProviderFactory & {
   return { create: vi.fn(() => provider) };
 }
 
+function makeChannelGateway(): ChannelGateway & {
+  reply: ReturnType<typeof vi.fn>;
+} {
+  return { reply: vi.fn().mockResolvedValue(undefined) };
+}
+
 function makeJob(
   sessionRepo: SessionRepository,
   shrimpAgent: ShrimpAgent,
   logger: LoggerPort,
   toolProviderFactory?: ToolProviderFactory,
+  channelGateway?: ChannelGateway,
 ): ChannelJob {
   return new ChannelJob({
     sessionRepository: sessionRepo,
+    channelGateway: channelGateway ?? makeChannelGateway(),
     shrimpAgent,
     toolProviderFactory: toolProviderFactory ?? makeToolProviderFactory(),
     maxSteps: 10,
@@ -161,14 +170,20 @@ describe("ChannelJob.run", () => {
     ).rejects.toThrow("agent exploded");
   });
 
-  it("toolProviderFactory.create is called with the event ref so ReplyTool can send replies", async () => {
+  it("delivers the agent's assistant reply directly via ChannelGateway", async () => {
     const ref = makeRef();
-    const factory = makeToolProviderFactory();
-    const j = makeJob(sessionRepo, agent, logger, factory);
+    const gateway = makeChannelGateway();
+    const j = makeJob(
+      sessionRepo,
+      agent,
+      logger,
+      makeToolProviderFactory(),
+      gateway,
+    );
 
     await j.run({ message: "Hi", ref });
 
-    expect(factory.create).toHaveBeenCalledWith({ ref });
+    expect(gateway.reply).toHaveBeenCalledWith(ref, "Reply text");
   });
 
   it("user msg is appended before agent invocation so transcript is preserved on agent failure", async () => {

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ConversationRef } from "../entities/conversation-ref";
+import type { ChannelGateway } from "./ports/channel-gateway";
 import type { SessionRepository } from "./ports/session-repository";
 import type { ShrimpAgent } from "./ports/shrimp-agent";
 import type { ToolProviderFactory } from "./ports/tool-provider-factory";
@@ -8,6 +9,7 @@ import type { TelemetryPort } from "./ports/telemetry";
 
 export type ChannelJobConfig = {
   sessionRepository: SessionRepository;
+  channelGateway: ChannelGateway;
   shrimpAgent: ShrimpAgent;
   toolProviderFactory: ToolProviderFactory;
   maxSteps: number;
@@ -16,11 +18,12 @@ export type ChannelJobConfig = {
 };
 
 const CHANNEL_SYSTEM_PROMPT = `You are a helpful assistant responding to messages in a chat channel.
-Use the available tools when needed to fulfill the request.
+Respond with your reply as plain text — your final text response is sent to the user automatically. Do not call the \`reply\` tool; use other tools only when you need to perform an action.
 Keep replies concise and relevant to the user's message.`;
 
 export class ChannelJob {
   private readonly sessionRepository: SessionRepository;
+  private readonly channelGateway: ChannelGateway;
   private readonly shrimpAgent: ShrimpAgent;
   private readonly toolProviderFactory: ToolProviderFactory;
   private readonly maxSteps: number;
@@ -29,6 +32,7 @@ export class ChannelJob {
 
   constructor({
     sessionRepository,
+    channelGateway,
     shrimpAgent,
     toolProviderFactory,
     maxSteps,
@@ -36,6 +40,7 @@ export class ChannelJob {
     telemetry,
   }: ChannelJobConfig) {
     this.sessionRepository = sessionRepository;
+    this.channelGateway = channelGateway;
     this.shrimpAgent = shrimpAgent;
     this.toolProviderFactory = toolProviderFactory;
     this.maxSteps = maxSteps;
@@ -66,7 +71,7 @@ export class ChannelJob {
       // transcript is preserved even if the agent call fails (Fail-Open per SPEC).
       await this.sessionRepository.append(session.id, [userMsg]);
 
-      const toolProvider = this.toolProviderFactory.create({ ref: event.ref });
+      const toolProvider = this.toolProviderFactory.create();
 
       this.logger.debug("cycle invoking shrimp agent", {
         sessionId: session.id,
@@ -87,6 +92,16 @@ export class ChannelJob {
       // Append assistant turn(s) — Fail-Open: sessionRepository.append must not throw.
       if (result.newMessages.length > 0) {
         await this.sessionRepository.append(session.id, result.newMessages);
+      }
+
+      // Deliver the agent's final text response to the originating Channel.
+      // ChannelGateway.reply is Fail-Open per SPEC §Channel Integration — if
+      // delivery fails the Job is not failed. We iterate newMessages so any
+      // assistant turn the agent produced is sent; typically this is one.
+      for (const msg of result.newMessages) {
+        if (msg.role === "assistant" && msg.content.length > 0) {
+          await this.channelGateway.reply(event.ref, msg.content);
+        }
       }
 
       this.logger.info("cycle finished", {

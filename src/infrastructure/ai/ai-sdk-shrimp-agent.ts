@@ -161,17 +161,16 @@ export class AiSdkShrimpAgent implements ShrimpAgent {
       const agent = new ToolLoopAgent(this.buildToolLoopAgentOptions(input));
 
       try {
-        const callParams =
-          historyMessages.length > 0
-            ? {
-                messages: [
-                  ...historyMessages,
-                  { role: "user" as const, content: input.userPrompt },
-                ],
-              }
-            : { prompt: input.userPrompt };
-
-        const result = await agent.generate(callParams);
+        // Always use `messages` shape so history and the current user prompt
+        // share a single code path. Some providers validate messages/prompt
+        // exclusivity strictly and reject the `{ prompt }` shape on first
+        // turn when `instructions` is also set.
+        const result = await agent.generate({
+          messages: [
+            ...historyMessages,
+            { role: "user" as const, content: input.userPrompt },
+          ],
+        });
 
         if (this.recordOutputs) {
           const outputMessages = toGenAiOutputMessages(result.text, []);

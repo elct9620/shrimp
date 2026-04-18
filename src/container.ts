@@ -147,6 +147,7 @@ export async function bootstrap(): Promise<void> {
       useFactory: (c) =>
         new ChannelJob({
           sessionRepository: c.resolve(TOKENS.SessionRepository),
+          channelGateway: c.resolve(TOKENS.ChannelGateway),
           shrimpAgent: c.resolve<ShrimpAgent>(TOKENS.ShrimpAgent),
           toolProviderFactory: c.resolve(TOKENS.ToolProviderFactory),
           maxSteps: env.aiMaxSteps,
