@@ -512,7 +512,30 @@ describe("AiSdkShrimpAgent.run", () => {
       expect(span!.attributes["gen_ai.provider.name"]).toBe("my-provider");
     });
 
-    it("should set gen_ai.conversation.id to the jobId from JobInput", async () => {
+    it("should set gen_ai.conversation.id to the sessionId for a ChannelJob (sessionId present)", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), { tracer });
+
+      await agent.run({ ...baseInput, sessionId: "sess-abc" });
+
+      const span = findShrimpAgentSpan(spans);
+      expect(span!.attributes["gen_ai.conversation.id"]).toBe("sess-abc");
+    });
+
+    it("should NOT set gen_ai.conversation.id for a HeartbeatJob (sessionId absent)", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger(), { tracer });
+
+      // baseInput has no sessionId — simulates a HeartbeatJob
+      await agent.run(baseInput);
+
+      const span = findShrimpAgentSpan(spans);
+      expect(span!.attributes).not.toHaveProperty("gen_ai.conversation.id");
+    });
+
+    it("should always set shrimp.job.id to the jobId from JobInput", async () => {
       const { tracer, spans } = makeRecordingTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
@@ -520,22 +543,7 @@ describe("AiSdkShrimpAgent.run", () => {
       await agent.run(baseInput);
 
       const span = findShrimpAgentSpan(spans);
-      expect(span!.attributes["gen_ai.conversation.id"]).toBe(baseInput.jobId);
-    });
-
-    it("should set gen_ai.conversation.id even when recordInputs=false and recordOutputs=false", async () => {
-      const { tracer, spans } = makeRecordingTracer();
-      const model = makeModel("stop");
-      const agent = makeAgent(model, makeFakeLogger(), {
-        tracer,
-        recordInputs: false,
-        recordOutputs: false,
-      });
-
-      await agent.run(baseInput);
-
-      const span = findShrimpAgentSpan(spans);
-      expect(span!.attributes["gen_ai.conversation.id"]).toBe(baseInput.jobId);
+      expect(span!.attributes["shrimp.job.id"]).toBe(baseInput.jobId);
     });
 
     it("should set gen_ai.agent.id to a non-empty UUID-format string", async () => {

@@ -119,11 +119,14 @@ export class AiSdkShrimpAgent implements ShrimpAgent {
       span.setAttribute(ATTR_GEN_AI_AGENT_ID, SHRIMP_MAIN_AGENT_ID);
       span.setAttribute(ATTR_GEN_AI_AGENT_VERSION, SHRIMP_AGENT_VERSION);
       span.setAttribute(ATTR_GEN_AI_PROVIDER_NAME, this.providerName);
-      // Correlation ID — always recorded regardless of recordInputs/recordOutputs
-      // because it is trace glue, not sensitive content.
-      span.setAttribute(ATTR_GEN_AI_CONVERSATION_ID, input.jobId);
-      // TODO(item 12): stamp gen_ai.conversation.id = input.sessionId when present
-      // to surface the Session ID for ChannelJob traces.
+      // Per SPEC §Telemetry Emission:
+      //   ChannelJob  → gen_ai.conversation.id = Session ID (cross-Job correlation)
+      //   HeartbeatJob → attribute omitted (no conversation context)
+      // shrimp.job.id is always set so per-invocation spans remain queryable.
+      span.setAttribute("shrimp.job.id", input.jobId);
+      if (input.sessionId !== undefined) {
+        span.setAttribute(ATTR_GEN_AI_CONVERSATION_ID, input.sessionId);
+      }
 
       if (this.recordInputs) {
         const historyMessages = input.history.map((m) => ({
