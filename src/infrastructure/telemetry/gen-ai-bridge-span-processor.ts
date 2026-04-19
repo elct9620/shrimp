@@ -308,8 +308,9 @@ export function toGenAiInputMessages(aiMessages: unknown[]): GenAiMessage[] {
  * - A text part when `text` is a non-empty string.
  * - Tool call parts for each entry in `toolCalls`.
  *
- * Reasoning is placed before text to reflect generation order (the model thinks
- * before producing the final answer).
+ * Part order is fixed at reasoning → text → tool_call regardless of the param
+ * order, reflecting generation order (the model thinks before producing the
+ * final answer, which precedes any tool invocations within the same turn).
  *
  * Returns an empty array when all inputs are absent/empty — callers must
  * skip setting `gen_ai.output.messages` in that case.
@@ -463,11 +464,12 @@ function renameToCanonicalForm(span: ReadableSpan): void {
 }
 
 /**
- * Bridges cache token breakdown attrs from AI SDK into gen_ai semconv on chat spans.
+ * Bridges token-breakdown attrs from AI SDK into gen_ai semconv on chat spans.
  *
  * Source attrs (node_modules/ai/dist/index.mjs L4372-4379, L4603-4610):
- *   ai.usage.inputTokenDetails.cacheReadTokens  → gen_ai.usage.cache_read.input_tokens
- *   ai.usage.inputTokenDetails.cacheWriteTokens → gen_ai.usage.cache_creation.input_tokens
+ *   ai.usage.inputTokenDetails.cacheReadTokens   → gen_ai.usage.cache_read.input_tokens
+ *   ai.usage.inputTokenDetails.cacheWriteTokens  → gen_ai.usage.cache_creation.input_tokens
+ *   ai.usage.outputTokenDetails.reasoningTokens  → gen_ai.usage.reasoning_tokens
  *
  * WHY inputTokenDetails.* path: it is the canonical AI SDK source and exposes
  * both read AND write. Bridging from the duplicate `cachedInputTokens` alias

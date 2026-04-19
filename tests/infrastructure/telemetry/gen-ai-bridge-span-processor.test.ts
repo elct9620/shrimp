@@ -882,6 +882,21 @@ describe("GenAiBridgeSpanProcessor", () => {
       expect(attrs["gen_ai.usage.reasoning_tokens"]).toBe(0);
     });
 
+    it("preserves pre-existing gen_ai.usage.reasoning_tokens via setIfAbsent", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "ai.usage.outputTokenDetails.reasoningTokens": 256,
+          "gen_ai.usage.reasoning_tokens": 7,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.usage.reasoning_tokens"]).toBe(7);
+    });
+
     it("does NOT map reasoning attrs on a non-chat span", () => {
       const processor = new GenAiBridgeSpanProcessor();
       const span = makeFakeSpan({
