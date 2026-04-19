@@ -172,43 +172,17 @@ export class AiSdkShrimpAgent implements ShrimpAgent {
           ],
         });
 
-        // Strategy 1: walk result.response.messages and collect every assistant
-        // turn as a separate ConversationMessage. result.text only contains the
-        // LAST step's text — in a multi-step tool loop the model may emit text in
-        // an earlier step then end on a tool call, leaving result.text === "".
-        // result.response.messages is the canonical assembled transcript of the
-        // full run; filtering to role === "assistant" and extracting text parts
-        // captures every turn the model spoke, not just the final one.
-        //
-        // AssistantModelMessage.content is AssistantContent:
-        //   string | Array<TextPart | FilePart | ReasoningPart | ToolCallPart | ...>
-        // We flatten array content to the TextPart entries (type === "text"),
-        // join their text fields, and skip assistant turns that produced no text
-        // (e.g. pure tool-call steps).
-        const newMessages: ConversationMessage[] = result.response.messages
-          .filter((m) => m.role === "assistant")
-          .map((m) => {
-            const { content } = m as { content: unknown };
-            if (typeof content === "string") return content;
-            if (Array.isArray(content)) {
-              return (content as Array<{ type: string; text?: string }>)
-                .filter((p) => p.type === "text")
-                .map((p) => p.text ?? "")
-                .join("");
-            }
-            return "";
-          })
-          .filter((text) => text.length > 0)
-          .map((text) => ({ role: "assistant" as const, content: text }));
-
-        // For telemetry, join all assistant turns so gen_ai.output.messages
-        // reflects the full assistant output even in multi-step runs.
-        const fullAssistantText = newMessages
-          .map((m) => m.content)
-          .join("\n\n");
+        // Deliver only the final assistant output (result.text) — the same
+        // value OTel `gen_ai.output.messages` records. Intermediate-step
+        // assistant turns are scratch/thinking and must not be relayed to
+        // the Channel (would flood the user with redundant messages).
+        const newMessages: ConversationMessage[] =
+          result.text.length > 0
+            ? [{ role: "assistant", content: result.text }]
+            : [];
 
         if (this.recordOutputs) {
-          const outputMessages = toGenAiOutputMessages(fullAssistantText, []);
+          const outputMessages = toGenAiOutputMessages(result.text, []);
           if (outputMessages.length > 0) {
             span.setAttribute(
               ATTR_GEN_AI_OUTPUT_MESSAGES,

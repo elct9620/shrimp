@@ -351,18 +351,16 @@ describe("AiSdkShrimpAgent.run", () => {
       expect(result.newMessages).toHaveLength(0);
     });
 
-    // Regression: in a multi-step tool loop the model may emit text in step N-1
-    // then end on a tool call. result.text (last step only) would be "" causing
-    // ChannelJob to deliver nothing. newMessages must capture every assistant turn.
-    it("should capture assistant text from step N-1 when final step has no text", async () => {
-      // MockLanguageModelV3 array indexing is 1-based (pushes first, then indexes),
-      // so we use a function-based doGenerate with a manual call counter.
+    // In a multi-step tool loop the model may emit text in earlier steps
+    // (scratch / thinking) then end on a tool call. Those intermediate turns
+    // must NOT be relayed as replies — only the final aggregated `result.text`
+    // (what OTel records as gen_ai.output.messages) is delivered.
+    it("returns no newMessages when only intermediate steps had text", async () => {
       let callCount = 0;
       const multiStepModel = new MockLanguageModelV3({
         doGenerate: async () => {
           callCount++;
           if (callCount === 1) {
-            // Step 1: assistant says something and calls a tool
             return {
               content: [
                 { type: "text" as const, text: "Let me check that for you." },
@@ -386,7 +384,6 @@ describe("AiSdkShrimpAgent.run", () => {
               warnings: [],
             };
           }
-          // Step 2: assistant ends silently after seeing the tool result
           return {
             content: [{ type: "text" as const, text: "" }],
             finishReason: { unified: "stop" as const, raw: undefined },
@@ -417,83 +414,7 @@ describe("AiSdkShrimpAgent.run", () => {
         maxSteps: 3,
       });
 
-      expect(result.newMessages).toHaveLength(1);
-      expect(result.newMessages[0]).toEqual({
-        role: "assistant",
-        content: "Let me check that for you.",
-      });
-    });
-
-    it("should produce one ConversationMessage per non-empty assistant turn across steps", async () => {
-      let callCount = 0;
-      const twoTurnModel = new MockLanguageModelV3({
-        doGenerate: async () => {
-          callCount++;
-          if (callCount === 1) {
-            // Step 1: text + tool call
-            return {
-              content: [
-                { type: "text" as const, text: "First turn." },
-                {
-                  type: "tool-call" as const,
-                  toolCallId: "call-2",
-                  toolName: "ping",
-                  input: "{}",
-                },
-              ],
-              finishReason: { unified: "tool-calls" as const, raw: undefined },
-              usage: {
-                inputTokens: {
-                  total: 0,
-                  noCache: 0,
-                  cacheRead: undefined,
-                  cacheWrite: undefined,
-                },
-                outputTokens: { total: 0, text: 0, reasoning: undefined },
-              },
-              warnings: [],
-            };
-          }
-          // Step 2: text only
-          return {
-            content: [{ type: "text" as const, text: "Second turn." }],
-            finishReason: { unified: "stop" as const, raw: undefined },
-            usage: {
-              inputTokens: {
-                total: 0,
-                noCache: 0,
-                cacheRead: undefined,
-                cacheWrite: undefined,
-              },
-              outputTokens: { total: 0, text: 0, reasoning: undefined },
-            },
-            warnings: [],
-          };
-        },
-      });
-
-      const pingTool = tool({
-        description: "ping",
-        inputSchema: z.object({}),
-        execute: async () => "pong",
-      });
-
-      const agent = makeAgent(twoTurnModel, makeFakeLogger());
-      const result = await agent.run({
-        ...baseInput,
-        tools: { ping: pingTool },
-        maxSteps: 3,
-      });
-
-      expect(result.newMessages).toHaveLength(2);
-      expect(result.newMessages[0]).toEqual({
-        role: "assistant",
-        content: "First turn.",
-      });
-      expect(result.newMessages[1]).toEqual({
-        role: "assistant",
-        content: "Second turn.",
-      });
+      expect(result.newMessages).toHaveLength(0);
     });
   });
 
