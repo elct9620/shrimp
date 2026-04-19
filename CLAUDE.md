@@ -45,7 +45,7 @@ Two documents are authoritative:
 - `SPEC.md` — behavior, contracts, and success criteria. Consult before changing any endpoint, failure mode, or configuration contract.
 - `docs/architecture.md` — code structure: four-layer Clean Architecture (`entities/`, `use-cases/`, `adapters/`, `infrastructure/`), dependency rules, key ports, and SPEC-component-to-module mapping.
 
-Three facts worth internalizing before touching Job or Shrimp Agent code:
+Four facts worth internalizing before touching Job or Shrimp Agent code:
 
 - **Shrimp is NOT the Supervisor.** The Supervisor is an internal component of Shrimp that receives heartbeats, owns the Job Queue, and dispatches Job Workers. The Shrimp process contains the Supervisor; it is not the Supervisor.
 - **The Shrimp Agent is a black-box executor.** A `Job` (the Job Worker, in code) invokes the `ShrimpAgent` port exactly once per Heartbeat; iterations inside the loop cannot be driven from outside. `AiSdkShrimpAgent` implements this port via AI SDK's `ToolLoopAgent`.
@@ -71,22 +71,12 @@ Layer layout at a glance:
 | dotenv                       | Loads environment variables from `.env` in development                      |
 | tsdown                       | Bundles the application for production deployment                           |
 
-## Development
+## Rules
 
-| Tool     | Role                                                                        |
-| -------- | --------------------------------------------------------------------------- |
-| `.env`   | Supplies all environment variables locally; not committed to source control |
-| `dotenv` | Loads `.env` at process startup in non-production environments              |
-| `vitest` | Test runner for unit and integration tests                                  |
-| `tsdown` | Bundles the application for production                                      |
-
-### Rules
-
-- `.env` supplies environment variables locally; `.mcp.json` configures supplementary MCP servers. Both files are not committed to source control.
+- `.env` (runtime env vars) and `.mcp.json` (supplementary MCP servers) are gitignored; never commit them.
 - `*.local.md` files in the repo root (e.g. `LOGGER.local.md`, `SPEC-IMPL.local.md`, `SPEC-WRITE.local.md`) are personal scratchpads — gitignored and non-authoritative. Do not treat them as spec or design sources; consult `SPEC.md` and `docs/architecture.md` instead.
-- Tests must not depend on live external services (Todoist API, AI provider); use mocks or stubs.
+- Tests mirror the `src/` layout under `tests/`, must not hit live external services (Todoist API, AI provider), and mock the Todoist API with MSW at the HTTP boundary — not at the repository level.
 - Class and port names follow SPEC terminology (`Job`, `ShrimpAgent`, `Board`), not implementation-derived names.
-- Test files mirror the `src/` directory structure under `tests/`. Tests use MSW to mock the Todoist API at the HTTP boundary, not at the repository level.
 - DI uses Symbol-based tokens defined in `infrastructure/container/tokens.ts`, not decorator-based injection. All wiring happens in `container.ts` via `useFactory` / `useClass`.
 - Prompt templates are `.md` files imported as raw strings via `unplugin-raw` (`import tpl from "./prompts/system.md?raw"`). These live alongside their use-case files.
 - A Claude Code Stop hook (`.claude/settings.json`) runs `pnpm build` asynchronously after each session so `dist/` stays in sync with `docker compose --watch`. Do not hand-maintain `dist/`.
