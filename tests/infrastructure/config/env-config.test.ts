@@ -1,7 +1,7 @@
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EnvConfigError,
   loadEnvConfig,
@@ -39,7 +39,7 @@ describe("loadEnvConfig", () => {
         channelsEnabled: false,
         telegramBotToken: undefined,
         telegramWebhookSecret: undefined,
-        shrimpStateDir: expect.any(String),
+        shrimpHome: expect.any(String),
         heartbeatToken: undefined,
       });
     });
@@ -360,7 +360,7 @@ describe("loadEnvConfig", () => {
       expect(config.channelsEnabled).toBe(false);
       expect(config.telegramBotToken).toBeUndefined();
       expect(config.telegramWebhookSecret).toBeUndefined();
-      expect(config.shrimpStateDir).toBe(
+      expect(config.shrimpHome).toBe(
         join(require("node:os").homedir(), ".shrimp"),
       );
     });
@@ -373,13 +373,13 @@ describe("loadEnvConfig", () => {
         CHANNELS_ENABLED: "true",
         TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
         TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-        SHRIMP_STATE_DIR: testStateDir,
+        SHRIMP_HOME: testStateDir,
       });
 
       expect(config.channelsEnabled).toBe(true);
       expect(config.telegramBotToken).toBe("bot123:TOKEN");
       expect(config.telegramWebhookSecret).toBe("webhook-secret");
-      expect(config.shrimpStateDir).toBe(testStateDir);
+      expect(config.shrimpHome).toBe(testStateDir);
       expect(existsSync(testStateDir)).toBe(true);
     });
 
@@ -391,7 +391,7 @@ describe("loadEnvConfig", () => {
           ...REQUIRED_ENV,
           CHANNELS_ENABLED: "true",
           TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-          SHRIMP_STATE_DIR: testStateDir,
+          SHRIMP_HOME: testStateDir,
         }),
       ).toThrow(EnvConfigError);
       expect(() =>
@@ -399,7 +399,7 @@ describe("loadEnvConfig", () => {
           ...REQUIRED_ENV,
           CHANNELS_ENABLED: "true",
           TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-          SHRIMP_STATE_DIR: testStateDir,
+          SHRIMP_HOME: testStateDir,
         }),
       ).toThrow("TELEGRAM_BOT_TOKEN");
     });
@@ -412,7 +412,7 @@ describe("loadEnvConfig", () => {
           ...REQUIRED_ENV,
           CHANNELS_ENABLED: "true",
           TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
-          SHRIMP_STATE_DIR: testStateDir,
+          SHRIMP_HOME: testStateDir,
         }),
       ).toThrow(EnvConfigError);
       expect(() =>
@@ -420,12 +420,55 @@ describe("loadEnvConfig", () => {
           ...REQUIRED_ENV,
           CHANNELS_ENABLED: "true",
           TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
-          SHRIMP_STATE_DIR: testStateDir,
+          SHRIMP_HOME: testStateDir,
         }),
       ).toThrow("TELEGRAM_WEBHOOK_SECRET");
     });
 
-    it("should throw EnvConfigError when CHANNELS_ENABLED=true and SHRIMP_STATE_DIR points to an existing file (not a dir)", () => {
+    it("should accept the deprecated SHRIMP_STATE_DIR as a fallback for SHRIMP_HOME", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-legacy-${Date.now()}`);
+      const stderrSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      try {
+        const config = loadEnvConfig({
+          ...REQUIRED_ENV,
+          SHRIMP_STATE_DIR: testStateDir,
+        });
+
+        expect(config.shrimpHome).toBe(testStateDir);
+        expect(stderrSpy).toHaveBeenCalledWith(
+          expect.stringContaining("SHRIMP_STATE_DIR is deprecated"),
+        );
+      } finally {
+        stderrSpy.mockRestore();
+      }
+    });
+
+    it("should prefer SHRIMP_HOME over the deprecated SHRIMP_STATE_DIR when both are set", () => {
+      const homeDir = join(tmpdir(), `shrimp-test-home-${Date.now()}`);
+      const legacyDir = join(tmpdir(), `shrimp-test-legacy-${Date.now()}`);
+      testStateDir = homeDir;
+      const stderrSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      try {
+        const config = loadEnvConfig({
+          ...REQUIRED_ENV,
+          SHRIMP_HOME: homeDir,
+          SHRIMP_STATE_DIR: legacyDir,
+        });
+
+        expect(config.shrimpHome).toBe(homeDir);
+        expect(stderrSpy).not.toHaveBeenCalled();
+      } finally {
+        stderrSpy.mockRestore();
+      }
+    });
+
+    it("should throw EnvConfigError when CHANNELS_ENABLED=true and SHRIMP_HOME points to an existing file (not a dir)", () => {
       testStateDir = join(tmpdir(), `shrimp-test-${Date.now()}`);
       // Create a file at the path so mkdir will fail
       writeFileSync(testStateDir, "not a directory");
@@ -436,7 +479,7 @@ describe("loadEnvConfig", () => {
           CHANNELS_ENABLED: "true",
           TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
           TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-          SHRIMP_STATE_DIR: testStateDir,
+          SHRIMP_HOME: testStateDir,
         }),
       ).toThrow(EnvConfigError);
     });

@@ -7,8 +7,8 @@ export class FileUserAgents implements UserAgentsPort {
   private readonly path: string;
   private readonly logger?: LoggerPort;
 
-  constructor({ stateDir, logger }: { stateDir: string; logger?: LoggerPort }) {
-    this.path = join(stateDir, "AGENTS.md");
+  constructor({ home, logger }: { home: string; logger?: LoggerPort }) {
+    this.path = join(home, "AGENTS.md");
     this.logger = logger;
   }
 

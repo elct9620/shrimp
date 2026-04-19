@@ -99,13 +99,13 @@ with Shrimp. When enabled, `TELEGRAM_BOT_TOKEN` and
 `https://<your-host>/channels/telegram` and send `/new` to start a fresh
 conversation.
 
-| Variable                  | Default         | Description                                                         |
-| ------------------------- | --------------- | ------------------------------------------------------------------- |
-| `CHANNELS_ENABLED`        | `false`         | Master toggle for inbound Channels                                  |
-| `TELEGRAM_BOT_TOKEN`      | —               | Bot token from BotFather                                            |
-| `TELEGRAM_WEBHOOK_SECRET` | —               | Shared secret Telegram must present on each webhook call            |
-| `SHRIMP_STATE_DIR`        | `~/.shrimp`     | Where session state is stored (auto-created at startup)             |
-| `SHRIMP_DATA_DIR`         | `./data/shrimp` | Docker only: host path mounted into the container's state directory |
+| Variable                  | Default         | Description                                                                                                                                                                      |
+| ------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CHANNELS_ENABLED`        | `false`         | Master toggle for inbound Channels                                                                                                                                               |
+| `TELEGRAM_BOT_TOKEN`      | —               | Bot token from BotFather                                                                                                                                                         |
+| `TELEGRAM_WEBHOOK_SECRET` | —               | Shared secret Telegram must present on each webhook call                                                                                                                         |
+| `SHRIMP_HOME`             | `~/.shrimp`     | Shrimp's home directory: holds session state (auto-created when Channels are on) and the optional `AGENTS.md`. The deprecated `SHRIMP_STATE_DIR` is still accepted as a fallback |
+| `SHRIMP_DATA_DIR`         | `./data/shrimp` | Docker only: host path mounted into the container's home directory                                                                                                               |
 
 ### Extra tools via MCP (optional)
 

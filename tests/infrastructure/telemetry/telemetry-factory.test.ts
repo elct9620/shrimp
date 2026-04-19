@@ -48,7 +48,7 @@ const BASE_ENV: EnvConfig = {
   channelsEnabled: false,
   telegramBotToken: undefined,
   telegramWebhookSecret: undefined,
-  shrimpStateDir: "/tmp/.shrimp",
+  shrimpHome: "/tmp/.shrimp",
 };
 
 describe("createTelemetry", () => {

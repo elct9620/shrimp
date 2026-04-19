@@ -14,9 +14,9 @@ FROM node:${NODE_VERSION}-${NODE_VARIANT} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3000 \
-    SHRIMP_STATE_DIR=/var/lib/shrimp
+    SHRIMP_HOME=/var/lib/shrimp
 COPY --from=builder /app/dist ./dist
-RUN mkdir -p "$SHRIMP_STATE_DIR" && chown -R node:node "$SHRIMP_STATE_DIR"
+RUN mkdir -p "$SHRIMP_HOME" && chown -R node:node "$SHRIMP_HOME"
 VOLUME ["/var/lib/shrimp"]
 USER node
 EXPOSE 3000

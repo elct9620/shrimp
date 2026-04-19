@@ -5,32 +5,32 @@ import { tmpdir } from "node:os";
 import { FileUserAgents } from "../../../src/infrastructure/prompt/file-user-agents";
 
 describe("FileUserAgents", () => {
-  let stateDir: string;
+  let home: string;
 
   beforeEach(async () => {
-    stateDir = await mkdtemp(join(tmpdir(), "shrimp-user-agents-"));
+    home = await mkdtemp(join(tmpdir(), "shrimp-user-agents-"));
   });
 
   afterEach(async () => {
-    await rm(stateDir, { recursive: true, force: true });
+    await rm(home, { recursive: true, force: true });
   });
 
   it("returns trimmed file contents when AGENTS.md exists", async () => {
-    await writeFile(join(stateDir, "AGENTS.md"), "\n  Hello operator  \n");
+    await writeFile(join(home, "AGENTS.md"), "\n  Hello operator  \n");
 
-    const reader = new FileUserAgents({ stateDir });
+    const reader = new FileUserAgents({ home });
 
     await expect(reader.read()).resolves.toBe("Hello operator");
   });
 
   it("returns null when AGENTS.md is missing", async () => {
-    const reader = new FileUserAgents({ stateDir });
+    const reader = new FileUserAgents({ home });
 
     await expect(reader.read()).resolves.toBeNull();
   });
 
   it("returns null when the file cannot be read (e.g. directory in place of file)", async () => {
-    const reader = new FileUserAgents({ stateDir: "/nonexistent-path-xyz" });
+    const reader = new FileUserAgents({ home: "/nonexistent-path-xyz" });
 
     await expect(reader.read()).resolves.toBeNull();
   });

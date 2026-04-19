@@ -110,11 +110,11 @@ export async function bootstrap(): Promise<void> {
   // Store raw pino instance for HTTP middleware
   container.registerInstance(TOKENS.PinoInstance, pinoInstance);
 
-  // 2a. UserAgents — reads optional $SHRIMP_STATE_DIR/AGENTS.md (appended to system prompt)
+  // 2a. UserAgents — reads optional $SHRIMP_HOME/AGENTS.md (appended to system prompt)
   container.registerInstance(
     TOKENS.UserAgents,
     new FileUserAgents({
-      stateDir: env.shrimpStateDir,
+      home: env.shrimpHome,
       logger: logger.child({ module: "FileUserAgents" }),
     }),
   );
@@ -146,7 +146,7 @@ export async function bootstrap(): Promise<void> {
     container.register(TOKENS.SessionRepository, {
       useFactory: (c) =>
         new JsonlSessionRepository({
-          stateDir: env.shrimpStateDir,
+          stateDir: env.shrimpHome,
           logger: c
             .resolve<LoggerPort>(TOKENS.Logger)
             .child({ module: "JsonlSessionRepository" }),

@@ -30,8 +30,10 @@ export type EnvConfig = {
   channelsEnabled: boolean;
   telegramBotToken?: string;
   telegramWebhookSecret?: string;
-  // Always present; only meaningful when channelsEnabled is true.
-  shrimpStateDir: string;
+  // Always resolved (defaults to ~/.shrimp). Used for Session persistence when
+  // channelsEnabled is true, and for the optional User Agents Appendix
+  // (AGENTS.md) on every Job regardless of channelsEnabled.
+  shrimpHome: string;
   heartbeatToken?: string;
 };
 
@@ -70,7 +72,20 @@ const REQUIRED_CHANNEL_KEYS = [
   "TELEGRAM_WEBHOOK_SECRET",
 ] as const;
 
-const DEFAULT_SHRIMP_STATE_DIR = join(homedir(), ".shrimp");
+const DEFAULT_SHRIMP_HOME = join(homedir(), ".shrimp");
+
+function resolveShrimpHome(env: NodeJS.ProcessEnv): string {
+  const primary = env["SHRIMP_HOME"];
+  if (primary) return primary;
+  const legacy = env["SHRIMP_STATE_DIR"];
+  if (legacy) {
+    process.stderr.write(
+      "warning: SHRIMP_STATE_DIR is deprecated; use SHRIMP_HOME instead. The legacy name is still honored but will be removed in a future release.\n",
+    );
+    return legacy;
+  }
+  return DEFAULT_SHRIMP_HOME;
+}
 
 function parseLogLevel(value: string | undefined): LogLevel {
   if (value === undefined) return "info";
@@ -123,7 +138,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
 
   let telegramBotToken: string | undefined;
   let telegramWebhookSecret: string | undefined;
-  let shrimpStateDir = DEFAULT_SHRIMP_STATE_DIR;
+  const shrimpHome = resolveShrimpHome(env);
 
   if (channelsEnabled) {
     const missingChannels = REQUIRED_CHANNEL_KEYS.filter((key) => !env[key]);
@@ -135,13 +150,12 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
 
     telegramBotToken = env["TELEGRAM_BOT_TOKEN"] as string;
     telegramWebhookSecret = env["TELEGRAM_WEBHOOK_SECRET"] as string;
-    shrimpStateDir = env["SHRIMP_STATE_DIR"] || DEFAULT_SHRIMP_STATE_DIR;
 
     try {
-      mkdirSync(shrimpStateDir, { recursive: true });
+      mkdirSync(shrimpHome, { recursive: true });
     } catch (err) {
       throw new EnvConfigError(
-        `Failed to create SHRIMP_STATE_DIR "${shrimpStateDir}": ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to create SHRIMP_HOME "${shrimpHome}": ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -169,7 +183,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     channelsEnabled,
     telegramBotToken,
     telegramWebhookSecret,
-    shrimpStateDir,
+    shrimpHome,
     heartbeatToken: env["SHRIMP_HEARTBEAT_TOKEN"] || undefined,
   };
 }

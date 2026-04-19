@@ -50,7 +50,7 @@ Four facts worth internalizing before touching Job or Shrimp Agent code:
 - **Shrimp is NOT the Supervisor.** The Supervisor is an internal component of Shrimp that receives heartbeats, owns the Job Queue, and dispatches Job Workers. The Shrimp process contains the Supervisor; it is not the Supervisor.
 - **The Shrimp Agent is a black-box executor.** A `Job` (the Job Worker, in code) invokes the `ShrimpAgent` port exactly once per Heartbeat; iterations inside the loop cannot be driven from outside. `AiSdkShrimpAgent` implements this port via AI SDK's `ToolLoopAgent`.
 - **Built-in Todoist tools are inbound adapters**, not use cases. They live in `adapters/tools/built-in/` and call `BoardRepository` directly. Do not create per-operation use-case classes for them.
-- **Channels are optional inbound adapters parallel to the Todoist Board**, gated by `CHANNELS_ENABLED`. When enabled, Shrimp accepts webhooks (e.g. Telegram), persists conversation state via `JsonlSessionRepository` under `SHRIMP_STATE_DIR` (default `~/.shrimp`; `/var/lib/shrimp` in the Docker image), and processes messages as `ChannelJob`s on the same Supervisor queue.
+- **Channels are optional inbound adapters parallel to the Todoist Board**, gated by `CHANNELS_ENABLED`. When enabled, Shrimp accepts webhooks (e.g. Telegram), persists conversation state via `JsonlSessionRepository` under `SHRIMP_HOME` (default `~/.shrimp`; `/var/lib/shrimp` in the Docker image; the deprecated `SHRIMP_STATE_DIR` is still accepted as a fallback), and processes messages as `ChannelJob`s on the same Supervisor queue.
 
 Layer layout at a glance:
 
