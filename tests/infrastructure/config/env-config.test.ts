@@ -603,6 +603,47 @@ describe("loadEnvConfig", () => {
 
       expect(config.autoCompactModel).toBeUndefined();
     });
+
+    it("should parse AUTO_COMPACT_MAX_OUTPUT_TOKENS when set to a positive integer", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+      const config = loadEnvConfig({
+        ...CHANNELS_ON_ENV,
+        SHRIMP_HOME: testStateDir,
+        AUTO_COMPACT_TOKEN_THRESHOLD: "100000",
+        AUTO_COMPACT_MAX_OUTPUT_TOKENS: "2048",
+      });
+
+      expect(config.autoCompactMaxOutputTokens).toBe(2048);
+    });
+
+    it("should default AUTO_COMPACT_MAX_OUTPUT_TOKENS to 2048 when unset", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+      const config = loadEnvConfig({
+        ...CHANNELS_ON_ENV,
+        SHRIMP_HOME: testStateDir,
+        AUTO_COMPACT_TOKEN_THRESHOLD: "100000",
+      });
+
+      expect(config.autoCompactMaxOutputTokens).toBe(2048);
+    });
+
+    it.each(["0", "-1", "abc", "1.5"])(
+      "should reject AUTO_COMPACT_MAX_OUTPUT_TOKENS=%s as invalid positive integer",
+      (value) => {
+        testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+        expect(() =>
+          loadEnvConfig({
+            ...CHANNELS_ON_ENV,
+            SHRIMP_HOME: testStateDir,
+            AUTO_COMPACT_TOKEN_THRESHOLD: "100000",
+            AUTO_COMPACT_MAX_OUTPUT_TOKENS: value,
+          }),
+        ).toThrow(/AUTO_COMPACT_MAX_OUTPUT_TOKENS/);
+      },
+    );
   });
 
   describe("SHRIMP_HEARTBEAT_TOKEN", () => {

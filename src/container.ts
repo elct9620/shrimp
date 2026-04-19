@@ -198,6 +198,7 @@ export async function bootstrap(): Promise<void> {
         new AiSdkSummarizePort({
           model: provider.chatModel(env.autoCompactModel ?? env.aiModel),
           logger: c.resolve<LoggerPort>(TOKENS.Logger),
+          maxOutputTokens: env.autoCompactMaxOutputTokens,
         }),
     });
 

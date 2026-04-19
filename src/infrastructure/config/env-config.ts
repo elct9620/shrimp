@@ -38,7 +38,11 @@ export type EnvConfig = {
   // Only present when channelsEnabled is true.
   autoCompactTokenThreshold?: number;
   autoCompactModel?: string;
+  // Defaults to 2048 when unset/empty (channels-enabled only).
+  autoCompactMaxOutputTokens?: number;
 };
+
+const DEFAULT_AUTO_COMPACT_MAX_OUTPUT_TOKENS = 2048;
 
 export class EnvConfigError extends Error {
   constructor(message: string) {
@@ -106,6 +110,20 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function parseOptionalPositiveInt(
+  value: string | undefined,
+  key: string,
+): number | undefined {
+  if (value === undefined || value === "") return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new EnvConfigError(
+      `Invalid ${key}: "${value}". Must be a positive integer (>= 1).`,
+    );
+  }
+  return parsed;
+}
+
 function parseRequiredPositiveInt(
   value: string | undefined,
   key: string,
@@ -159,6 +177,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   let telegramWebhookSecret: string | undefined;
   let autoCompactTokenThreshold: number | undefined;
   let autoCompactModel: string | undefined;
+  let autoCompactMaxOutputTokens: number | undefined;
   const shrimpHome = resolveShrimpHome(env);
 
   if (channelsEnabled) {
@@ -177,6 +196,11 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
       "AUTO_COMPACT_TOKEN_THRESHOLD",
     );
     autoCompactModel = env["AUTO_COMPACT_MODEL"] || undefined;
+    autoCompactMaxOutputTokens =
+      parseOptionalPositiveInt(
+        env["AUTO_COMPACT_MAX_OUTPUT_TOKENS"],
+        "AUTO_COMPACT_MAX_OUTPUT_TOKENS",
+      ) ?? DEFAULT_AUTO_COMPACT_MAX_OUTPUT_TOKENS;
 
     try {
       mkdirSync(shrimpHome, { recursive: true });
@@ -214,5 +238,6 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     heartbeatToken: env["SHRIMP_HEARTBEAT_TOKEN"] || undefined,
     autoCompactTokenThreshold,
     autoCompactModel,
+    autoCompactMaxOutputTokens,
   };
 }

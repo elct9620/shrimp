@@ -9,15 +9,20 @@ import summarizePrompt from "./prompts/summarize.md?raw";
 export type AiSdkSummarizePortOptions = {
   model: LanguageModel;
   logger: LoggerPort;
+  // Optional upper bound on generated summary length. When undefined, no limit
+  // is passed and the provider's default applies.
+  maxOutputTokens?: number;
 };
 
 export class AiSdkSummarizePort implements SummarizePort {
   private readonly model: LanguageModel;
   private readonly logger: LoggerPort;
+  private readonly maxOutputTokens: number | undefined;
 
   constructor(options: AiSdkSummarizePortOptions) {
     this.model = options.model;
     this.logger = options.logger.child({ module: "AiSdkSummarizePort" });
+    this.maxOutputTokens = options.maxOutputTokens;
   }
 
   async summarize(input: SummarizeInput): Promise<string> {
@@ -38,6 +43,9 @@ export class AiSdkSummarizePort implements SummarizePort {
       ...(messages.length > 0
         ? { model: this.model, system: summarizePrompt, messages }
         : { model: this.model, prompt: summarizePrompt }),
+      ...(this.maxOutputTokens !== undefined
+        ? { maxOutputTokens: this.maxOutputTokens }
+        : {}),
       experimental_telemetry: {
         isEnabled: true,
         functionId: "shrimp.summarize",
