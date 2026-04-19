@@ -8,6 +8,7 @@ import type { ChannelGateway } from "../../../../use-cases/ports/channel-gateway
 import type { LoggerPort } from "../../../../use-cases/ports/logger";
 import type { ConversationRef } from "../../../../entities/conversation-ref";
 import { TELEGRAM_CHANNEL_NAME } from "../../../../infrastructure/channel/telegram-channel";
+import { timingSafeEqualStr } from "../../timing-safe-compare";
 
 const TelegramUpdate = z.object({
   message: z
@@ -57,7 +58,7 @@ export function createTelegramRoute(deps: {
 
   app.post("/channels/telegram", async (c) => {
     const secret = c.req.header("x-telegram-bot-api-secret-token");
-    if (!secret || secret !== deps.webhookSecret) {
+    if (!secret || !timingSafeEqualStr(secret, deps.webhookSecret)) {
       return c.body(null, 401);
     }
 

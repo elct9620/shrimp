@@ -1,9 +1,9 @@
-import { timingSafeEqual } from "node:crypto";
 import { Hono } from "hono";
 import type { AppEnv } from "../context-variables";
 import type { JobQueue } from "../../../use-cases/ports/job-queue";
 import type { HeartbeatJob } from "../../../use-cases/heartbeat-job";
 import type { LoggerPort } from "../../../use-cases/ports/logger";
+import { timingSafeEqualStr } from "../timing-safe-compare";
 
 const BEARER_PREFIX = "Bearer ";
 
@@ -11,13 +11,6 @@ function extractBearerToken(header: string | undefined): string | undefined {
   if (!header) return undefined;
   if (!header.startsWith(BEARER_PREFIX)) return undefined;
   return header.slice(BEARER_PREFIX.length);
-}
-
-function tokenMatches(provided: string, expected: string): boolean {
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
 }
 
 export function createHeartbeatRoute(deps: {
@@ -31,7 +24,8 @@ export function createHeartbeatRoute(deps: {
   app.post("/heartbeat", (c) => {
     if (deps.heartbeatToken) {
       const provided = extractBearerToken(c.req.header("authorization"));
-      if (!provided || !tokenMatches(provided, deps.heartbeatToken)) {
+      if (!provided || !timingSafeEqualStr(provided, deps.heartbeatToken)) {
+        deps.logger.warn("heartbeat rejected");
         return c.body(null, 401);
       }
     }

@@ -156,10 +156,11 @@ describe("POST /heartbeat", () => {
 
     it("should return 401 when token is configured and Authorization header is missing", async () => {
       const jobQueue = makeJobQueue();
+      const logger = makeFakeLogger();
       const app = createHeartbeatRoute({
         jobQueue,
         heartbeatJob: makeHeartbeatJob(),
-        logger: makeFakeLogger(),
+        logger,
         heartbeatToken: "s3cret",
       });
 
@@ -167,6 +168,7 @@ describe("POST /heartbeat", () => {
 
       expect(res.status).toBe(401);
       expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith("heartbeat rejected");
     });
 
     it("should return 401 when token is configured and Bearer value does not match", async () => {
