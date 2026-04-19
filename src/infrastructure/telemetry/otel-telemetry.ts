@@ -34,6 +34,11 @@ export class OtelTelemetry implements TelemetryPort {
   constructor(options: OtelTelemetryOptions) {
     this.logger = options.logger.child({ module: "OtelTelemetry" });
 
+    // Default deployment.environment into OTEL_RESOURCE_ATTRIBUTES so users
+    // don't have to set it manually. Must mutate process.env before NodeSDK
+    // reads it via its env resource detector.
+    applyDefaultDeploymentEnvironment(process.env);
+
     // OTEL_EXPORTER_OTLP_* env vars are pass-through (SPEC §Telemetry):
     // letting the SDK read process.env directly preserves spec-mandated
     // signal-path appending (e.g. /v1/traces for OTEL_EXPORTER_OTLP_ENDPOINT).
@@ -141,6 +146,39 @@ function parseHeaderKeys(raw: string | undefined): string[] {
       return part.slice(0, eq).trim();
     })
     .filter((k): k is string => !!k);
+}
+
+const DEPLOYMENT_ENVIRONMENT_KEY = "deployment.environment";
+
+export function applyDefaultDeploymentEnvironment(
+  env: NodeJS.ProcessEnv,
+): void {
+  const pairs = parseResourceAttributes(env["OTEL_RESOURCE_ATTRIBUTES"]);
+  if (pairs.some(([k]) => k === DEPLOYMENT_ENVIRONMENT_KEY)) return;
+
+  const deploymentEnv =
+    nonEmpty(env["SHRIMP_ENV"]) ?? nonEmpty(env["NODE_ENV"]) ?? "development";
+  pairs.push([DEPLOYMENT_ENVIRONMENT_KEY, deploymentEnv]);
+  env["OTEL_RESOURCE_ATTRIBUTES"] = serializeResourceAttributes(pairs);
+}
+
+function parseResourceAttributes(raw: string | undefined): [string, string][] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((part): [string, string] | undefined => {
+      const eq = part.indexOf("=");
+      if (eq <= 0) return undefined;
+      const key = part.slice(0, eq).trim();
+      const value = part.slice(eq + 1).trim();
+      if (!key) return undefined;
+      return [key, value];
+    })
+    .filter((p): p is [string, string] => p !== undefined);
+}
+
+function serializeResourceAttributes(pairs: [string, string][]): string {
+  return pairs.map(([k, v]) => `${k}=${v}`).join(",");
 }
 
 function parseDiagLogLevel(raw: string | undefined): DiagLogLevel {

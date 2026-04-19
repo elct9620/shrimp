@@ -55,7 +55,7 @@ vi.mock("@opentelemetry/resources", () => ({
 // ---------------------------------------------------------------------------
 // Import the unit under test AFTER mocks are registered
 // ---------------------------------------------------------------------------
-const { OtelTelemetry } =
+const { OtelTelemetry, applyDefaultDeploymentEnvironment } =
   await import("../../../src/infrastructure/telemetry/otel-telemetry");
 
 // ---------------------------------------------------------------------------
@@ -222,6 +222,66 @@ describe("OtelTelemetry", () => {
       "telemetry shutdown failed",
       expect.objectContaining({ error: "boom" }),
     );
+  });
+
+  describe("applyDefaultDeploymentEnvironment", () => {
+    it("adds deployment.environment=development when OTEL_RESOURCE_ATTRIBUTES and env flags are unset", () => {
+      const env: NodeJS.ProcessEnv = {};
+      applyDefaultDeploymentEnvironment(env);
+      expect(env["OTEL_RESOURCE_ATTRIBUTES"]).toBe(
+        "deployment.environment=development",
+      );
+    });
+
+    it("prefers SHRIMP_ENV over NODE_ENV when deriving the default", () => {
+      const env: NodeJS.ProcessEnv = {
+        SHRIMP_ENV: "staging",
+        NODE_ENV: "production",
+      };
+      applyDefaultDeploymentEnvironment(env);
+      expect(env["OTEL_RESOURCE_ATTRIBUTES"]).toBe(
+        "deployment.environment=staging",
+      );
+    });
+
+    it("falls back to NODE_ENV when SHRIMP_ENV is unset", () => {
+      const env: NodeJS.ProcessEnv = { NODE_ENV: "production" };
+      applyDefaultDeploymentEnvironment(env);
+      expect(env["OTEL_RESOURCE_ATTRIBUTES"]).toBe(
+        "deployment.environment=production",
+      );
+    });
+
+    it("merges into existing OTEL_RESOURCE_ATTRIBUTES without clobbering user keys", () => {
+      const env: NodeJS.ProcessEnv = {
+        NODE_ENV: "production",
+        OTEL_RESOURCE_ATTRIBUTES: "service.version=1.2.3,team=shrimp",
+      };
+      applyDefaultDeploymentEnvironment(env);
+      expect(env["OTEL_RESOURCE_ATTRIBUTES"]).toBe(
+        "service.version=1.2.3,team=shrimp,deployment.environment=production",
+      );
+    });
+
+    it("leaves a user-provided deployment.environment untouched", () => {
+      const env: NodeJS.ProcessEnv = {
+        NODE_ENV: "production",
+        OTEL_RESOURCE_ATTRIBUTES:
+          "deployment.environment=canary,service.version=1.2.3",
+      };
+      applyDefaultDeploymentEnvironment(env);
+      expect(env["OTEL_RESOURCE_ATTRIBUTES"]).toBe(
+        "deployment.environment=canary,service.version=1.2.3",
+      );
+    });
+
+    it("treats empty-string SHRIMP_ENV / NODE_ENV as unset", () => {
+      const env: NodeJS.ProcessEnv = { SHRIMP_ENV: "", NODE_ENV: "" };
+      applyDefaultDeploymentEnvironment(env);
+      expect(env["OTEL_RESOURCE_ATTRIBUTES"]).toBe(
+        "deployment.environment=development",
+      );
+    });
   });
 
   describe("runInSpan", () => {
