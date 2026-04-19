@@ -1,6 +1,15 @@
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   TelegramChannel,
   TELEGRAM_CHANNEL_NAME,
@@ -159,6 +168,122 @@ describe("TelegramChannel.reply", () => {
       longText,
     );
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  describe("retry policy", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("retries once on network error and succeeds", async () => {
+      let callCount = 0;
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          if (callCount === 1) return HttpResponse.error();
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 1 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(callCount).toBe(2);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it("gives up after 3 attempts on persistent network error", async () => {
+      let callCount = 0;
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          return HttpResponse.error();
+        }),
+      );
+      const logger = makeFakeLogger();
+      const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 2 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(callCount).toBe(3);
+      expect(logger.warn).toHaveBeenCalledOnce();
+      expect(logger.warn).toHaveBeenCalledWith(
+        "telegram reply failed — network",
+        expect.objectContaining({ attempts: 3 }),
+      );
+    });
+
+    it("does NOT retry on body.ok:false (application rejection)", async () => {
+      let callCount = 0;
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          return HttpResponse.json({
+            ok: false,
+            error_code: 400,
+            description: "Bad Request: chat not found",
+          });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 3 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(callCount).toBe(1);
+      expect(logger.warn).toHaveBeenCalledOnce();
+      expect(logger.warn).toHaveBeenCalledWith(
+        "telegram reply failed — upstream error",
+        expect.objectContaining({ description: "Bad Request: chat not found" }),
+      );
+    });
+
+    it("retries on 429 and respects Retry-After if within cap", async () => {
+      let callCount = 0;
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          if (callCount === 1) {
+            return new HttpResponse(null, {
+              status: 429,
+              headers: { "Retry-After": "1" },
+            });
+          }
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 4 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(callCount).toBe(2);
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
   });
 
   it("is Fail-Open when a middle chunk returns ok:false — all three requests are made and warn includes chunkIndex", async () => {

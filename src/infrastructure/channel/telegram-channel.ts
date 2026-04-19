@@ -59,6 +59,26 @@ export function chunkText(text: string, limit: number): string[] {
  * to avoid the Bot API 400 "message is too long" rejection. Each chunk is sent
  * independently; a failed chunk logs a warn and does not abort the rest.
  */
+const MAX_ATTEMPTS = 3;
+const BACKOFF_MS = [250, 500] as const;
+const RETRY_AFTER_CAP_MS = 10_000;
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status < 600);
+}
+
+function retryDelayMs(
+  attempt: number,
+  retryAfterHeader?: string | null,
+): number {
+  if (retryAfterHeader != null) {
+    const seconds = parseInt(retryAfterHeader, 10);
+    const ms = seconds * 1000;
+    if (!isNaN(seconds) && ms <= RETRY_AFTER_CAP_MS) return ms;
+  }
+  return BACKOFF_MS[attempt] ?? BACKOFF_MS[BACKOFF_MS.length - 1];
+}
+
 export class TelegramChannel implements ChannelGateway {
   constructor(
     private readonly botToken: string,
@@ -83,42 +103,89 @@ export class TelegramChannel implements ChannelGateway {
       const chunkContext =
         totalChunks > 1 ? { chunkIndex: i + 1, totalChunks } : undefined;
 
-      try {
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ chat_id: chatId, text: chunk }),
-        });
-        if (!resp.ok) {
-          this.logger.warn("telegram reply failed — upstream status", {
-            status: resp.status,
-            ...chunkContext,
-          });
-          continue;
-        }
-        // Telegram Bot API may return HTTP 200 with { ok: false, error_code, description }
-        // when the request is accepted at transport level but rejected at application level
-        // (e.g. message too long, invalid chat_id). We must parse the body to detect this.
-        const body = (await resp.json()) as {
-          ok: boolean;
-          error_code?: number;
-          description?: string;
-        };
-        if (!body.ok) {
-          this.logger.warn("telegram reply failed — upstream error", {
-            error_code: body.error_code,
-            description: body.description,
-            ...chunkContext,
-          });
-          continue;
-        }
-      } catch (err) {
-        this.logger.warn("telegram reply failed — network", {
-          error: err instanceof Error ? err.message : String(err),
-          ...chunkContext,
-        });
-        continue;
-      }
+      await this.sendChunkWithRetry(url, chatId, chunk, chunkContext);
     }
   }
+
+  private async sendChunkWithRetry(
+    url: string,
+    chatId: number,
+    chunk: string,
+    chunkContext: Record<string, number> | undefined,
+  ): Promise<void> {
+    const body = JSON.stringify({ chat_id: chatId, text: chunk });
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      // Network-level attempt — transient socket failures land in the catch block.
+      let resp: Response;
+      try {
+        resp = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+        });
+      } catch (err) {
+        const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
+        if (isLastAttempt) {
+          this.logger.warn("telegram reply failed — network", {
+            error: err instanceof Error ? err.message : String(err),
+            attempts: MAX_ATTEMPTS,
+            ...chunkContext,
+          });
+          return;
+        }
+        await sleep(retryDelayMs(attempt));
+        continue;
+      }
+
+      // 429 / 5xx are transient; retry with appropriate backoff.
+      if (isRetryableStatus(resp.status)) {
+        const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
+        if (isLastAttempt) {
+          this.logger.warn("telegram reply failed — upstream status", {
+            status: resp.status,
+            attempts: MAX_ATTEMPTS,
+            ...chunkContext,
+          });
+          return;
+        }
+        const delay = retryDelayMs(attempt, resp.headers.get("Retry-After"));
+        await sleep(delay);
+        continue;
+      }
+
+      // Other non-2xx responses (4xx excl. 429) are client errors — don't retry.
+      if (!resp.ok) {
+        this.logger.warn("telegram reply failed — upstream status", {
+          status: resp.status,
+          ...chunkContext,
+        });
+        return;
+      }
+
+      // Telegram Bot API may return HTTP 200 with { ok: false, error_code, description }
+      // when the request is accepted at transport level but rejected at application level
+      // (e.g. message too long, invalid chat_id). We must parse the body to detect this.
+      const responseBody = (await resp.json()) as {
+        ok: boolean;
+        error_code?: number;
+        description?: string;
+      };
+      if (!responseBody.ok) {
+        this.logger.warn("telegram reply failed — upstream error", {
+          error_code: responseBody.error_code,
+          description: responseBody.description,
+          ...chunkContext,
+        });
+        return;
+      }
+
+      // Success — chunk delivered.
+      return;
+    }
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
