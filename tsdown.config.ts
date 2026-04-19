@@ -2,7 +2,7 @@ import { defineConfig } from "tsdown";
 import Raw from "unplugin-raw/rolldown";
 
 export default defineConfig({
-  entry: ["src/server.ts"],
+  entry: ["src/server.ts", "src/heartbeat.ts"],
   format: ["esm"],
   platform: "node",
   target: "node22",
