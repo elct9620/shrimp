@@ -1,42 +1,59 @@
 import { Task } from "../entities/task";
 import { Comment } from "../entities/comment";
 import type { ToolDescription } from "./ports/tool-description";
-import systemTemplate from "./prompts/system.md?raw";
-import userTemplate from "./prompts/user.md?raw";
+import systemBaseTemplate from "./prompts/system-base.md?raw";
+import systemHeartbeatTemplate from "./prompts/system-heartbeat.md?raw";
+import systemChannelTemplate from "./prompts/system-channel.md?raw";
+import userHeartbeatTemplate from "./prompts/user-heartbeat.md?raw";
 
 export type { ToolDescription };
 
-export type AssembleInput = {
+export type HeartbeatAssembleInput = {
   task: Task;
   comments: Comment[];
   tools: ToolDescription[];
 };
 
-export type AssembleOutput = {
+export type HeartbeatAssembleOutput = {
   systemPrompt: string;
   userPrompt: string;
 };
 
-export function assemble({
+export function assembleHeartbeatPrompts({
   task,
   comments,
   tools,
-}: AssembleInput): AssembleOutput {
-  const systemPrompt = buildSystemPrompt(tools);
-  const userPrompt = buildUserPrompt(task, comments);
+}: HeartbeatAssembleInput): HeartbeatAssembleOutput {
+  const systemPrompt = buildSystemPrompt(systemHeartbeatTemplate, tools);
+  const userPrompt = buildHeartbeatUserPrompt(task, comments);
   return { systemPrompt, userPrompt };
 }
 
-function buildSystemPrompt(tools: ToolDescription[]): string {
+export function assembleChannelSystemPrompt({
+  tools,
+}: {
+  tools: ToolDescription[];
+}): string {
+  return buildSystemPrompt(systemChannelTemplate, tools);
+}
+
+function buildSystemPrompt(
+  variantTemplate: string,
+  tools: ToolDescription[],
+): string {
   const toolList =
     tools.length > 0
       ? tools.map((t) => `- ${t.name}: ${t.description}`).join("\n")
       : "(none)";
 
-  return systemTemplate.trimEnd().replace("{{toolList}}", toolList);
+  const base = systemBaseTemplate.trimEnd();
+  const variant = variantTemplate.trimEnd();
+  const toolsSection = `## Tools\n\n${toolList}`;
+
+  return `${base}\n\n${variant}\n\n${toolsSection}`;
 }
 
-function buildUserPrompt(task: Task, comments: Comment[]): string {
+function buildHeartbeatUserPrompt(task: Task, comments: Comment[]): string {
   const descriptionSection =
     task.description !== undefined ? `\nDescription: ${task.description}` : "";
 
@@ -45,7 +62,7 @@ function buildUserPrompt(task: Task, comments: Comment[]): string {
       ? `\n## Comment History\n\n${comments.map((c) => `[${c.author === "bot" ? "Bot" : "User"}] ${c.text}`).join("\n\n")}`
       : "";
 
-  return userTemplate
+  return userHeartbeatTemplate
     .trimEnd()
     .replace("{{id}}", task.id)
     .replace("{{title}}", task.title)

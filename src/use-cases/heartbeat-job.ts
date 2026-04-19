@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { selectTask } from "../entities/task-selector";
 import { Section } from "../entities/section";
-import { assemble } from "./prompt-assembler";
+import { assembleHeartbeatPrompts } from "./prompt-assembler";
 import { BoardSectionMissingError } from "./ports/board-repository";
 import type { BoardRepository } from "./ports/board-repository";
 import type { ShrimpAgent } from "./ports/shrimp-agent";
@@ -93,7 +93,7 @@ export class HeartbeatJob {
       const toolProvider = this.toolProviderFactory.create();
       const tools = toolProvider.getToolDescriptions();
 
-      const { systemPrompt, userPrompt } = assemble({
+      const { systemPrompt, userPrompt } = assembleHeartbeatPrompts({
         task: selectedTask,
         comments,
         tools,

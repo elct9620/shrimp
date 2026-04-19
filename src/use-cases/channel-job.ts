@@ -6,6 +6,7 @@ import type { ShrimpAgent } from "./ports/shrimp-agent";
 import type { ToolProviderFactory } from "./ports/tool-provider-factory";
 import type { LoggerPort } from "./ports/logger";
 import type { TelemetryPort } from "./ports/telemetry";
+import { assembleChannelSystemPrompt } from "./prompt-assembler";
 
 export type ChannelJobConfig = {
   sessionRepository: SessionRepository;
@@ -16,10 +17,6 @@ export type ChannelJobConfig = {
   logger: LoggerPort;
   telemetry: TelemetryPort;
 };
-
-const CHANNEL_SYSTEM_PROMPT = `You are a helpful assistant responding to messages in a chat channel.
-Respond with your reply as plain text — your final text response is sent to the user automatically. Do not call the \`reply\` tool; use other tools only when you need to perform an action.
-Keep replies concise and relevant to the user's message.`;
 
 export class ChannelJob {
   private readonly sessionRepository: SessionRepository;
@@ -72,6 +69,9 @@ export class ChannelJob {
       await this.sessionRepository.append(session.id, [userMsg]);
 
       const toolProvider = this.toolProviderFactory.create();
+      const systemPrompt = assembleChannelSystemPrompt({
+        tools: toolProvider.getToolDescriptions(),
+      });
 
       this.logger.debug("cycle invoking shrimp agent", {
         sessionId: session.id,
@@ -80,7 +80,7 @@ export class ChannelJob {
       // Pass the prior session messages as history (snapshot before the new
       // user message was appended). The new user message becomes the userPrompt.
       const result = await this.shrimpAgent.run({
-        systemPrompt: CHANNEL_SYSTEM_PROMPT,
+        systemPrompt,
         userPrompt: event.message,
         tools: toolProvider.getTools(),
         maxSteps: this.maxSteps,
