@@ -1,4 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { MockLanguageModelV3 } from "ai/test";
 import { ChannelJob } from "../../src/use-cases/channel-job";
 import type {
   SessionRepository,
@@ -23,6 +27,8 @@ import { makeSpyTelemetry } from "../mocks/spy-telemetry";
 import type { ConversationMessage } from "../../src/entities/conversation-message";
 import type { ConversationRef } from "../../src/entities/conversation-ref";
 import type { SummarizePort } from "../../src/use-cases/ports/summarize";
+import { JsonlSessionRepository } from "../../src/infrastructure/session/jsonl-session-repository";
+import { AiSdkSummarizePort } from "../../src/infrastructure/ai/ai-sdk-summarize-port";
 
 // --- Fakes ---
 
@@ -785,5 +791,132 @@ describe("ChannelJob.run — Auto Compact Fail-Open", () => {
         cause: expect.any(Error),
       }),
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration: end-to-end Auto Compact disk-state assertions
+// ---------------------------------------------------------------------------
+// Uses real JsonlSessionRepository on a temp directory and real
+// AiSdkSummarizePort backed by MockLanguageModelV3.  Asserts SPEC steps 3–5:
+//   3. Generate new Session UUID
+//   4. Create new JSONL with a single role:"system" entry (the summary)
+//   5. Atomically update state.json to point to the new Session ID
+// Plus the archive invariant: the original JSONL is retained on disk.
+// ---------------------------------------------------------------------------
+
+describe("Auto Compact (integration)", () => {
+  const SUMMARY_TEXT = "[summary]";
+  const THRESHOLD = 1000;
+
+  let tmpDir: string;
+  let realRepo: JsonlSessionRepository;
+  let originalSessionId: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "shrimp-auto-compact-"));
+    realRepo = new JsonlSessionRepository({
+      stateDir: tmpDir,
+      logger: makeFakeLogger(),
+    });
+
+    // Seed: create a session and append a couple of prior messages so the
+    // archived JSONL is observably populated (non-empty archive).
+    const session = await realRepo.createNew();
+    originalSessionId = session.id;
+    await realRepo.append(originalSessionId, [
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hi there" },
+    ]);
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("should write a new JSONL with a single role:system summary entry, retain the archive, and update state.json after a compaction-triggering run", async () => {
+    // --- Arrange ---
+
+    // Real AiSdkSummarizePort backed by MockLanguageModelV3 returning a fixed string.
+    const mockModel = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text" as const, text: SUMMARY_TEXT }],
+        finishReason: { unified: "stop" as const, raw: undefined },
+        usage: {
+          inputTokens: {
+            total: 10,
+            noCache: 10,
+            cacheRead: undefined,
+            cacheWrite: undefined,
+          },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+
+    const realSummarize = new AiSdkSummarizePort({
+      model: mockModel,
+      logger: makeFakeLogger(),
+    });
+
+    // Stub ShrimpAgent returning a fixed assistant reply with promptTokens
+    // that exceeds the threshold, so compaction is triggered.
+    const stubAgent: ShrimpAgent = {
+      run: vi.fn().mockResolvedValue({
+        reason: "finished" as const,
+        newMessages: [{ role: "assistant" as const, content: "Agent reply" }],
+        promptTokens: THRESHOLD + 1,
+      }),
+    };
+
+    const job = new ChannelJob({
+      sessionRepository: realRepo,
+      channelGateway: makeChannelGateway(),
+      shrimpAgent: stubAgent,
+      toolProviderFactory: makeToolProviderFactory(),
+      maxSteps: 10,
+      logger: makeFakeLogger(),
+      telemetry: new NoopTelemetry(),
+      summarize: realSummarize,
+      compactionThreshold: THRESHOLD,
+    });
+
+    // --- Act ---
+    await job.run({
+      message: "Trigger compaction",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
+
+    // --- Assert ---
+
+    // 1. state.json now points to a NEW Session ID, different from the original.
+    const stateRaw = await readFile(join(tmpDir, "state.json"), "utf-8");
+    const state = JSON.parse(stateRaw) as { currentSessionId: string };
+    expect(state.currentSessionId).toBeTruthy();
+    expect(state.currentSessionId).not.toBe(originalSessionId);
+
+    const newSessionId = state.currentSessionId;
+
+    // 2. The original Session JSONL still exists on disk (archive retained).
+    const oldJsonlPath = join(tmpDir, "sessions", `${originalSessionId}.jsonl`);
+    const oldRaw = await readFile(oldJsonlPath, "utf-8");
+    expect(oldRaw.trim().length).toBeGreaterThan(0); // non-empty archive
+
+    // 3. The new Session JSONL exists and contains exactly ONE non-empty line.
+    const newJsonlPath = join(tmpDir, "sessions", `${newSessionId}.jsonl`);
+    const newRaw = await readFile(newJsonlPath, "utf-8");
+    const nonEmptyLines = newRaw
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    expect(nonEmptyLines).toHaveLength(1);
+
+    // 4. That line is a role:"system" ConversationMessage whose content is the
+    //    Conversation Summary returned by MockLanguageModelV3.
+    const parsed = JSON.parse(nonEmptyLines[0]!) as ConversationMessage;
+    expect(parsed.role).toBe("system");
+    expect(parsed.content).toBe(SUMMARY_TEXT);
   });
 });
