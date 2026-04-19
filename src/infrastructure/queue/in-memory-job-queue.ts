@@ -6,6 +6,7 @@ import { TOKENS } from "../container/tokens";
 @injectable()
 export class InMemoryJobQueue implements JobQueue {
   private busy = false;
+  private readonly pending: Array<() => Promise<void>> = [];
   private readonly logger: LoggerPort;
 
   constructor(@inject(TOKENS.Logger) logger: LoggerPort) {
@@ -13,28 +14,38 @@ export class InMemoryJobQueue implements JobQueue {
   }
 
   tryEnqueue(job: () => Promise<void>): boolean {
-    if (this.busy) {
+    if (this.busy || this.pending.length > 0) {
       this.logger.debug("queue job rejected", { reason: "busy" });
       return false;
     }
-    this.busy = true;
+    this.pending.push(job);
     this.logger.debug("queue job accepted");
-    void this.run(job);
+    void this.drain();
     return true;
   }
 
-  private async run(job: () => Promise<void>): Promise<void> {
+  enqueue(job: () => Promise<void>): void {
+    this.pending.push(job);
+    this.logger.debug("queue job accepted", { pending: this.pending.length });
+    void this.drain();
+  }
+
+  private async drain(): Promise<void> {
+    if (this.busy) return;
+    const next = this.pending.shift();
+    if (next === undefined) return;
+    this.busy = true;
     try {
-      await job();
+      await next();
       this.logger.debug("queue job completed");
     } catch (err) {
       // Fail-Open Recovery: errors are not propagated; the slot is always released.
-      // A failed cycle is retried naturally on the next heartbeat.
       this.logger.warn("queue job failed", {
         error: err instanceof Error ? err.message : String(err),
       });
     } finally {
       this.busy = false;
+      void this.drain();
     }
   }
 }

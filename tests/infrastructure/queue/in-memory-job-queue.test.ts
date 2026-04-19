@@ -102,6 +102,57 @@ describe("InMemoryJobQueue", () => {
     await Promise.resolve();
   });
 
+  describe("enqueue (FIFO)", () => {
+    it("should queue pending jobs when busy and run them in order after slot releases", async () => {
+      const queue = new InMemoryJobQueue(makeFakeLogger());
+      const order: string[] = [];
+      let resolveFirst: () => void;
+
+      const first = () =>
+        new Promise<void>((resolve) => {
+          resolveFirst = () => {
+            order.push("first");
+            resolve();
+          };
+        });
+      const second = async () => {
+        order.push("second");
+      };
+      const third = async () => {
+        order.push("third");
+      };
+
+      queue.enqueue(first);
+      queue.enqueue(second);
+      queue.enqueue(third);
+
+      expect(order).toEqual([]);
+
+      resolveFirst!();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(order).toEqual(["first", "second", "third"]);
+    });
+
+    it("should cause tryEnqueue to return false when pending jobs exist even after slot releases", async () => {
+      const queue = new InMemoryJobQueue(makeFakeLogger());
+      let resolveFirst: () => void;
+      const first = () =>
+        new Promise<void>((resolve) => {
+          resolveFirst = resolve;
+        });
+
+      queue.enqueue(first);
+      queue.enqueue(vi.fn().mockResolvedValue(undefined));
+
+      // Even if first resolves, the second is pending so tryEnqueue should still reject.
+      resolveFirst!();
+      const result = queue.tryEnqueue(vi.fn().mockResolvedValue(undefined));
+
+      expect(result).toBe(false);
+    });
+  });
+
   describe("logging", () => {
     it('should log debug "queue job accepted" when enqueue succeeds', () => {
       const logger = makeFakeLogger();

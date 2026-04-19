@@ -11,7 +11,10 @@ import pino from "pino";
 const VALID_SECRET = "webhook-secret";
 
 function makeBaseDeps() {
-  const jobQueue: JobQueue = { tryEnqueue: vi.fn().mockReturnValue(true) };
+  const jobQueue: JobQueue = {
+    tryEnqueue: vi.fn().mockReturnValue(true),
+    enqueue: vi.fn(),
+  };
   const heartbeatJob: HeartbeatJob = {
     run: vi.fn().mockResolvedValue(undefined),
   } as unknown as HeartbeatJob;

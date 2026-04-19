@@ -7,6 +7,7 @@ import { makeFakeLogger } from "../../../mocks/fake-logger";
 function makeJobQueue(slotFree = true): JobQueue {
   return {
     tryEnqueue: vi.fn().mockReturnValue(slotFree),
+    enqueue: vi.fn(),
   };
 }
 
@@ -69,6 +70,7 @@ describe("POST /heartbeat", () => {
         capturedJob = job;
         return true;
       }),
+      enqueue: vi.fn(),
     };
     const heartbeatJob = makeHeartbeatJob();
     const app = createHeartbeatRoute({
@@ -103,6 +105,7 @@ describe("POST /heartbeat", () => {
         capturedJob = job;
         return true;
       }),
+      enqueue: vi.fn(),
     };
     // A run() that never resolves
     const heartbeatJob = makeHeartbeatJob(() => new Promise<void>(() => {}));

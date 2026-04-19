@@ -100,7 +100,7 @@ export function createTelegramRoute(deps: {
       attributes["telegram.update.id"] = parsed.data.update_id;
     }
 
-    const accepted = deps.jobQueue.tryEnqueue(() =>
+    deps.jobQueue.enqueue(() =>
       deps.channelJob.run({
         message: text,
         ref,
@@ -111,7 +111,6 @@ export function createTelegramRoute(deps: {
       }),
     );
     deps.logger.info("telegram message received", {
-      accepted,
       chatId: msg.chat.id,
     });
     return c.body(null, 200);

@@ -9,7 +9,10 @@ import { makeFakeLogger } from "../../../../mocks/fake-logger";
 const VALID_SECRET = "test-secret-token";
 
 function makeJobQueue(slotFree = true): JobQueue {
-  return { tryEnqueue: vi.fn().mockReturnValue(slotFree) };
+  return {
+    tryEnqueue: vi.fn().mockReturnValue(slotFree),
+    enqueue: vi.fn(),
+  };
 }
 
 function makeChannelJob(): ChannelJob {
@@ -136,6 +139,9 @@ describe("POST /channels/telegram", () => {
         capturedFn = fn;
         return true;
       }),
+      enqueue: vi.fn().mockImplementation((fn: () => Promise<void>) => {
+        capturedFn = fn;
+      }),
     };
     const channelJob = makeChannelJob();
     const app = makeApp({ jobQueue, channelJob });
@@ -150,7 +156,7 @@ describe("POST /channels/telegram", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(jobQueue.tryEnqueue).toHaveBeenCalledTimes(1);
+    expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
     expect(capturedFn).toBeDefined();
 
     await capturedFn!();
