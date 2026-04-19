@@ -1,8 +1,6 @@
 services:
   shrimp:
-    build:
-      context: .
-    image: shrimp:latest
+    image: ghcr.io/elct9620/shrimp:latest
     container_name: shrimp
     environment:
       # AI provider

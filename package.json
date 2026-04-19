@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "docker:build": "docker compose build",
+    "docker:build": "docker compose -f docker-compose.yml -f docker-compose.dev.yml build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f --tail=100",
