@@ -473,6 +473,38 @@ describe("ChannelJob.run — Auto Compact", () => {
     expect(capturedJobId).toBeTruthy();
   });
 
+  it("should invoke SummarizePort and rotateWithSummary when promptTokens exceeds threshold", async () => {
+    const session = makeSession({ id: "session-1", messages: [] });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+    });
+    const summarizePort = makeSummarizePort("Summary for above-threshold");
+    const agentAboveThreshold = makeAgentWithTokens(THRESHOLD + 1);
+
+    const job = makeJob(
+      sessionRepo,
+      agentAboveThreshold,
+      makeFakeLogger(),
+      undefined,
+      undefined,
+      new NoopTelemetry(),
+      summarizePort,
+      THRESHOLD,
+    );
+
+    await job.run({
+      message: "Hi",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
+
+    expect(summarizePort.summarize).toHaveBeenCalledTimes(1);
+    expect(sessionRepo.rotateWithSummary).toHaveBeenCalledTimes(1);
+    expect(sessionRepo.rotateWithSummary).toHaveBeenCalledWith(
+      "Summary for above-threshold",
+    );
+  });
+
   it("should skip compaction when promptTokens is below threshold", async () => {
     const session = makeSession({ id: "session-1", messages: [] });
     const sessionRepo = makeSessionRepository({
