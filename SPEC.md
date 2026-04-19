@@ -381,7 +381,7 @@ The root span name reflects the HTTP entry point that produced the Job, followin
 | `HeartbeatJob` | `POST /heartbeat`                                            |
 | `ChannelJob`   | `POST /channels/{channel}` (e.g., `POST /channels/telegram`) |
 
-The root span carries `http.request.method` and `http.route` attributes so downstream backends can filter traces by entry point — distinguishing idle Heartbeats from Channel-triggered Jobs by span name alone. The root span is the HTTP-entry-facing identity of the Job; the logical Shrimp Agent identity (`shrimp.job`) is carried on the nested `invoke_agent shrimp.job` span (see [Nested AI SDK spans](#nested-ai-sdk-spans) below), not on the root.
+The root span always carries `http.request.method`, `http.route`, and `url.path` so downstream backends can filter traces by entry point — distinguishing idle Heartbeats from Channel-triggered Jobs by span name alone. The HTTP adapter MAY enrich the root span with additional OpenTelemetry HTTP semantic-convention attributes when the headers are present (e.g., `user_agent.original`, `http.request.body.size`) and with channel-specific attributes when the information is directly available on the incoming request (e.g., `telegram.chat.id` for Telegram webhooks, enabling per-chat filtering in the observability backend). The root span is the HTTP-entry-facing identity of the Job; the logical Shrimp Agent identity (`shrimp.job`) is carried on the nested `invoke_agent shrimp.job` span (see [Nested AI SDK spans](#nested-ai-sdk-spans) below), not on the root.
 
 **Nested AI SDK spans:**
 
