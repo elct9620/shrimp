@@ -292,6 +292,39 @@ describe("ChannelJob.run", () => {
     expect(gateway.reply).toHaveBeenCalledWith(ref, "Reply text");
   });
 
+  it("reply is delivered before assistant messages are appended to Session (SPEC step 3a before step 4)", async () => {
+    const session = makeSession({ id: "session-1" });
+    sessionRepo.getCurrent = vi.fn().mockResolvedValue(session);
+    const ref = makeRef();
+    const gateway = makeChannelGateway();
+    const order: string[] = [];
+
+    gateway.reply = vi.fn().mockImplementation(async () => {
+      order.push("reply");
+    });
+    sessionRepo.append = vi.fn().mockImplementation(async () => {
+      order.push("append");
+    });
+    agent.run = vi.fn().mockResolvedValue({
+      reason: "finished" as const,
+      newMessages: [{ role: "assistant" as const, content: "Hi" }],
+    });
+
+    const j = makeJob(
+      sessionRepo,
+      agent,
+      logger,
+      makeToolProviderFactory(),
+      gateway,
+    );
+    await j.run({ message: "Hey", ref, telemetry: DEFAULT_TELEMETRY });
+
+    // order[0] = user-msg append (before agent), order[1] = reply, order[2] = assistant-msg append
+    expect(order[1]).toBe("reply");
+    expect(order[2]).toBe("append");
+    expect(order.indexOf("reply")).toBeLessThan(order.indexOf("append", 1));
+  });
+
   it("user msg is appended before agent invocation so transcript is preserved on agent failure", async () => {
     const session = makeSession({ id: "session-1" });
     sessionRepo.getCurrent = vi.fn().mockResolvedValue(session);

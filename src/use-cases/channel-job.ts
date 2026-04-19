@@ -120,6 +120,17 @@ export class ChannelJob {
           sessionId: session.id,
         });
 
+        // Deliver the agent's final text response to the originating Channel.
+        // ChannelGateway.reply is Fail-Open per SPEC §Channel Integration — if
+        // delivery fails the Job is not failed. We iterate newMessages so any
+        // assistant turn the agent produced is sent; typically this is one.
+        // SPEC step 3a: reply delivery happens before Session append (step 4).
+        for (const msg of result.newMessages) {
+          if (msg.role === "assistant" && msg.content.length > 0) {
+            await this.channelGateway.reply(event.ref, msg.content);
+          }
+        }
+
         // Append assistant turn(s) — Fail-Open: sessionRepository.append must not throw.
         if (result.newMessages.length > 0) {
           await this.sessionRepository.append(session.id, result.newMessages);
@@ -159,7 +170,7 @@ export class ChannelJob {
             });
           } catch (err) {
             // Fail-Open Recovery: compaction failure NEVER fails the Job.
-            // Reply delivery and append are already committed above.
+            // Reply delivery and append are both committed above (SPEC steps 3a and 4).
             if (err instanceof SessionJsonlWriteError) {
               this.logger.error(
                 "auto compact: JSONL write failed, rotation aborted",
@@ -176,16 +187,6 @@ export class ChannelJob {
                 { cause: err },
               );
             }
-          }
-        }
-
-        // Deliver the agent's final text response to the originating Channel.
-        // ChannelGateway.reply is Fail-Open per SPEC §Channel Integration — if
-        // delivery fails the Job is not failed. We iterate newMessages so any
-        // assistant turn the agent produced is sent; typically this is one.
-        for (const msg of result.newMessages) {
-          if (msg.role === "assistant" && msg.content.length > 0) {
-            await this.channelGateway.reply(event.ref, msg.content);
           }
         }
 
