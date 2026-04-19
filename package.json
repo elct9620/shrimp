@@ -8,6 +8,7 @@
     "dev": "tsdown --watch --onSuccess \"node dist/server.mjs\"",
     "build": "tsdown",
     "start": "node dist/server.mjs",
+    "heartbeat": "node scripts/heartbeat.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
