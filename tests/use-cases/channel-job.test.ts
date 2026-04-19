@@ -80,8 +80,12 @@ function makeToolProviderFactory(): ToolProviderFactory & {
 
 function makeChannelGateway(): ChannelGateway & {
   reply: ReturnType<typeof vi.fn>;
+  indicateProcessing: ReturnType<typeof vi.fn>;
 } {
-  return { reply: vi.fn().mockResolvedValue(undefined) };
+  return {
+    reply: vi.fn().mockResolvedValue(undefined),
+    indicateProcessing: vi.fn().mockResolvedValue(undefined),
+  };
 }
 
 function makeJob(
@@ -218,6 +222,33 @@ describe("ChannelJob.run", () => {
     expect(systemPrompt).toContain("search_web");
     expect(systemPrompt).toContain("Search the web");
     expect(systemPrompt).not.toMatch(/^You are/);
+  });
+
+  it("signals processing to ChannelGateway before invoking the agent so users see a working indicator", async () => {
+    const ref = makeRef();
+    const gateway = makeChannelGateway();
+
+    const order: string[] = [];
+    gateway.indicateProcessing = vi.fn().mockImplementation(async () => {
+      order.push("indicate");
+    });
+    agent.run = vi.fn().mockImplementation(async () => {
+      order.push("agent");
+      return { reason: "finished" as const, newMessages: [] };
+    });
+
+    const j = makeJob(
+      sessionRepo,
+      agent,
+      logger,
+      makeToolProviderFactory(),
+      gateway,
+    );
+
+    await j.run({ message: "Hi", ref, telemetry: DEFAULT_TELEMETRY });
+
+    expect(gateway.indicateProcessing).toHaveBeenCalledWith(ref);
+    expect(order).toEqual(["indicate", "agent"]);
   });
 
   it("delivers the agent's assistant reply directly via ChannelGateway", async () => {

@@ -16,4 +16,10 @@ export class NoopChannelGateway implements ChannelGateway {
       textLength: text.length,
     });
   }
+
+  async indicateProcessing(ref: ConversationRef): Promise<void> {
+    this.logger.debug("noop channel gateway chat action dropped", {
+      channel: ref.channel,
+    });
+  }
 }

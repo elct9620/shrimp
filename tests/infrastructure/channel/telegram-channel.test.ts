@@ -399,3 +399,84 @@ describe("TelegramChannel.reply", () => {
     );
   });
 });
+
+describe("TelegramChannel.indicateProcessing", () => {
+  it("sends sendChatAction with action=typing and resolves on 200", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    server.use(
+      http.post(`${TELEGRAM_BASE}/sendChatAction`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ok: true, result: true });
+      }),
+    );
+    const logger = makeFakeLogger();
+    const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+    await channel.indicateProcessing({
+      channel: TELEGRAM_CHANNEL_NAME,
+      payload: { chatId: 123 },
+    });
+
+    expect(capturedBody).toEqual({ chat_id: 123, action: "typing" });
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("skips and logs warn when ref.channel is not telegram", async () => {
+    const logger = makeFakeLogger();
+    const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+    await channel.indicateProcessing({
+      channel: "other",
+      payload: { chatId: 1 },
+    });
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      "telegram chat action skipped — wrong channel",
+      expect.objectContaining({ channel: "other" }),
+    );
+  });
+
+  it("swallows upstream non-2xx and logs warn with status (Fail-Open)", async () => {
+    server.use(
+      http.post(`${TELEGRAM_BASE}/sendChatAction`, () => {
+        return new HttpResponse(null, { status: 403 });
+      }),
+    );
+    const logger = makeFakeLogger();
+    const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+    await expect(
+      channel.indicateProcessing({
+        channel: TELEGRAM_CHANNEL_NAME,
+        payload: { chatId: 42 },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      "telegram chat action failed — upstream status",
+      expect.objectContaining({ status: 403 }),
+    );
+  });
+
+  it("swallows network errors and logs warn (Fail-Open)", async () => {
+    server.use(
+      http.post(`${TELEGRAM_BASE}/sendChatAction`, () => {
+        return HttpResponse.error();
+      }),
+    );
+    const logger = makeFakeLogger();
+    const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+    await expect(
+      channel.indicateProcessing({
+        channel: TELEGRAM_CHANNEL_NAME,
+        payload: { chatId: 7 },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      "telegram chat action failed — network",
+      expect.objectContaining({ error: expect.any(String) }),
+    );
+  });
+});

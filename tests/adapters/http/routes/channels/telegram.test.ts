@@ -23,7 +23,10 @@ function makeStartNewSession(): StartNewSession {
 }
 
 function makeChannelGateway(): ChannelGateway {
-  return { reply: vi.fn().mockResolvedValue(undefined) };
+  return {
+    reply: vi.fn().mockResolvedValue(undefined),
+    indicateProcessing: vi.fn().mockResolvedValue(undefined),
+  };
 }
 
 function makeApp(overrides?: {

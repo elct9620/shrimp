@@ -79,6 +79,11 @@ export class ChannelJob {
           tools: toolProvider.getToolDescriptions(),
         });
 
+        // Surface a platform-native processing hint (e.g. Telegram "typing…")
+        // before the Agent starts so users see the Job is being worked on.
+        // Fail-Open per SPEC §Channel Integration — ChannelGateway swallows errors.
+        await this.channelGateway.indicateProcessing(event.ref);
+
         this.logger.debug("cycle invoking shrimp agent", {
           sessionId: session.id,
         });

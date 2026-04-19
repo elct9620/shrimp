@@ -82,6 +82,39 @@ export class TelegramChannel implements ChannelGateway {
     private readonly logger: LoggerPort,
   ) {}
 
+  async indicateProcessing(ref: ConversationRef): Promise<void> {
+    if (ref.channel !== TELEGRAM_CHANNEL_NAME) {
+      this.logger.warn("telegram chat action skipped — wrong channel", {
+        channel: ref.channel,
+      });
+      return;
+    }
+    const chatId = (ref.payload as TelegramPayload).chatId;
+    const url = `https://api.telegram.org/bot${this.botToken}/sendChatAction`;
+    const body = JSON.stringify({ chat_id: chatId, action: "typing" });
+
+    // Best-effort: typing indicator is cosmetic. No retries — an expired
+    // indicator simply means the user sees no hint, which is strictly better
+    // than stalling the Job. Fail-Open on any error.
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (!resp.ok) {
+        this.logger.warn("telegram chat action failed — upstream status", {
+          status: resp.status,
+        });
+      }
+    } catch (err) {
+      this.logger.warn("telegram chat action failed — network", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   async reply(ref: ConversationRef, text: string): Promise<void> {
     // Guard: only handle refs originating from the Telegram webhook adapter.
     if (ref.channel !== TELEGRAM_CHANNEL_NAME) {

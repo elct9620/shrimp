@@ -32,6 +32,7 @@ function makeChannelDeps() {
   } as unknown as StartNewSession;
   const channelGateway: ChannelGateway = {
     reply: vi.fn().mockResolvedValue(undefined),
+    indicateProcessing: vi.fn().mockResolvedValue(undefined),
   };
   return {
     channelJob,
