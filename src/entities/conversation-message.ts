@@ -1,4 +1,4 @@
-export type ConversationRole = "user" | "assistant";
+export type ConversationRole = "user" | "assistant" | "system";
 
 export type ConversationMessage = {
   readonly role: ConversationRole;

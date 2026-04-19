@@ -1,9 +1,13 @@
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { JsonlSessionRepository } from "../../../src/infrastructure/session/jsonl-session-repository";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
+import {
+  SessionJsonlWriteError,
+  SessionStateUpdateError,
+} from "../../../src/use-cases/ports/session-repository";
 
 function makeStubLogger(): LoggerPort & {
   warns: { message: string; ctx?: Record<string, unknown> }[];
@@ -125,5 +129,128 @@ describe("JsonlSessionRepository", () => {
     ).resolves.toBeUndefined();
     expect(logger.warns.length).toBeGreaterThanOrEqual(1);
     expect(logger.warns[0].message).toMatch(/fail-open/i);
+  });
+
+  describe("rotateWithSummary()", () => {
+    const SUMMARY = "This is a conversation summary.";
+
+    it("success: creates new JSONL with single role:system entry, updates state.json, retains old JSONL", async () => {
+      const { stat } = await import("node:fs/promises");
+
+      // Establish a pre-existing session with content
+      const old = await repo.createNew();
+      await repo.append(old.id, [{ role: "user", content: "old message" }]);
+      const oldJsonlPath = join(tmpDir, "sessions", `${old.id}.jsonl`);
+
+      await repo.rotateWithSummary(SUMMARY);
+
+      // state.json now points to a new session
+      const current = await repo.getCurrent();
+      expect(current).not.toBeNull();
+      expect(current!.id).not.toBe(old.id);
+
+      // New session has exactly one role:system message with the summary
+      expect(current!.messages).toHaveLength(1);
+      expect(current!.messages[0]).toEqual({
+        role: "system",
+        content: SUMMARY,
+      });
+
+      // Old JSONL is still on disk (archive retained)
+      await expect(stat(oldJsonlPath)).resolves.toBeDefined();
+
+      // New JSONL exists on disk
+      const newJsonlPath = join(tmpDir, "sessions", `${current!.id}.jsonl`);
+      await expect(stat(newJsonlPath)).resolves.toBeDefined();
+    });
+
+    it("success: new JSONL file contains exactly one JSON line (the system summary)", async () => {
+      await repo.createNew();
+
+      await repo.rotateWithSummary(SUMMARY);
+
+      const current = await repo.getCurrent();
+      const newJsonlPath = join(tmpDir, "sessions", `${current!.id}.jsonl`);
+      const raw = await readFile(newJsonlPath, "utf-8");
+
+      const nonEmptyLines = raw
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      expect(nonEmptyLines).toHaveLength(1);
+
+      const parsed = JSON.parse(nonEmptyLines[0]);
+      expect(parsed).toEqual({ role: "system", content: SUMMARY });
+    });
+
+    it("JSONL write fails → throws SessionJsonlWriteError; state.json NOT updated", async () => {
+      const { chmod } = await import("node:fs/promises");
+
+      const old = await repo.createNew();
+
+      // Make the sessions directory non-writable so writeFile into it fails
+      const sessionsDir = join(tmpDir, "sessions");
+      await chmod(sessionsDir, 0o444);
+
+      try {
+        await expect(repo.rotateWithSummary(SUMMARY)).rejects.toThrow(
+          SessionJsonlWriteError,
+        );
+      } finally {
+        // Restore permissions before any further reads / afterEach cleanup
+        await chmod(sessionsDir, 0o755);
+      }
+
+      // state.json still points to the old session — no rotation occurred
+      const stateRaw = await readFile(join(tmpDir, "state.json"), "utf-8");
+      const state = JSON.parse(stateRaw) as { currentSessionId: string };
+      expect(state.currentSessionId).toBe(old.id);
+    });
+
+    it("state.json update fails after JSONL written → throws SessionStateUpdateError; new JSONL orphaned on disk", async () => {
+      const { stat } = await import("node:fs/promises");
+
+      await repo.createNew();
+
+      // Make state.json a directory so rename(state.json.tmp → state.json) fails
+      const stateJsonPath = join(tmpDir, "state.json");
+      await rm(stateJsonPath, { force: true });
+      await mkdir(stateJsonPath);
+
+      let thrownError: unknown;
+      try {
+        await repo.rotateWithSummary(SUMMARY);
+      } catch (err) {
+        thrownError = err;
+      }
+
+      expect(thrownError).toBeInstanceOf(SessionStateUpdateError);
+
+      // Extract the orphaned session ID from the error message
+      const errorMsg = (thrownError as SessionStateUpdateError).message;
+      const idMatch = errorMsg.match(/id: ([0-9a-f-]{36})/);
+      expect(idMatch).not.toBeNull();
+      const orphanedId = idMatch![1];
+
+      // The orphaned JSONL exists on disk
+      const orphanedPath = join(tmpDir, "sessions", `${orphanedId}.jsonl`);
+      await expect(stat(orphanedPath)).resolves.toBeDefined();
+    });
+
+    it("previous session JSONL is untouched after successful rotation", async () => {
+      const old = await repo.createNew();
+      await repo.append(old.id, [
+        { role: "user", content: "first" },
+        { role: "assistant", content: "second" },
+      ]);
+
+      const oldJsonlPath = join(tmpDir, "sessions", `${old.id}.jsonl`);
+      const beforeRaw = await readFile(oldJsonlPath, "utf-8");
+
+      await repo.rotateWithSummary(SUMMARY);
+
+      const afterRaw = await readFile(oldJsonlPath, "utf-8");
+      expect(afterRaw).toBe(beforeRaw);
+    });
   });
 });

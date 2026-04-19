@@ -12,6 +12,10 @@ import type {
   Session,
   SessionRepository,
 } from "../../use-cases/ports/session-repository";
+import {
+  SessionJsonlWriteError,
+  SessionStateUpdateError,
+} from "../../use-cases/ports/session-repository";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 
 type StateFile = {
@@ -35,7 +39,8 @@ function isConversationMessage(value: unknown): value is ConversationMessage {
     "role" in value &&
     "content" in value &&
     ((value as ConversationMessage).role === "user" ||
-      (value as ConversationMessage).role === "assistant") &&
+      (value as ConversationMessage).role === "assistant" ||
+      (value as ConversationMessage).role === "system") &&
     typeof (value as ConversationMessage).content === "string"
   );
 }
@@ -164,6 +169,40 @@ export class JsonlSessionRepository implements SessionRepository {
     await rename(stateTmpPath, this.stateFilePath);
 
     return { id, messages: [] };
+  }
+
+  /**
+   * Auto Compact rotation (SPEC §Session Lifecycle §Auto Compact, steps 3–5).
+   * Throws SessionJsonlWriteError if the new JSONL cannot be written.
+   * Throws SessionStateUpdateError if state.json update fails after JSONL written.
+   */
+  async rotateWithSummary(summary: string): Promise<void> {
+    const id = randomUUID();
+    const sessionsDir = this.sessionsDirPath;
+
+    await mkdir(sessionsDir, { recursive: true });
+
+    const sessionPath = this.sessionFilePath(id);
+    const summaryMessage: ConversationMessage = {
+      role: "system",
+      content: summary,
+    };
+    const initialLine = JSON.stringify(summaryMessage) + "\n";
+
+    try {
+      await writeFile(sessionPath, initialLine, "utf-8");
+    } catch (err) {
+      throw new SessionJsonlWriteError(err);
+    }
+
+    const stateTmpPath = `${this.stateFilePath}.tmp`;
+    const stateContent: StateFile = { currentSessionId: id };
+    try {
+      await writeFile(stateTmpPath, JSON.stringify(stateContent));
+      await rename(stateTmpPath, this.stateFilePath);
+    } catch (err) {
+      throw new SessionStateUpdateError(id, err);
+    }
   }
 
   /**

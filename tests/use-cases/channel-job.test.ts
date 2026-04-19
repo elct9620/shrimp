@@ -49,6 +49,7 @@ function makeSessionRepository(
     getCurrent: vi.fn().mockResolvedValue(null),
     createNew: vi.fn().mockResolvedValue(makeSession({ id: "session-new" })),
     append: vi.fn().mockResolvedValue(undefined),
+    rotateWithSummary: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
