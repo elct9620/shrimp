@@ -40,6 +40,7 @@ describe("loadEnvConfig", () => {
         telegramBotToken: undefined,
         telegramWebhookSecret: undefined,
         shrimpStateDir: expect.any(String),
+        heartbeatToken: undefined,
       });
     });
 
@@ -438,6 +439,29 @@ describe("loadEnvConfig", () => {
           SHRIMP_STATE_DIR: testStateDir,
         }),
       ).toThrow(EnvConfigError);
+    });
+  });
+
+  describe("SHRIMP_HEARTBEAT_TOKEN", () => {
+    it("should be undefined when absent", () => {
+      const config = loadEnvConfig(REQUIRED_ENV);
+      expect(config.heartbeatToken).toBeUndefined();
+    });
+
+    it("should be undefined when empty string", () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        SHRIMP_HEARTBEAT_TOKEN: "",
+      });
+      expect(config.heartbeatToken).toBeUndefined();
+    });
+
+    it("should expose the configured value when set", () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        SHRIMP_HEARTBEAT_TOKEN: "s3cret",
+      });
+      expect(config.heartbeatToken).toBe("s3cret");
     });
   });
 });

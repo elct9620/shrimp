@@ -18,6 +18,7 @@ export type CreateAppDeps = {
   jobQueue: JobQueue;
   heartbeatJob: HeartbeatJob;
   logger: LoggerPort;
+  heartbeatToken?: string;
   channels?: {
     channelJob: ChannelJob;
     startNewSession: StartNewSession;
@@ -56,6 +57,7 @@ export function createApp(deps: CreateAppDeps): Hono<AppEnv> {
       jobQueue: deps.jobQueue,
       heartbeatJob: deps.heartbeatJob,
       logger: deps.logger,
+      heartbeatToken: deps.heartbeatToken,
     }),
   );
 

@@ -46,6 +46,7 @@ async function main() {
     jobQueue: container.resolve(TOKENS.JobQueue),
     heartbeatJob,
     logger: logger.child({ module: "http.heartbeat" }),
+    heartbeatToken: env.heartbeatToken,
     channels,
   });
 

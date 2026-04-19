@@ -32,6 +32,7 @@ export type EnvConfig = {
   telegramWebhookSecret?: string;
   // Always present; only meaningful when channelsEnabled is true.
   shrimpStateDir: string;
+  heartbeatToken?: string;
 };
 
 export class EnvConfigError extends Error {
@@ -169,5 +170,6 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     telegramBotToken,
     telegramWebhookSecret,
     shrimpStateDir,
+    heartbeatToken: env["SHRIMP_HEARTBEAT_TOKEN"] || undefined,
   };
 }

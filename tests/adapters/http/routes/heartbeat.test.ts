@@ -141,6 +141,103 @@ describe("POST /heartbeat", () => {
     expect([404, 405]).toContain(res.status);
   });
 
+  describe("authentication", () => {
+    it("should accept unauthenticated requests when no heartbeatToken is configured", async () => {
+      const app = createHeartbeatRoute({
+        jobQueue: makeJobQueue(),
+        heartbeatJob: makeHeartbeatJob(),
+        logger: makeFakeLogger(),
+      });
+
+      const res = await app.request("/heartbeat", { method: "POST" });
+
+      expect(res.status).toBe(202);
+    });
+
+    it("should return 401 when token is configured and Authorization header is missing", async () => {
+      const jobQueue = makeJobQueue();
+      const app = createHeartbeatRoute({
+        jobQueue,
+        heartbeatJob: makeHeartbeatJob(),
+        logger: makeFakeLogger(),
+        heartbeatToken: "s3cret",
+      });
+
+      const res = await app.request("/heartbeat", { method: "POST" });
+
+      expect(res.status).toBe(401);
+      expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    });
+
+    it("should return 401 when token is configured and Bearer value does not match", async () => {
+      const jobQueue = makeJobQueue();
+      const app = createHeartbeatRoute({
+        jobQueue,
+        heartbeatJob: makeHeartbeatJob(),
+        logger: makeFakeLogger(),
+        heartbeatToken: "s3cret",
+      });
+
+      const res = await app.request("/heartbeat", {
+        method: "POST",
+        headers: { Authorization: "Bearer wrong" },
+      });
+
+      expect(res.status).toBe(401);
+      expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    });
+
+    it("should return 401 when Authorization uses a non-Bearer scheme", async () => {
+      const app = createHeartbeatRoute({
+        jobQueue: makeJobQueue(),
+        heartbeatJob: makeHeartbeatJob(),
+        logger: makeFakeLogger(),
+        heartbeatToken: "s3cret",
+      });
+
+      const res = await app.request("/heartbeat", {
+        method: "POST",
+        headers: { Authorization: "Basic s3cret" },
+      });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("should return 202 when Bearer value matches the configured token", async () => {
+      const jobQueue = makeJobQueue();
+      const app = createHeartbeatRoute({
+        jobQueue,
+        heartbeatJob: makeHeartbeatJob(),
+        logger: makeFakeLogger(),
+        heartbeatToken: "s3cret",
+      });
+
+      const res = await app.request("/heartbeat", {
+        method: "POST",
+        headers: { Authorization: "Bearer s3cret" },
+      });
+
+      expect(res.status).toBe(202);
+      expect(jobQueue.tryEnqueue).toHaveBeenCalledTimes(1);
+    });
+
+    it("should return 401 when token values differ only in length (avoids timing-safe length mismatch throw)", async () => {
+      const app = createHeartbeatRoute({
+        jobQueue: makeJobQueue(),
+        heartbeatJob: makeHeartbeatJob(),
+        logger: makeFakeLogger(),
+        heartbeatToken: "short",
+      });
+
+      const res = await app.request("/heartbeat", {
+        method: "POST",
+        headers: { Authorization: "Bearer shorter-token" },
+      });
+
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe("logging", () => {
     it('should log info "heartbeat received" on every POST', async () => {
       const jobQueue = makeJobQueue(true);
