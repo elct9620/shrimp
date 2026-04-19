@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 
 export type McpServerDefinition = {
-  command: string;
-  args?: string[];
+  type: "http";
+  url: string;
+  headers?: Record<string, string>;
 };
 
 export type McpConfig = {
@@ -14,6 +15,56 @@ export class McpConfigError extends Error {
     super(message);
     this.name = "McpConfigError";
   }
+}
+
+function parseHeaders(
+  name: string,
+  value: unknown,
+): Record<string, string> | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new McpConfigError(
+      `Invalid .mcp.json: server "${name}" field "headers" must be an object of strings`,
+    );
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v !== "string") {
+      throw new McpConfigError(
+        `Invalid .mcp.json: server "${name}" header "${k}" must be a string`,
+      );
+    }
+    out[k] = v;
+  }
+  return out;
+}
+
+function parseServerDefinition(
+  name: string,
+  defRecord: Record<string, unknown>,
+): McpServerDefinition {
+  const rawType = defRecord["type"];
+  const type = typeof rawType === "string" ? rawType : "http";
+
+  if (type !== "http") {
+    throw new McpConfigError(
+      `Invalid .mcp.json: server "${name}" has unsupported type "${type}" (only "http" is supported)`,
+    );
+  }
+
+  if (typeof defRecord["url"] !== "string") {
+    throw new McpConfigError(
+      `Invalid .mcp.json: server "${name}" must have a string "url" field`,
+    );
+  }
+
+  const def: McpServerDefinition = {
+    type: "http",
+    url: defRecord["url"],
+  };
+  const headers = parseHeaders(name, defRecord["headers"]);
+  if (headers) def.headers = headers;
+  return def;
 }
 
 export function parseMcpConfig(raw: string): McpConfig {
@@ -59,28 +110,7 @@ export function parseMcpConfig(raw: string): McpConfig {
         `Invalid .mcp.json: server definition for "${name}" must be a JSON object`,
       );
     }
-
-    const defRecord = def as Record<string, unknown>;
-
-    if (typeof defRecord["command"] !== "string") {
-      throw new McpConfigError(
-        `Invalid .mcp.json: server "${name}" must have a string "command" field`,
-      );
-    }
-
-    const serverDef: McpServerDefinition = { command: defRecord["command"] };
-
-    if ("args" in defRecord) {
-      const args = defRecord["args"];
-      if (!Array.isArray(args) || !args.every((a) => typeof a === "string")) {
-        throw new McpConfigError(
-          `Invalid .mcp.json: server "${name}" field "args" must be a string array`,
-        );
-      }
-      serverDef.args = args as string[];
-    }
-
-    result[name] = serverDef;
+    result[name] = parseServerDefinition(name, def as Record<string, unknown>);
   }
 
   return { mcpServers: result };

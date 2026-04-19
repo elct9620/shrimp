@@ -16,10 +16,10 @@ afterEach(() => {
 
 describe("parseMcpConfig", () => {
   describe("valid configs", () => {
-    it("should return correctly shaped object for a single server", () => {
+    it("should return correctly shaped object for a single Streamable HTTP server", () => {
       const raw = JSON.stringify({
         mcpServers: {
-          myServer: { command: "node", args: ["server.js"] },
+          myServer: { type: "http", url: "https://example.com/mcp" },
         },
       });
 
@@ -27,7 +27,7 @@ describe("parseMcpConfig", () => {
 
       expect(config).toEqual({
         mcpServers: {
-          myServer: { command: "node", args: ["server.js"] },
+          myServer: { type: "http", url: "https://example.com/mcp" },
         },
       });
     });
@@ -35,8 +35,8 @@ describe("parseMcpConfig", () => {
     it("should preserve all servers when multiple are defined", () => {
       const raw = JSON.stringify({
         mcpServers: {
-          serverA: { command: "node", args: ["a.js"] },
-          serverB: { command: "python", args: ["-m", "server"] },
+          serverA: { type: "http", url: "https://a.example.com/mcp" },
+          serverB: { type: "http", url: "https://b.example.com/mcp" },
         },
       });
 
@@ -45,12 +45,12 @@ describe("parseMcpConfig", () => {
       expect(config.mcpServers).toHaveProperty("serverA");
       expect(config.mcpServers).toHaveProperty("serverB");
       expect(config.mcpServers["serverA"]).toEqual({
-        command: "node",
-        args: ["a.js"],
+        type: "http",
+        url: "https://a.example.com/mcp",
       });
       expect(config.mcpServers["serverB"]).toEqual({
-        command: "python",
-        args: ["-m", "server"],
+        type: "http",
+        url: "https://b.example.com/mcp",
       });
     });
 
@@ -62,36 +62,37 @@ describe("parseMcpConfig", () => {
       expect(config).toEqual({ mcpServers: {} });
     });
 
-    it("should preserve the args array on a server definition", () => {
+    it("should preserve headers on a server definition", () => {
       const raw = JSON.stringify({
         mcpServers: {
-          withArgs: {
-            command: "npx",
-            args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+          withAuth: {
+            type: "http",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "Bearer token" },
           },
         },
       });
 
       const config = parseMcpConfig(raw);
 
-      expect(config.mcpServers["withArgs"].args).toEqual([
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "/tmp",
-      ]);
+      expect(config.mcpServers["withAuth"].headers).toEqual({
+        Authorization: "Bearer token",
+      });
     });
 
-    it("should not include args when the server definition omits it", () => {
+    it("should default type to http when omitted but url is present", () => {
       const raw = JSON.stringify({
         mcpServers: {
-          noArgs: { command: "some-binary" },
+          implicit: { url: "https://example.com/mcp" },
         },
       });
 
       const config = parseMcpConfig(raw);
 
-      expect(config.mcpServers["noArgs"].command).toBe("some-binary");
-      expect(config.mcpServers["noArgs"].args).toBeUndefined();
+      expect(config.mcpServers["implicit"]).toEqual({
+        type: "http",
+        url: "https://example.com/mcp",
+      });
     });
   });
 
@@ -150,35 +151,63 @@ describe("parseMcpConfig", () => {
       ).toThrow(McpConfigError);
     });
 
-    it("should throw McpConfigError when a server definition is missing command", () => {
-      expect(() =>
-        parseMcpConfig(JSON.stringify({ mcpServers: { srv: { args: [] } } })),
-      ).toThrow(McpConfigError);
-    });
-
-    it("should throw McpConfigError when command is a number instead of a string", () => {
+    it("should throw McpConfigError when an http server is missing url", () => {
       expect(() =>
         parseMcpConfig(
-          JSON.stringify({ mcpServers: { srv: { command: 123 } } }),
+          JSON.stringify({ mcpServers: { srv: { type: "http" } } }),
         ),
       ).toThrow(McpConfigError);
     });
 
-    it("should throw McpConfigError when args is a plain string instead of an array", () => {
+    it("should throw McpConfigError when url is a number instead of a string", () => {
+      expect(() =>
+        parseMcpConfig(
+          JSON.stringify({ mcpServers: { srv: { type: "http", url: 123 } } }),
+        ),
+      ).toThrow(McpConfigError);
+    });
+
+    it("should throw McpConfigError when type is stdio (not supported)", () => {
       expect(() =>
         parseMcpConfig(
           JSON.stringify({
-            mcpServers: { srv: { command: "node", args: "bad" } },
+            mcpServers: { srv: { type: "stdio", command: "node" } },
+          }),
+        ),
+      ).toThrow(/only "http" is supported/);
+    });
+
+    it("should throw McpConfigError for legacy command-based server (stdio not supported)", () => {
+      expect(() =>
+        parseMcpConfig(
+          JSON.stringify({
+            mcpServers: { srv: { command: "node", args: ["server.js"] } },
           }),
         ),
       ).toThrow(McpConfigError);
     });
 
-    it("should throw McpConfigError when args contains a non-string element", () => {
+    it("should throw McpConfigError when type is sse (not supported)", () => {
       expect(() =>
         parseMcpConfig(
           JSON.stringify({
-            mcpServers: { srv: { command: "node", args: ["ok", 42] } },
+            mcpServers: { srv: { type: "sse", url: "https://example.com" } },
+          }),
+        ),
+      ).toThrow(/only "http" is supported/);
+    });
+
+    it("should throw McpConfigError when headers contains a non-string value", () => {
+      expect(() =>
+        parseMcpConfig(
+          JSON.stringify({
+            mcpServers: {
+              srv: {
+                type: "http",
+                url: "https://example.com",
+                headers: { Authorization: 42 },
+              },
+            },
           }),
         ),
       ).toThrow(McpConfigError);
@@ -214,7 +243,7 @@ describe("loadMcpConfig", () => {
   it("should read the file and return the parsed config", () => {
     const content = JSON.stringify({
       mcpServers: {
-        fileServer: { command: "node", args: ["file-server.js"] },
+        fileServer: { type: "http", url: "https://example.com/mcp" },
       },
     });
     writeFileSync(TMP_FILE, content, "utf-8");
@@ -223,7 +252,7 @@ describe("loadMcpConfig", () => {
 
     expect(config).toEqual({
       mcpServers: {
-        fileServer: { command: "node", args: ["file-server.js"] },
+        fileServer: { type: "http", url: "https://example.com/mcp" },
       },
     });
   });

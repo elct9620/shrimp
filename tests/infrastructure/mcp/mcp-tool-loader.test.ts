@@ -35,7 +35,14 @@ function makeClient(
 function makeConfig(
   servers: Record<string, { command: string; args?: string[] }>,
 ): McpConfig {
-  return { mcpServers: servers };
+  return {
+    mcpServers: Object.fromEntries(
+      Object.entries(servers).map(([name]) => [
+        name,
+        { type: "http" as const, url: `https://example.com/${name}` },
+      ]),
+    ),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -179,8 +186,8 @@ describe("McpToolLoader", () => {
       await loader.load(config);
 
       expect(factory).toHaveBeenCalledWith("myServer", {
-        command: "myCmd",
-        args: ["--flag"],
+        type: "http",
+        url: "https://example.com/myServer",
       });
     });
   });
@@ -253,7 +260,7 @@ describe("McpToolLoader", () => {
       );
     });
 
-    it("should log warn with serverName, command and error when a server fails to start", async () => {
+    it("should log warn with serverName, url and error when a server fails to start", async () => {
       const factory: McpClientFactory = vi
         .fn()
         .mockRejectedValue(new Error("connection refused"));
@@ -269,7 +276,7 @@ describe("McpToolLoader", () => {
         "mcp server failed to start",
         expect.objectContaining({
           serverName: "bad",
-          command: "bad-server",
+          url: "https://example.com/bad",
           error: "connection refused",
         }),
       );

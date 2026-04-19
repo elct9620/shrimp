@@ -1,7 +1,7 @@
 import { injectable, inject } from "tsyringe";
 import { tool, jsonSchema } from "ai";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { McpConfig, McpServerDefinition } from "../config/mcp-config";
 import type { ToolSet } from "../../use-cases/ports/tool-set";
 import type { ToolDescription } from "../../use-cases/ports/tool-description";
@@ -28,16 +28,17 @@ export type McpLoadResult = {
 };
 
 // ---------------------------------------------------------------------------
-// Default factory: uses @modelcontextprotocol/sdk with stdio transport
+// Default factory: uses @modelcontextprotocol/sdk with Streamable HTTP transport
 // ---------------------------------------------------------------------------
 
 export const createMcpClient: McpClientFactory = async (
   _serverName: string,
   definition: McpServerDefinition,
 ): Promise<McpClient> => {
-  const transport = new StdioClientTransport({
-    command: definition.command,
-    args: definition.args,
+  const transport = new StreamableHTTPClientTransport(new URL(definition.url), {
+    requestInit: definition.headers
+      ? { headers: definition.headers }
+      : undefined,
   });
 
   const client = new Client({ name: "shrimp", version: "1.0.0" });
@@ -100,7 +101,7 @@ export class McpToolLoader {
         // Per SPEC §Failure Handling: exclude failed server, continue with others
         this.logger.warn("mcp server failed to start", {
           serverName,
-          command: definition.command,
+          url: definition.url,
           error: err instanceof Error ? err.message : String(err),
         });
         continue;

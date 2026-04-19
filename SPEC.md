@@ -735,7 +735,7 @@ Runtime configuration is supplied through environment variables and a `.mcp.json
 
 - Fail at startup: the process logs the error to stderr and exits with a non-zero exit code before accepting any HTTP requests.
 - Missing required variables cause the process to fail at startup; no partial startup allowed.
-- Supplementary MCP servers are configured via a `.mcp.json` file in the project root. The file follows the standard MCP configuration format: a JSON object with a `mcpServers` key mapping server names to their definitions (`command`, `args`).
+- Supplementary MCP servers are configured via a `.mcp.json` file in the project root. The file is a JSON object with a `mcpServers` key mapping server names to their definitions. Only the **Streamable HTTP transport** is supported: each definition has `type: "http"` (default when omitted), a required `url` string, and an optional `headers` object of string values for authentication. Stdio (`command`/`args`) and SSE transports are rejected at startup — Shrimp runs as a long-lived service and does not spawn local subprocesses for tools.
 - If `.mcp.json` is absent or contains no servers, the agent runs with built-in tools only.
 - The built-in Todoist tools (Get tasks, Get comments, Post comment, Move task) are compiled into the agent and always available. `.mcp.json` adds supplementary tools only.
 - **`OTEL_*` variables are pass-through:** Shrimp reads them and passes them to the OpenTelemetry SDK; they are not re-aliased or duplicated under Shrimp-owned names.
