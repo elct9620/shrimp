@@ -182,7 +182,11 @@ export class AiSdkShrimpAgent implements ShrimpAgent {
             : [];
 
         if (this.recordOutputs) {
-          const outputMessages = toGenAiOutputMessages(result.text, []);
+          const outputMessages = toGenAiOutputMessages(
+            result.text,
+            [],
+            result.reasoningText,
+          );
           if (outputMessages.length > 0) {
             span.setAttribute(
               ATTR_GEN_AI_OUTPUT_MESSAGES,

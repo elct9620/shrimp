@@ -198,6 +198,12 @@ interface GenAiTextPart {
   content: string;
 }
 
+/** A gen_ai reasoning part. */
+interface GenAiReasoningPart {
+  type: "reasoning";
+  content: string;
+}
+
 /** A gen_ai tool_call part. */
 interface GenAiToolCallPart {
   type: "tool_call";
@@ -213,7 +219,11 @@ interface GenAiToolCallResponsePart {
   response: unknown;
 }
 
-type GenAiPart = GenAiTextPart | GenAiToolCallPart | GenAiToolCallResponsePart;
+type GenAiPart =
+  | GenAiTextPart
+  | GenAiReasoningPart
+  | GenAiToolCallPart
+  | GenAiToolCallResponsePart;
 
 interface GenAiMessage {
   role: string;
@@ -222,13 +232,15 @@ interface GenAiMessage {
 
 /**
  * Maps a single AI SDK message content part to the gen_ai equivalent.
- * Returns `null` for part types that have no gen_ai mapping (e.g. reasoning,
- * file) — callers must drop null values silently.
+ * Returns `null` for part types that have no gen_ai mapping (e.g. file) —
+ * callers must drop null values silently.
  */
 function mapAiSdkPart(part: AiSdkPart): GenAiPart | null {
   switch (part.type) {
     case "text":
       return { type: "text", content: String(part.text ?? "") };
+    case "reasoning":
+      return { type: "reasoning", content: String(part.text ?? "") };
     case "tool-call":
       return {
         type: "tool_call",
@@ -243,7 +255,7 @@ function mapAiSdkPart(part: AiSdkPart): GenAiPart | null {
         response: part.output,
       };
     default:
-      // reasoning, file, and any future unknown types — drop silently
+      // file and any future unknown types — drop silently
       return null;
   }
 }
@@ -292,17 +304,26 @@ export function toGenAiInputMessages(aiMessages: unknown[]): GenAiMessage[] {
  * Pure function — no span dependency.
  *
  * Returns an array with ONE assistant message containing:
+ * - A reasoning part (first) when `reasoningText` is a non-empty string.
  * - A text part when `text` is a non-empty string.
  * - Tool call parts for each entry in `toolCalls`.
  *
- * Returns an empty array when both inputs are absent/empty — callers must
+ * Reasoning is placed before text to reflect generation order (the model thinks
+ * before producing the final answer).
+ *
+ * Returns an empty array when all inputs are absent/empty — callers must
  * skip setting `gen_ai.output.messages` in that case.
  */
 export function toGenAiOutputMessages(
   text: unknown,
   toolCalls: unknown[],
+  reasoningText?: unknown,
 ): GenAiMessage[] {
   const parts: GenAiPart[] = [];
+
+  if (typeof reasoningText === "string" && reasoningText.length > 0) {
+    parts.push({ type: "reasoning", content: reasoningText });
+  }
 
   if (typeof text === "string" && text.length > 0) {
     parts.push({ type: "text", content: text });
@@ -366,8 +387,9 @@ function translateChatMessages(span: ReadableSpan): void {
   // --- output messages ---
   const rawText = attrs["ai.response.text"];
   const rawToolCalls = attrs["ai.response.toolCalls"];
+  const rawReasoning = attrs["ai.response.reasoning"];
 
-  if (rawText == null && rawToolCalls == null) return;
+  if (rawText == null && rawToolCalls == null && rawReasoning == null) return;
 
   let toolCallsArray: unknown[] = [];
   if (rawToolCalls != null) {
@@ -381,7 +403,11 @@ function translateChatMessages(span: ReadableSpan): void {
     }
   }
 
-  const outputMessages = toGenAiOutputMessages(rawText, toolCallsArray);
+  const outputMessages = toGenAiOutputMessages(
+    rawText,
+    toolCallsArray,
+    rawReasoning,
+  );
   if (outputMessages.length > 0) {
     setIfAbsent(
       mutableAttrs,
@@ -471,6 +497,11 @@ function translateUsageTokens(span: ReadableSpan): void {
       "gen_ai.usage.cache_creation.input_tokens",
       cacheWrite,
     );
+  }
+
+  const reasoningTokens = attrs["ai.usage.outputTokenDetails.reasoningTokens"];
+  if (typeof reasoningTokens === "number" && Number.isFinite(reasoningTokens)) {
+    setIfAbsent(mutableAttrs, "gen_ai.usage.reasoning_tokens", reasoningTokens);
   }
 }
 

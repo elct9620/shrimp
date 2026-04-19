@@ -440,7 +440,7 @@ describe("GenAiBridgeSpanProcessor", () => {
       ]);
     });
 
-    it("drops unknown part types (e.g. reasoning) silently; message still emitted when other parts remain", () => {
+    it("maps reasoning parts to gen_ai reasoning parts alongside other content", () => {
       const result = toGenAiInputMessages([
         {
           role: "assistant",
@@ -453,18 +453,30 @@ describe("GenAiBridgeSpanProcessor", () => {
 
       expect(result).toHaveLength(1);
       expect(result[0]!.parts).toEqual([
+        { type: "reasoning", content: "Let me think..." },
         { type: "text", content: "The answer is 42." },
       ]);
     });
 
-    it("drops the whole message when all parts are unknown types", () => {
+    it("emits a reasoning-only message when reasoning is the sole supported part", () => {
       const result = toGenAiInputMessages([
         {
           role: "assistant",
-          content: [
-            { type: "reasoning", text: "Just thinking..." },
-            { type: "file", text: "some-file-data" },
-          ],
+          content: [{ type: "reasoning", text: "Just thinking..." }],
+        },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.parts).toEqual([
+        { type: "reasoning", content: "Just thinking..." },
+      ]);
+    });
+
+    it("drops the whole message when all parts are unsupported types (e.g. file)", () => {
+      const result = toGenAiInputMessages([
+        {
+          role: "assistant",
+          content: [{ type: "file", text: "some-file-data" }],
         },
       ]);
 
@@ -551,6 +563,35 @@ describe("GenAiBridgeSpanProcessor", () => {
         type: "tool_call",
         arguments: { x: 1 },
       });
+    });
+
+    it("prepends a reasoning part before text when reasoningText is provided", () => {
+      const result = toGenAiOutputMessages(
+        "Hello.",
+        [],
+        "Thinking step by step.",
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.parts).toEqual([
+        { type: "reasoning", content: "Thinking step by step." },
+        { type: "text", content: "Hello." },
+      ]);
+    });
+
+    it("emits a reasoning-only assistant message when only reasoningText is present", () => {
+      const result = toGenAiOutputMessages(undefined, [], "Just thinking.");
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.parts).toEqual([
+        { type: "reasoning", content: "Just thinking." },
+      ]);
+    });
+
+    it("ignores empty reasoningText", () => {
+      const result = toGenAiOutputMessages("Hi.", [], "");
+
+      expect(result[0]!.parts).toEqual([{ type: "text", content: "Hi." }]);
     });
   });
 
@@ -779,6 +820,85 @@ describe("GenAiBridgeSpanProcessor", () => {
   // ---------------------------------------------------------------------------
   // Usage token bridge (item #16)
   // ---------------------------------------------------------------------------
+
+  describe("reasoning bridge (ai.response.reasoning → gen_ai.output.messages)", () => {
+    it("includes a reasoning part in gen_ai.output.messages when ai.response.reasoning is set", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "ai.response.text": "Final answer.",
+          "ai.response.reasoning": "Step 1\nStep 2",
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      const parsed = JSON.parse(attrs["gen_ai.output.messages"] as string);
+      expect(parsed[0].parts).toEqual([
+        { type: "reasoning", content: "Step 1\nStep 2" },
+        { type: "text", content: "Final answer." },
+      ]);
+    });
+
+    it("emits a reasoning-only output message when only ai.response.reasoning is set", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "ai.response.reasoning": "thinking..." },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      const parsed = JSON.parse(attrs["gen_ai.output.messages"] as string);
+      expect(parsed[0].parts).toEqual([
+        { type: "reasoning", content: "thinking..." },
+      ]);
+    });
+
+    it("maps reasoningTokens to gen_ai.usage.reasoning_tokens on a chat span", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: {
+          "ai.usage.outputTokenDetails.reasoningTokens": 256,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.usage.reasoning_tokens"]).toBe(256);
+    });
+
+    it("sets gen_ai.usage.reasoning_tokens=0 when reasoningTokens is 0", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.generateText.doGenerate",
+        attributes: { "ai.usage.outputTokenDetails.reasoningTokens": 0 },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs["gen_ai.usage.reasoning_tokens"]).toBe(0);
+    });
+
+    it("does NOT map reasoning attrs on a non-chat span", () => {
+      const processor = new GenAiBridgeSpanProcessor();
+      const span = makeFakeSpan({
+        name: "ai.toolCall",
+        attributes: {
+          "ai.toolCall.name": "search",
+          "ai.response.reasoning": "noop",
+          "ai.usage.outputTokenDetails.reasoningTokens": 10,
+        },
+      });
+
+      const attrs = endSpan(processor, span);
+
+      expect(attrs).not.toHaveProperty("gen_ai.output.messages");
+      expect(attrs).not.toHaveProperty("gen_ai.usage.reasoning_tokens");
+    });
+  });
 
   describe("usage token bridge (cache_read / cache_creation)", () => {
     it("maps cacheReadTokens=42 to gen_ai.usage.cache_read.input_tokens on a chat span", () => {

@@ -737,6 +737,49 @@ describe("AiSdkShrimpAgent.run", () => {
       ]);
     });
 
+    it("should include reasoning part in gen_ai.output.messages when model emits reasoning", async () => {
+      const { tracer, spans } = makeRecordingTracer();
+      const reasoningModel = new MockLanguageModelV3({
+        doGenerate: async () => ({
+          content: [
+            { type: "reasoning" as const, text: "Plan: respond politely." },
+            { type: "text" as const, text: "done" },
+          ],
+          finishReason: { unified: "stop" as const, raw: undefined },
+          usage: {
+            inputTokens: {
+              total: 0,
+              noCache: 0,
+              cacheRead: undefined,
+              cacheWrite: undefined,
+            },
+            outputTokens: { total: 0, text: 0, reasoning: 0 },
+          },
+          warnings: [],
+        }),
+      });
+      const agent = makeAgent(reasoningModel, makeFakeLogger(), {
+        tracer,
+        recordOutputs: true,
+      });
+
+      await agent.run(baseInput);
+
+      const span = findShrimpAgentSpan(spans);
+      const parsed = JSON.parse(
+        span!.attributes["gen_ai.output.messages"] as string,
+      );
+      expect(parsed).toEqual([
+        {
+          role: "assistant",
+          parts: [
+            { type: "reasoning", content: "Plan: respond politely." },
+            { type: "text", content: "done" },
+          ],
+        },
+      ]);
+    });
+
     it("should omit gen_ai.input.messages when recordInputs=false but still set output messages", async () => {
       const { tracer, spans } = makeRecordingTracer();
       const model = makeModel("stop");
