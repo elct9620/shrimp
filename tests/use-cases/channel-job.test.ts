@@ -4,6 +4,10 @@ import type {
   SessionRepository,
   Session,
 } from "../../src/use-cases/ports/session-repository";
+import {
+  SessionJsonlWriteError,
+  SessionStateUpdateError,
+} from "../../src/use-cases/ports/session-repository";
 import type {
   ShrimpAgent,
   JobInput,
@@ -615,5 +619,139 @@ describe("ChannelJob.run — Auto Compact", () => {
       role: "assistant",
       content: "Reply",
     });
+  });
+});
+
+describe("ChannelJob.run — Auto Compact Fail-Open", () => {
+  const THRESHOLD = 1000;
+
+  function makeAgentAtThreshold() {
+    return makeShrimpAgent({
+      reason: "finished" as const,
+      newMessages: [{ role: "assistant" as const, content: "Reply" }],
+      promptTokens: THRESHOLD,
+    });
+  }
+
+  it("should complete successfully and not call rotateWithSummary when SummarizePort throws", async () => {
+    const session = makeSession({ id: "session-1", messages: [] });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+    });
+    const gateway = makeChannelGateway();
+    const logger = makeFakeLogger();
+
+    const summarizePort: SummarizePort = {
+      summarize: vi.fn().mockRejectedValue(new Error("provider timeout")),
+    };
+
+    const job = makeJob(
+      sessionRepo,
+      makeAgentAtThreshold(),
+      logger,
+      undefined,
+      gateway,
+      new NoopTelemetry(),
+      summarizePort,
+      THRESHOLD,
+    );
+
+    // Job must resolve without throwing
+    await expect(
+      job.run({ message: "Hi", ref: makeRef(), telemetry: DEFAULT_TELEMETRY }),
+    ).resolves.toBeUndefined();
+
+    // rotateWithSummary must NOT have been called
+    expect(sessionRepo.rotateWithSummary).not.toHaveBeenCalled();
+
+    // Reply must still have been delivered
+    expect(gateway.reply).toHaveBeenCalledWith(makeRef(), "Reply");
+
+    // Error must be logged with cause
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("summarize failed"),
+      expect.objectContaining({ cause: expect.any(Error) }),
+    );
+  });
+
+  it("should complete successfully when rotateWithSummary throws SessionJsonlWriteError", async () => {
+    const session = makeSession({ id: "session-1", messages: [] });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+      rotateWithSummary: vi
+        .fn()
+        .mockRejectedValue(new SessionJsonlWriteError(new Error("disk full"))),
+    });
+    const gateway = makeChannelGateway();
+    const logger = makeFakeLogger();
+
+    const job = makeJob(
+      sessionRepo,
+      makeAgentAtThreshold(),
+      logger,
+      undefined,
+      gateway,
+      new NoopTelemetry(),
+      makeSummarizePort(),
+      THRESHOLD,
+    );
+
+    await expect(
+      job.run({ message: "Hi", ref: makeRef(), telemetry: DEFAULT_TELEMETRY }),
+    ).resolves.toBeUndefined();
+
+    // Reply must still have been delivered
+    expect(gateway.reply).toHaveBeenCalledWith(makeRef(), "Reply");
+
+    // Error must mention JSONL write failure / rotation aborted
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("JSONL write failed"),
+      expect.objectContaining({ cause: expect.any(Error) }),
+    );
+  });
+
+  it("should complete successfully and log orphaned newSessionId when rotateWithSummary throws SessionStateUpdateError", async () => {
+    const ORPHAN_ID = "orphan-session-uuid";
+    const session = makeSession({ id: "session-1", messages: [] });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+      rotateWithSummary: vi
+        .fn()
+        .mockRejectedValue(
+          new SessionStateUpdateError(
+            ORPHAN_ID,
+            new Error("atomic write failed"),
+          ),
+        ),
+    });
+    const gateway = makeChannelGateway();
+    const logger = makeFakeLogger();
+
+    const job = makeJob(
+      sessionRepo,
+      makeAgentAtThreshold(),
+      logger,
+      undefined,
+      gateway,
+      new NoopTelemetry(),
+      makeSummarizePort(),
+      THRESHOLD,
+    );
+
+    await expect(
+      job.run({ message: "Hi", ref: makeRef(), telemetry: DEFAULT_TELEMETRY }),
+    ).resolves.toBeUndefined();
+
+    // Reply must still have been delivered
+    expect(gateway.reply).toHaveBeenCalledWith(makeRef(), "Reply");
+
+    // Error must mention orphaned JSONL and include the orphan session ID
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("state.json update failed"),
+      expect.objectContaining({
+        newSessionId: ORPHAN_ID,
+        cause: expect.any(Error),
+      }),
+    );
   });
 });

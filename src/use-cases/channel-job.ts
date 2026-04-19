@@ -8,6 +8,10 @@ import type { LoggerPort } from "./ports/logger";
 import type { SpanAttributes, TelemetryPort } from "./ports/telemetry";
 import type { UserAgentsPort } from "./ports/user-agents";
 import type { SummarizePort } from "./ports/summarize";
+import {
+  SessionJsonlWriteError,
+  SessionStateUpdateError,
+} from "./ports/session-repository";
 import { assembleChannelSystemPrompt } from "./prompt-assembler";
 
 export type ChannelJobConfig = {
@@ -131,27 +135,48 @@ export class ChannelJob {
           result.promptTokens !== undefined &&
           result.promptTokens >= this.compactionThreshold
         ) {
-          // Step 1: snapshot the full post-append ConversationMessage list.
-          const snapshot = [
-            ...session.messages,
-            userMsg,
-            ...result.newMessages,
-          ];
+          try {
+            // Step 1: snapshot the full post-append ConversationMessage list.
+            const snapshot = [
+              ...session.messages,
+              userMsg,
+              ...result.newMessages,
+            ];
 
-          // Step 2: produce the Conversation Summary.
-          const summary = await this.summarize.summarize({
-            history: snapshot,
-            jobId,
-          });
+            // Step 2: produce the Conversation Summary.
+            const summary = await this.summarize.summarize({
+              history: snapshot,
+              jobId,
+            });
 
-          // Steps 3–5: create new Session JSONL + update state.json (rotateWithSummary).
-          await this.sessionRepository.rotateWithSummary(summary);
+            // Steps 3–5: create new Session JSONL + update state.json (rotateWithSummary).
+            await this.sessionRepository.rotateWithSummary(summary);
 
-          this.logger.info("auto compact: session rotated", {
-            sessionId: session.id,
-            promptTokens: result.promptTokens,
-            threshold: this.compactionThreshold,
-          });
+            this.logger.info("auto compact: session rotated", {
+              sessionId: session.id,
+              promptTokens: result.promptTokens,
+              threshold: this.compactionThreshold,
+            });
+          } catch (err) {
+            // Fail-Open Recovery: compaction failure NEVER fails the Job.
+            // Reply delivery and append are already committed above.
+            if (err instanceof SessionJsonlWriteError) {
+              this.logger.error(
+                "auto compact: JSONL write failed, rotation aborted",
+                { cause: err.cause },
+              );
+            } else if (err instanceof SessionStateUpdateError) {
+              this.logger.error(
+                "auto compact: state.json update failed, new session JSONL orphaned",
+                { newSessionId: err.newSessionId, cause: err.cause },
+              );
+            } else {
+              this.logger.error(
+                "auto compact: summarize failed, skipping compaction this turn",
+                { cause: err },
+              );
+            }
+          }
         }
 
         // Deliver the agent's final text response to the originating Channel.

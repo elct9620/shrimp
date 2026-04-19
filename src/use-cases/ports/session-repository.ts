@@ -25,12 +25,15 @@ export class SessionJsonlWriteError extends Error {
  * the previous Session remains current via the old state.json pointer.
  */
 export class SessionStateUpdateError extends Error {
+  readonly newSessionId: string;
+
   constructor(newSessionId: string, cause: unknown) {
     super(
       `Auto Compact: state.json update failed — new Session JSONL orphaned (id: ${newSessionId}); previous Session remains current`,
     );
     this.name = "SessionStateUpdateError";
     this.cause = cause;
+    this.newSessionId = newSessionId;
   }
 }
 
