@@ -165,16 +165,17 @@ End-to-end sequence from external trigger to agent invocation. Two trigger sourc
 
 **ChannelJob flow:**
 
-| Step | Actor           | Action                        | Outcome                                                                                                                                                                           |
-| ---- | --------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Channel adapter | Receive inbound message event | Non-command message (see [Channel Integration](#channel-integration)); ConversationRef captured; dispatch a ChannelJob                                                            |
-| 2    | Job Queue       | Accept or drop the event      | If queue slot is free, start a ChannelJob; if busy, silently drop; see [In-Memory Job Queue](#in-memory-job-queue)                                                                |
-| 3    | Job Worker      | Load Session                  | Read the current Session via the `SessionRepository`, or create a new Session if this is the first message; see [Session Lifecycle](#session-lifecycle)                           |
-| 4    | Job Worker      | Assemble prompts              | Assemble the system prompt and a user prompt from the Session's conversation history plus the incoming Channel message                                                            |
-| 5    | Shrimp Agent    | Execute the conversation turn | Runs the tool-calling loop with the assembled prompts, Session history input, and full tool set; terminates on done, max steps, or error                                          |
-| 5a   | Job Worker      | Deliver replies               | After the agent returns, delivers each assistant ConversationMessage to the originating Channel conversation via ChannelGateway using the ConversationRef; failures are Fail-Open |
-| 6    | Job Worker      | Append to Session             | Append the new conversation entries to the current Session                                                                                                                        |
-| 7    | Job Queue       | Release queue slot            | Job is finished; queue is ready to accept the next event                                                                                                                          |
+| Step | Actor           | Action                        | Outcome                                                                                                                                                                                            |
+| ---- | --------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Channel adapter | Receive inbound message event | Non-command message (see [Channel Integration](#channel-integration)); ConversationRef captured; dispatch a ChannelJob                                                                             |
+| 2    | Job Queue       | Accept or drop the event      | If queue slot is free, start a ChannelJob; if busy, silently drop; see [In-Memory Job Queue](#in-memory-job-queue)                                                                                 |
+| 3    | Job Worker      | Load Session                  | Read the current Session via the `SessionRepository`, or create a new Session if this is the first message; see [Session Lifecycle](#session-lifecycle)                                            |
+| 4    | Job Worker      | Assemble prompts              | Assemble the system prompt and a user prompt from the Session's conversation history plus the incoming Channel message                                                                             |
+| 5    | Shrimp Agent    | Execute the conversation turn | Runs the tool-calling loop with the assembled prompts, Session history input, and full tool set; terminates on done, max steps, or error                                                           |
+| 5a   | Job Worker      | Deliver replies               | After the agent returns, delivers each assistant ConversationMessage to the originating Channel conversation via ChannelGateway using the ConversationRef; failures are Fail-Open                  |
+| 6    | Job Worker      | Append to Session             | Append the new conversation entries to the current Session                                                                                                                                         |
+| 6a   | Job Worker      | Evaluate Compaction Threshold | If the AI provider's prompt token usage for this turn meets the Compaction Threshold, invoke SummarizePort and rotate to a new Session; see [Session Lifecycle § Auto Compact](#session-lifecycle) |
+| 7    | Job Queue       | Release queue slot            | Job is finished; queue is ready to accept the next event                                                                                                                                           |
 
 **Flow invariants (apply to both variants):**
 
@@ -359,7 +360,7 @@ _Relationship to `/new`:_
 
 _Failure handling:_
 
-See [Failure Handling](#failure-handling) for Auto Compact failure rules (item covers SummarizePort errors, missing token counts, and JSONL/state.json write failures).
+See the [Session Lifecycle failure handling table](#session-lifecycle) below for Auto Compact failure rules (covers SummarizePort errors, missing token counts, and JSONL/state.json write failures).
 
 **Participation in Jobs:**
 
@@ -628,6 +629,7 @@ A **Job** is the orchestration unit triggered by either a Heartbeat (**Heartbeat
 | 3    | Shrimp Agent | Run the tool-calling loop with the assembled prompts, Session history, and all available tools; terminates on done, max steps, or error                         |
 | 3a   | Job Worker   | Deliver each assistant ConversationMessage returned by the agent to the originating Channel conversation via ChannelGateway; failures are Fail-Open             |
 | 4    | Job Worker   | Append new ConversationMessage entries produced during the invocation back to the Session via the Session Repository                                            |
+| 4a   | Job Worker   | Evaluate the Compaction Threshold; if met, invoke SummarizePort and rotate to a new Session (see [Session Lifecycle § Auto Compact](#session-lifecycle))        |
 | 5    | Job Queue    | Job ends; slot released regardless of success or failure                                                                                                        |
 
 The Job Queue only starts the Job and releases the slot when the Job returns.
@@ -721,7 +723,7 @@ The Post Comment tool is responsible for prepending the Comment Tag to every com
 | Output     | A single Conversation Summary string. The content is determined by the AI model; no fixed template is imposed by Shrimp. The string becomes the `content` of a `role: "system"` ConversationMessage that the Job Worker places as the first entry of the new Session |
 | Invocation | Exactly once per Auto Compact event. Not invoked by HeartbeatJob (see [Session Lifecycle § Auto Compact](#session-lifecycle)). Not invoked by any other component.                                                                                                   |
 | Completion | Returns when the model produces the summary. No multi-step loop, no tool calls.                                                                                                                                                                                      |
-| Failure    | Any error is returned synchronously to the Job Worker. Failure handling rules are defined in [Failure Handling](#failure-handling).                                                                                                                                  |
+| Failure    | Any error is returned synchronously to the Job Worker. Failure handling rules are defined in [Session Lifecycle § Failure handling](#session-lifecycle).                                                                                                             |
 
 **Provider abstraction:**
 
