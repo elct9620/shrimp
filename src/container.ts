@@ -13,6 +13,7 @@ import { createTelemetry } from "./infrastructure/telemetry/telemetry-factory";
 import { TodoistApi } from "@doist/todoist-sdk";
 import { TodoistBoardRepository } from "./infrastructure/todoist/todoist-board-repository";
 import { AiSdkShrimpAgent } from "./infrastructure/ai/ai-sdk-shrimp-agent";
+import { AiSdkSummarizePort } from "./infrastructure/ai/ai-sdk-summarize-port";
 import {
   McpToolLoader,
   createMcpClient,
@@ -131,7 +132,15 @@ export async function bootstrap(): Promise<void> {
   container.registerInstance(TOKENS.Tracer, tracer);
   logger.info("telemetry initialized", { enabled: env.telemetryEnabled });
 
-  // 3a. ChannelGateway — TelegramChannel when enabled, NoopChannelGateway otherwise.
+  // 3a. Language model provider — created here so both TOKENS.LanguageModel and
+  // channel-only registrations (SummarizePort) can share the same provider instance.
+  const provider = createOpenAICompatible({
+    name: "shrimp",
+    baseURL: env.openAiBaseUrl,
+    apiKey: env.openAiApiKey,
+  });
+
+  // 3b. ChannelGateway — TelegramChannel when enabled, NoopChannelGateway otherwise.
   // Registered before step 8 (ToolProviderFactory) so BuiltInToolFactory can resolve it.
   if (env.channelsEnabled) {
     container.register(TOKENS.ChannelGateway, {
@@ -181,6 +190,15 @@ export async function bootstrap(): Promise<void> {
         ),
     });
 
+    // SummarizePort — uses AUTO_COMPACT_MODEL when set, falls back to AI_MODEL
+    container.register(TOKENS.Summarize, {
+      useFactory: (c) =>
+        new AiSdkSummarizePort({
+          model: provider.chatModel(env.autoCompactModel ?? env.aiModel),
+          logger: c.resolve<LoggerPort>(TOKENS.Logger),
+        }),
+    });
+
     logger.info("channel feature enabled", { gateway: "telegram" });
   } else {
     container.register(TOKENS.ChannelGateway, {
@@ -194,11 +212,6 @@ export async function bootstrap(): Promise<void> {
   }
 
   // 4. Language model
-  const provider = createOpenAICompatible({
-    name: "shrimp",
-    baseURL: env.openAiBaseUrl,
-    apiKey: env.openAiApiKey,
-  });
   container.registerInstance(
     TOKENS.LanguageModel,
     provider.chatModel(env.aiModel),
