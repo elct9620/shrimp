@@ -527,24 +527,30 @@ describe("loadEnvConfig", () => {
       expect(config.autoCompactTokenThreshold).toBe(120000);
     });
 
-    it("should throw EnvConfigError mentioning AUTO_COMPACT_TOKEN_THRESHOLD when CHANNELS_ENABLED=true and it is missing", () => {
+    it("should default AUTO_COMPACT_TOKEN_THRESHOLD to 100000 when CHANNELS_ENABLED=true and it is missing", () => {
       testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
 
-      expect(() =>
-        loadEnvConfig({
-          ...CHANNELS_ON_ENV,
-          SHRIMP_HOME: testStateDir,
-        }),
-      ).toThrow(EnvConfigError);
-      expect(() =>
-        loadEnvConfig({
-          ...CHANNELS_ON_ENV,
-          SHRIMP_HOME: testStateDir,
-        }),
-      ).toThrow("AUTO_COMPACT_TOKEN_THRESHOLD");
+      const config = loadEnvConfig({
+        ...CHANNELS_ON_ENV,
+        SHRIMP_HOME: testStateDir,
+      });
+
+      expect(config.autoCompactTokenThreshold).toBe(100000);
     });
 
-    it.each(["0", "-1", "abc", "1.5", ""])(
+    it("should default AUTO_COMPACT_TOKEN_THRESHOLD to 100000 when set to empty string", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+      const config = loadEnvConfig({
+        ...CHANNELS_ON_ENV,
+        SHRIMP_HOME: testStateDir,
+        AUTO_COMPACT_TOKEN_THRESHOLD: "",
+      });
+
+      expect(config.autoCompactTokenThreshold).toBe(100000);
+    });
+
+    it.each(["0", "-1", "abc", "1.5"])(
       'should throw EnvConfigError when AUTO_COMPACT_TOKEN_THRESHOLD is "%s"',
       (value) => {
         testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);

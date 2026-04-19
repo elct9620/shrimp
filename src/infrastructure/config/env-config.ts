@@ -43,6 +43,10 @@ export type EnvConfig = {
 };
 
 const DEFAULT_AUTO_COMPACT_MAX_OUTPUT_TOKENS = 2048;
+// Conservative default sized for modern long-context models (Claude Sonnet/Opus
+// 200k, GPT-4o 128k). Operators on shorter-context models should lower this;
+// operators on very large contexts can raise it.
+const DEFAULT_AUTO_COMPACT_TOKEN_THRESHOLD = 100000;
 
 export class EnvConfigError extends Error {
   constructor(message: string) {
@@ -124,22 +128,6 @@ function parseOptionalPositiveInt(
   return parsed;
 }
 
-function parseRequiredPositiveInt(
-  value: string | undefined,
-  key: string,
-): number {
-  if (value === undefined || value === "") {
-    throw new EnvConfigError(`Missing required environment variable: ${key}`);
-  }
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new EnvConfigError(
-      `Invalid ${key}: "${value}". Must be a positive integer (>= 1).`,
-    );
-  }
-  return parsed;
-}
-
 function parseTelemetryEnabled(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
@@ -191,10 +179,11 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     telegramBotToken = env["TELEGRAM_BOT_TOKEN"] as string;
     telegramWebhookSecret = env["TELEGRAM_WEBHOOK_SECRET"] as string;
 
-    autoCompactTokenThreshold = parseRequiredPositiveInt(
-      env["AUTO_COMPACT_TOKEN_THRESHOLD"],
-      "AUTO_COMPACT_TOKEN_THRESHOLD",
-    );
+    autoCompactTokenThreshold =
+      parseOptionalPositiveInt(
+        env["AUTO_COMPACT_TOKEN_THRESHOLD"],
+        "AUTO_COMPACT_TOKEN_THRESHOLD",
+      ) ?? DEFAULT_AUTO_COMPACT_TOKEN_THRESHOLD;
     autoCompactModel = env["AUTO_COMPACT_MODEL"] || undefined;
     autoCompactMaxOutputTokens =
       parseOptionalPositiveInt(
