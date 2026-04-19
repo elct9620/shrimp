@@ -16,12 +16,14 @@ import type { SessionRepository } from "../../use-cases/ports/session-repository
 import type { ChannelJob } from "../../use-cases/channel-job";
 import type { StartNewSession } from "../../use-cases/start-new-session";
 import type { UserAgentsPort } from "../../use-cases/ports/user-agents";
+import type { SummarizePort } from "../../use-cases/ports/summarize";
 
 export const TOKENS = {
   Logger: Symbol.for("shrimp.LoggerPort"),
   PinoInstance: Symbol.for("shrimp.PinoInstance"),
   BoardRepository: Symbol.for("shrimp.BoardRepository"),
   ShrimpAgent: Symbol.for("shrimp.ShrimpAgent"),
+  Summarize: Symbol.for("shrimp.SummarizePort"),
   JobQueue: Symbol.for("shrimp.JobQueue"),
   Telemetry: Symbol.for("shrimp.TelemetryPort"),
   Tracer: Symbol.for("shrimp.Tracer"),
@@ -43,6 +45,7 @@ export type TokenRegistry = {
   [TOKENS.PinoInstance]: Logger;
   [TOKENS.BoardRepository]: BoardRepository;
   [TOKENS.ShrimpAgent]: ShrimpAgent;
+  [TOKENS.Summarize]: SummarizePort;
   [TOKENS.JobQueue]: JobQueue;
   [TOKENS.Telemetry]: TelemetryPort;
   [TOKENS.Tracer]: Tracer;
