@@ -41,6 +41,13 @@ export type ShrimpAgentResult = {
    * HeartbeatJob ignores this field.
    */
   newMessages: readonly ConversationMessage[];
+  /**
+   * Prompt token count for the last step of this invocation, as reported
+   * by the AI provider (ai.usage.promptTokens / gen_ai.usage.input_tokens).
+   * Undefined when the provider does not report token usage — callers must
+   * treat undefined as "skip compaction for this turn" (see SPEC §Auto Compact).
+   */
+  promptTokens: number | undefined;
 };
 
 export interface ShrimpAgent {

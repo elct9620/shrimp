@@ -833,6 +833,60 @@ describe("AiSdkShrimpAgent.run", () => {
     });
   });
 
+  describe("promptTokens", () => {
+    it("should return promptTokens from last-step usage when provider reports input tokens", async () => {
+      const model = new MockLanguageModelV3({
+        doGenerate: async () => ({
+          content: [{ type: "text" as const, text: "done" }],
+          finishReason: { unified: "stop" as const, raw: undefined },
+          usage: {
+            inputTokens: {
+              total: 1234,
+              noCache: 1234,
+              cacheRead: undefined,
+              cacheWrite: undefined,
+            },
+            outputTokens: { total: 50, text: 50, reasoning: undefined },
+          },
+          warnings: [],
+        }),
+      });
+      const agent = makeAgent(model, makeFakeLogger());
+
+      const result = await agent.run(baseInput);
+
+      expect(result.promptTokens).toBe(1234);
+    });
+
+    it("should return promptTokens as undefined when provider omits usage input tokens", async () => {
+      const model = new MockLanguageModelV3({
+        doGenerate: async () => ({
+          content: [{ type: "text" as const, text: "done" }],
+          finishReason: { unified: "stop" as const, raw: undefined },
+          usage: {
+            inputTokens: {
+              total: undefined,
+              noCache: undefined,
+              cacheRead: undefined,
+              cacheWrite: undefined,
+            },
+            outputTokens: {
+              total: undefined,
+              text: undefined,
+              reasoning: undefined,
+            },
+          },
+          warnings: [],
+        }),
+      });
+      const agent = makeAgent(model, makeFakeLogger());
+
+      const result = await agent.run(baseInput);
+
+      expect(result.promptTokens).toBeUndefined();
+    });
+  });
+
   describe("logging", () => {
     it("should log debug on run start with maxSteps and toolCount", async () => {
       const model = makeModel("stop");

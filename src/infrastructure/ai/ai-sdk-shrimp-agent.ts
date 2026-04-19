@@ -196,12 +196,16 @@ export class AiSdkShrimpAgent implements ShrimpAgent {
         }
 
         const reason = mapFinishReason(result.finishReason);
+        // result.usage is the last-step usage (not total); inputTokens is
+        // number | undefined per LanguageModelUsage. Undefined when the provider
+        // does not report token usage — callers skip compaction in that case.
+        const promptTokens = result.usage.inputTokens;
         this.logger.info("main agent run finished", {
           finishReason: result.finishReason,
           reason,
         });
 
-        return { reason, newMessages };
+        return { reason, newMessages, promptTokens };
       } catch (err) {
         span.recordException(err as Error);
         span.setAttribute(
