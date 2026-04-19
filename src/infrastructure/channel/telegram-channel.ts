@@ -63,6 +63,9 @@ const MAX_ATTEMPTS = 3;
 const BACKOFF_MS = [250, 500] as const;
 const RETRY_AFTER_CAP_MS = 10_000;
 const REQUEST_TIMEOUT_MS = 10_000;
+// Typing indicator is cosmetic and Telegram only displays it for ~5s.
+// Keep the timeout short so a slow Bot API never delays the Agent start.
+const CHAT_ACTION_TIMEOUT_MS = 2_000;
 
 function isRetryableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status < 600);
@@ -101,7 +104,7 @@ export class TelegramChannel implements ChannelGateway {
         method: "POST",
         headers: { "content-type": "application/json" },
         body,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(CHAT_ACTION_TIMEOUT_MS),
       });
       if (!resp.ok) {
         this.logger.warn("telegram chat action failed — upstream status", {
