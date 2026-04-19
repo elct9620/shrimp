@@ -101,12 +101,6 @@ export async function bootstrap(): Promise<void> {
   const env = loadEnvConfig();
   container.registerInstance(TOKENS.EnvConfig, env);
 
-  // 1a. UserAgents — reads optional ~/.shrimp/AGENTS.md (or $SHRIMP_STATE_DIR/AGENTS.md)
-  container.registerInstance(
-    TOKENS.UserAgents,
-    new FileUserAgents({ stateDir: env.shrimpStateDir }),
-  );
-
   // 2. Logger
   const { logger, pino: pinoInstance } = createPinoLogger({
     level: env.logLevel,
@@ -115,6 +109,15 @@ export async function bootstrap(): Promise<void> {
   container.registerInstance(TOKENS.Logger, logger);
   // Store raw pino instance for HTTP middleware
   container.registerInstance(TOKENS.PinoInstance, pinoInstance);
+
+  // 2a. UserAgents — reads optional $SHRIMP_STATE_DIR/AGENTS.md (appended to system prompt)
+  container.registerInstance(
+    TOKENS.UserAgents,
+    new FileUserAgents({
+      stateDir: env.shrimpStateDir,
+      logger: logger.child({ module: "FileUserAgents" }),
+    }),
+  );
 
   logger.info("env config loaded", {
     logLevel: env.logLevel,
