@@ -34,10 +34,8 @@ services:
       - "3000"
     volumes:
       - "${SHRIMP_DATA_DIR:-./data/shrimp}:/var/lib/shrimp"
-      # MCP server configuration. Coolify generates this file from the `content:`
-      # block below on first deploy; edit it afterwards via Coolify UI
-      # (Storages → File Mount). The default is an empty, SPEC-valid config so
-      # the service boots with built-in tools only.
+      # MCP server configuration. Seeded on first deploy; edit via Coolify UI
+      # (Storages → File Mount). Default is SPEC-valid empty config.
       - type: bind
         source: ./mcp.json
         target: /app/.mcp.json
@@ -45,14 +43,21 @@ services:
           {
             "mcpServers": {}
           }
-      # User Agents appendix appended to the system prompt. Overlays the
-      # AGENTS.md inside the SHRIMP_HOME data volume so it can be edited via
-      # Coolify UI (Storages → File Mount) without shelling into the container.
+      # User Agents appendix overlaid onto the SHRIMP_HOME data volume.
+      # Default content is a neutral notice — non-empty so Coolify detects
+      # it as a file (avoids coollabsio/coolify#3375), and informational
+      # enough that operators reading it learn where to edit it.
       - type: bind
         source: ./agents.md
         target: /var/lib/shrimp/AGENTS.md
-        # Single newline keeps Coolify from treating the source as a directory;
-        # FileUserAgents trims the content, so this is still equivalent to empty.
-        content: |2
+        content: |
+          # User Agents
 
+          ## Coolify
+
+          This `AGENTS.md` is mounted from the Coolify deployment. To add
+          or change custom agent instructions, open the Shrimp service in
+          the Coolify UI and edit this file under Storages → File Mount.
+          Everything in this document is appended to the system prompt
+          verbatim on each Job.
     restart: unless-stopped
