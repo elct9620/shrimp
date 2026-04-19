@@ -99,6 +99,9 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Per-user or per-chat Sessions        | Single global Session only; multi-session support is out of scope                                                                                                            |
 | Channel polling                      | Channels receive events via push (e.g., webhook for Telegram); long-polling is not supported                                                                                 |
 | Slash Command extensibility          | Only `/new` is provided; user-defined or dynamically-registered Slash Commands are out of scope                                                                              |
+| Cross-Session summarization          | Conversation Summary covers only the compacted Session's own prior turns; content from earlier archived Sessions is not re-summarized or carried into the new Session        |
+| Manual compact command               | No Slash Command or API endpoint triggers compaction; compaction is entirely automatic based on the Compaction Threshold                                                     |
+| Auto Compact for HeartbeatJob        | HeartbeatJob has no Session and is not subject to Auto Compact; compaction applies only to ChannelJob                                                                        |
 
 ## Behavior
 
