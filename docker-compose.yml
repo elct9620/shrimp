@@ -32,4 +32,8 @@ services:
       - "${HOST_PORT:-3000}:3000"
     volumes:
       - "${SHRIMP_DATA_DIR:-./data/shrimp}:/var/lib/shrimp"
+      # Optional: mount a host .mcp.json into the container's project root so
+      # MCP server configuration survives image rebuilds. Uncomment and ensure
+      # the host file exists (e.g. `touch .mcp.json`) before starting the stack.
+      # - "${SHRIMP_MCP_CONFIG:-./.mcp.json}:/app/.mcp.json:ro"
     restart: unless-stopped

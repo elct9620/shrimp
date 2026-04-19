@@ -109,6 +109,13 @@ through [MCP](https://modelcontextprotocol.io/) servers — web search, file
 access, code execution, anything you can wire up. The file follows the
 standard MCP format (`{"mcpServers": { ... }}`); no code changes needed.
 
+When running with Docker, `.mcp.json` is not baked into the image. To
+persist it across rebuilds, uncomment the `.mcp.json` bind-mount line in
+`docker-compose.yml` and make sure the host file exists before
+`pnpm docker:up` (Docker will silently create a directory in its place
+otherwise). Override the host path with `SHRIMP_MCP_CONFIG` if you keep
+the file elsewhere.
+
 ## Learn more
 
 - [`SPEC.md`](./SPEC.md) — full behavior contract and edge cases
