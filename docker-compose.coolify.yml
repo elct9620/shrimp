@@ -45,4 +45,11 @@ services:
           {
             "mcpServers": {}
           }
+      # User Agents appendix appended to the system prompt. Overlays the
+      # AGENTS.md inside the SHRIMP_HOME data volume so it can be edited via
+      # Coolify UI (Storages → File Mount) without shelling into the container.
+      - type: bind
+        source: ./agents.md
+        target: /var/lib/shrimp/AGENTS.md
+        content: ""
     restart: unless-stopped
