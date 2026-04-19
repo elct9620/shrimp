@@ -9,8 +9,12 @@ const MockOtelTelemetry = vi.fn(function (this: Record<string, unknown>) {
   this.tracer = {};
   this.runInSpan = vi
     .fn()
-    .mockImplementation(async (_name: string, fn: () => Promise<unknown>) =>
-      fn(),
+    .mockImplementation(
+      async (
+        _name: string,
+        fn: () => Promise<unknown>,
+        _attributes?: Record<string, string | number | boolean>,
+      ) => fn(),
     );
   this.shutdown = vi.fn().mockResolvedValue(undefined);
 });

@@ -151,9 +151,12 @@ describe("POST /channels/telegram", () => {
     expect(channelJob.run).toHaveBeenCalledWith({
       message: "hello",
       ref: { channel: "telegram", payload: { chatId: 42 } },
-      source: {
+      telemetry: {
         spanName: "POST /channels/telegram",
-        httpRoute: "/channels/telegram",
+        attributes: {
+          "http.request.method": "POST",
+          "http.route": "/channels/telegram",
+        },
       },
     });
   });

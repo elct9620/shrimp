@@ -81,7 +81,15 @@ describe("POST /heartbeat", () => {
 
     expect(capturedJob).toBeDefined();
     await capturedJob!();
-    expect(heartbeatJob.run).toHaveBeenCalledTimes(1);
+    expect(heartbeatJob.run).toHaveBeenCalledWith({
+      telemetry: {
+        spanName: "POST /heartbeat",
+        attributes: {
+          "http.request.method": "POST",
+          "http.route": "/heartbeat",
+        },
+      },
+    });
   });
 
   it("should return immediately even when heartbeatJob.run never resolves", async () => {

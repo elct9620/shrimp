@@ -95,9 +95,12 @@ export function createTelegramRoute(deps: {
       deps.channelJob.run({
         message: text,
         ref,
-        source: {
+        telemetry: {
           spanName: "POST /channels/telegram",
-          httpRoute: "/channels/telegram",
+          attributes: {
+            "http.request.method": "POST",
+            "http.route": "/channels/telegram",
+          },
         },
       }),
     );

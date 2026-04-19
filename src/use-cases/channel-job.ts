@@ -5,7 +5,7 @@ import type { SessionRepository } from "./ports/session-repository";
 import type { ShrimpAgent } from "./ports/shrimp-agent";
 import type { ToolProviderFactory } from "./ports/tool-provider-factory";
 import type { LoggerPort } from "./ports/logger";
-import type { TelemetryPort } from "./ports/telemetry";
+import type { SpanAttributes, TelemetryPort } from "./ports/telemetry";
 import { assembleChannelSystemPrompt } from "./prompt-assembler";
 
 export type ChannelJobConfig = {
@@ -48,14 +48,14 @@ export class ChannelJob {
   async run(event: {
     message: string;
     ref: ConversationRef;
-    source: { spanName: string; httpRoute: string };
+    telemetry: { spanName: string; attributes: SpanAttributes };
   }): Promise<void> {
     // TODO: Use crypto.randomUUID() v7 when Node.js exposes it natively;
     // currently returns v4 which is the acceptable fallback per spec.
     const jobId = randomUUID();
 
     return this.telemetry.runInSpan(
-      event.source.spanName,
+      event.telemetry.spanName,
       async () => {
         this.logger.info("cycle started");
 
@@ -115,7 +115,7 @@ export class ChannelJob {
           reason: result.reason,
         });
       },
-      { "http.request.method": "POST", "http.route": event.source.httpRoute },
+      event.telemetry.attributes,
     );
   }
 }

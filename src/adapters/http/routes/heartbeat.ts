@@ -31,7 +31,17 @@ export function createHeartbeatRoute(deps: {
     }
 
     deps.logger.info("heartbeat received");
-    const accepted = deps.jobQueue.tryEnqueue(() => deps.heartbeatJob.run());
+    const accepted = deps.jobQueue.tryEnqueue(() =>
+      deps.heartbeatJob.run({
+        telemetry: {
+          spanName: "POST /heartbeat",
+          attributes: {
+            "http.request.method": "POST",
+            "http.route": "/heartbeat",
+          },
+        },
+      }),
+    );
     deps.logger.info("heartbeat enqueued", { accepted });
     return c.json({ status: "accepted" }, 202);
   });

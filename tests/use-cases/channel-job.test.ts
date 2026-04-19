@@ -13,11 +13,9 @@ import type { ToolProviderFactory } from "../../src/use-cases/ports/tool-provide
 import type { LoggerPort } from "../../src/use-cases/ports/logger";
 import type { ChannelGateway } from "../../src/use-cases/ports/channel-gateway";
 import { NoopTelemetry } from "../../src/infrastructure/telemetry/noop-telemetry";
-import type {
-  SpanAttributes,
-  TelemetryPort,
-} from "../../src/use-cases/ports/telemetry";
+import type { TelemetryPort } from "../../src/use-cases/ports/telemetry";
 import { makeFakeLogger } from "../mocks/fake-logger";
+import { makeSpyTelemetry } from "../mocks/spy-telemetry";
 import type { ConversationMessage } from "../../src/entities/conversation-message";
 import type { ConversationRef } from "../../src/entities/conversation-ref";
 
@@ -28,9 +26,12 @@ const makeRef = (): ConversationRef => ({
   payload: { chatId: "123" },
 });
 
-const DEFAULT_SOURCE = {
+const DEFAULT_TELEMETRY = {
   spanName: "POST /channels/telegram",
-  httpRoute: "/channels/telegram",
+  attributes: {
+    "http.request.method": "POST",
+    "http.route": "/channels/telegram",
+  },
 };
 
 function makeSession(overrides: Partial<Session> = {}): Session {
@@ -89,6 +90,7 @@ function makeJob(
   logger: LoggerPort,
   toolProviderFactory?: ToolProviderFactory,
   channelGateway?: ChannelGateway,
+  telemetry: TelemetryPort = new NoopTelemetry(),
 ): ChannelJob {
   return new ChannelJob({
     sessionRepository: sessionRepo,
@@ -97,7 +99,7 @@ function makeJob(
     toolProviderFactory: toolProviderFactory ?? makeToolProviderFactory(),
     maxSteps: 10,
     logger,
-    telemetry: new NoopTelemetry(),
+    telemetry,
   });
 }
 
@@ -124,7 +126,7 @@ describe("ChannelJob.run", () => {
     await job.run({
       message: "Hello bot",
       ref: makeRef(),
-      source: DEFAULT_SOURCE,
+      telemetry: DEFAULT_TELEMETRY,
     });
 
     expect(sessionRepo.createNew).toHaveBeenCalledTimes(1);
@@ -168,7 +170,7 @@ describe("ChannelJob.run", () => {
     await job.run({
       message: "Follow up",
       ref: makeRef(),
-      source: DEFAULT_SOURCE,
+      telemetry: DEFAULT_TELEMETRY,
     });
 
     expect(sessionRepo.createNew).not.toHaveBeenCalled();
@@ -186,7 +188,7 @@ describe("ChannelJob.run", () => {
       job.run({
         message: "Trigger error",
         ref: makeRef(),
-        source: DEFAULT_SOURCE,
+        telemetry: DEFAULT_TELEMETRY,
       }),
     ).rejects.toThrow("agent exploded");
   });
@@ -204,7 +206,11 @@ describe("ChannelJob.run", () => {
     };
     const j = makeJob(sessionRepo, agent, logger, factory);
 
-    await j.run({ message: "Hi", ref: makeRef(), source: DEFAULT_SOURCE });
+    await j.run({
+      message: "Hi",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
 
     const systemPrompt = agent.capturedInput?.systemPrompt ?? "";
     expect(systemPrompt).toContain("## Operating Principles");
@@ -225,7 +231,7 @@ describe("ChannelJob.run", () => {
       gateway,
     );
 
-    await j.run({ message: "Hi", ref, source: DEFAULT_SOURCE });
+    await j.run({ message: "Hi", ref, telemetry: DEFAULT_TELEMETRY });
 
     expect(gateway.reply).toHaveBeenCalledWith(ref, "Reply text");
   });
@@ -243,45 +249,59 @@ describe("ChannelJob.run", () => {
       return { reason: "finished", newMessages: [] };
     });
 
-    await job.run({ message: "Msg", ref: makeRef(), source: DEFAULT_SOURCE });
+    await job.run({
+      message: "Msg",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
 
     expect(appendOrder[0]).toBe("append");
     expect(appendOrder[1]).toBe("agent");
   });
 
-  it("runs the Job inside a span named after the HTTP entry route with http.* attributes", async () => {
-    const calls: Array<{ name: string; attributes?: SpanAttributes }> = [];
-    const spyTelemetry: TelemetryPort = {
-      async runInSpan(name, fn, attributes) {
-        calls.push({ name, attributes });
-        return fn();
-      },
-      async shutdown() {},
-    };
-    const j = new ChannelJob({
-      sessionRepository: sessionRepo,
-      channelGateway: makeChannelGateway(),
-      shrimpAgent: agent,
-      toolProviderFactory: makeToolProviderFactory(),
-      maxSteps: 10,
-      logger,
-      telemetry: spyTelemetry,
-    });
+  it("forwards the caller-provided span name and attributes to the telemetry port", async () => {
+    const spy = makeSpyTelemetry();
+    const j = makeJob(sessionRepo, agent, logger, undefined, undefined, spy);
 
     await j.run({
       message: "Hi",
       ref: makeRef(),
-      source: {
+      telemetry: {
         spanName: "POST /channels/telegram",
-        httpRoute: "/channels/telegram",
+        attributes: {
+          "http.request.method": "POST",
+          "http.route": "/channels/telegram",
+          "telegram.chat.id": 42,
+          "user_agent.original": "TelegramBot",
+        },
       },
     });
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.name).toBe("POST /channels/telegram");
-    expect(calls[0]!.attributes).toEqual({
+    expect(spy.calls).toHaveLength(1);
+    expect(spy.calls[0]!.name).toBe("POST /channels/telegram");
+    expect(spy.calls[0]!.attributes).toEqual({
       "http.request.method": "POST",
       "http.route": "/channels/telegram",
+      "telegram.chat.id": 42,
+      "user_agent.original": "TelegramBot",
     });
+  });
+
+  it("wraps the Job in a span even when the agent propagates an error", async () => {
+    const existingSession = makeSession({ id: "session-1" });
+    sessionRepo.getCurrent = vi.fn().mockResolvedValue(existingSession);
+    agent.run = vi.fn().mockRejectedValue(new Error("boom"));
+    const spy = makeSpyTelemetry();
+    const j = makeJob(sessionRepo, agent, logger, undefined, undefined, spy);
+
+    await expect(
+      j.run({
+        message: "Trigger",
+        ref: makeRef(),
+        telemetry: DEFAULT_TELEMETRY,
+      }),
+    ).rejects.toThrow("boom");
+    expect(spy.calls).toHaveLength(1);
+    expect(spy.calls[0]!.name).toBe("POST /channels/telegram");
   });
 });
