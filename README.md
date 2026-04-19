@@ -38,6 +38,11 @@ uptime monitor, a GitHub Action) and Shrimp will keep your board moving.
 A pre-built image is published on every release:
 
 ```bash
+# The container runs as UID 1000 (node). Create the state directory and
+# hand ownership over so the supervisor can write session state, otherwise
+# startup fails with `EACCES: permission denied, mkdir .../sessions`:
+mkdir -p ./data/shrimp && sudo chown 1000:1000 ./data/shrimp
+
 cp .env.example .env
 pnpm docker:up      # start
 pnpm docker:logs    # follow logs
