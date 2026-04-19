@@ -51,5 +51,8 @@ services:
       - type: bind
         source: ./agents.md
         target: /var/lib/shrimp/AGENTS.md
-        content: ""
+        # Single newline keeps Coolify from treating the source as a directory;
+        # FileUserAgents trims the content, so this is still equivalent to empty.
+        content: |2
+
     restart: unless-stopped
