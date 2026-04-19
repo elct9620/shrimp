@@ -37,6 +37,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Board               | The designated Todoist project configured as a Kanban board; the single task source for this Shrimp instance                                                                                                                                                                                                                                                                                                                            |
 | Heartbeat           | An external `POST /heartbeat` call that triggers a Job                                                                                                                                                                                                                                                                                                                                                                                  |
+| Heartbeat Token     | A shared secret configured on the Shrimp instance that external heartbeat callers must present to authorize a `POST /heartbeat` request. Opt-in: when no token is configured, `/heartbeat` accepts unauthenticated requests                                                                                                                                                                                                             |
 | Supervisor          | An internal component of Shrimp (not Shrimp itself) that owns the heartbeat-reception lifecycle: receives Heartbeats, manages the Job Queue, and controls Job Worker lifecycle                                                                                                                                                                                                                                                          |
 | Job Queue           | Concurrency gate managed by the Supervisor that limits how many Jobs run simultaneously (currently one)                                                                                                                                                                                                                                                                                                                                 |
 | Job                 | An agent invocation unit triggered by either a Heartbeat or a Channel message event. Two variants: **HeartbeatJob** — selects a Todoist task, promotes Backlog→In Progress, assembles prompts from task context and comment history; **ChannelJob** — loads the current Session, assembles prompts from conversation history and the incoming message. Both variants share one Job Queue slot and invoke the Shrimp Agent exactly once. |
@@ -64,6 +65,7 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | In-memory Job Queue                 | Single-slot concurrency gate; admits one Job at a time                                                                                   |
 | Heartbeat-triggered task selection  | On `/heartbeat`, dispatch a HeartbeatJob that selects one task (In Progress first, then Backlog)                                         |
+| Heartbeat authentication            | When a Heartbeat Token is configured, `/heartbeat` requires a matching bearer token on every request; unauthenticated requests rejected  |
 | AI-driven task execution            | The Shrimp Agent executes the selected task via built-in and MCP tools until the task is complete, max steps reached, or an error occurs |
 | Progress reporting via comments     | Agent posts a Todoist comment with status after each execution                                                                           |
 | Task completion                     | Agent marks the task Done when it determines the task is finished                                                                        |
@@ -77,21 +79,21 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 ### IS NOT
 
-| Excluded                             | Reason                                                                                                                           |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| Parallel Job processing              | Job Queue admits one Job at a time; concurrent execution is out of scope                                                         |
-| Persistent or distributed Job Queue  | Job Queue is in-memory only; in-flight Jobs are lost on restart (Todoist is the source of truth)                                 |
-| Proactive scheduling                 | No cron or timer inside Shrimp; heartbeat is always externally triggered                                                         |
-| Todoist Project/Board management     | Shrimp reads from and writes to the configured Board only; it does not create or modify Board structure                          |
-| Multi-Board or multi-account support | Single configured board per instance                                                                                             |
-| Web UI or dashboard                  | No user-facing interface beyond the two API endpoints                                                                            |
-| Authentication / multi-tenancy       | Single-instance deployment; no user accounts                                                                                     |
-| Metrics and log export               | Shrimp emits traces only; RED metrics, histograms, and log shipping are not produced                                             |
-| Custom sampler or exporter plugins   | Sampler and exporter are configured entirely through the OpenTelemetry SDK environment; Shrimp ships no pluggable override       |
-| Trace visualization UI               | Shrimp does not host a trace viewer; an external backend (e.g., Jaeger, Tempo, or a vendor collector) is required to view traces |
-| Per-user or per-chat Sessions        | Single global Session only; multi-session support is out of scope                                                                |
-| Channel polling                      | Channels receive events via push (e.g., webhook for Telegram); long-polling is not supported                                     |
-| Slash Command extensibility          | Only `/new` is provided; user-defined or dynamically-registered Slash Commands are out of scope                                  |
+| Excluded                             | Reason                                                                                                                                                                       |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Parallel Job processing              | Job Queue admits one Job at a time; concurrent execution is out of scope                                                                                                     |
+| Persistent or distributed Job Queue  | Job Queue is in-memory only; in-flight Jobs are lost on restart (Todoist is the source of truth)                                                                             |
+| Proactive scheduling                 | No cron or timer inside Shrimp; heartbeat is always externally triggered                                                                                                     |
+| Todoist Project/Board management     | Shrimp reads from and writes to the configured Board only; it does not create or modify Board structure                                                                      |
+| Multi-Board or multi-account support | Single configured board per instance                                                                                                                                         |
+| Web UI or dashboard                  | No user-facing interface beyond the two API endpoints                                                                                                                        |
+| Multi-user authentication            | No user accounts or per-user authorization; endpoint-level shared-secret protection (Heartbeat Token, Telegram secret) is in scope, but identity-based access control is not |
+| Metrics and log export               | Shrimp emits traces only; RED metrics, histograms, and log shipping are not produced                                                                                         |
+| Custom sampler or exporter plugins   | Sampler and exporter are configured entirely through the OpenTelemetry SDK environment; Shrimp ships no pluggable override                                                   |
+| Trace visualization UI               | Shrimp does not host a trace viewer; an external backend (e.g., Jaeger, Tempo, or a vendor collector) is required to view traces                                             |
+| Per-user or per-chat Sessions        | Single global Session only; multi-session support is out of scope                                                                                                            |
+| Channel polling                      | Channels receive events via push (e.g., webhook for Telegram); long-polling is not supported                                                                                 |
+| Slash Command extensibility          | Only `/new` is provided; user-defined or dynamically-registered Slash Commands are out of scope                                                                              |
 
 ## Behavior
 
@@ -99,14 +101,15 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 Dispatches one **HeartbeatJob** in the background. Channel-triggered Jobs use a separate path; see [Channel Integration](#channel-integration).
 
-**Request:** no body required.
+**Request:** no body required. When a Heartbeat Token is configured, the caller must present it via the `Authorization: Bearer <token>` header.
 
 **Response:**
 
-| Scenario                              | Status         | Body                       |
-| ------------------------------------- | -------------- | -------------------------- |
-| Job Queue slot is free — Job accepted | `202 Accepted` | `{ "status": "accepted" }` |
-| Job Queue slot is busy — Job dropped  | `202 Accepted` | `{ "status": "accepted" }` |
+| Scenario                               | Status             | Body                       |
+| -------------------------------------- | ------------------ | -------------------------- |
+| Token required but missing or mismatch | `401 Unauthorized` | no body                    |
+| Job Queue slot is free — Job accepted  | `202 Accepted`     | `{ "status": "accepted" }` |
+| Job Queue slot is busy — Job dropped   | `202 Accepted`     | `{ "status": "accepted" }` |
 
 **Behavior rules:**
 
@@ -115,6 +118,13 @@ Dispatches one **HeartbeatJob** in the background. Channel-triggered Jobs use a 
 - Each Job selects at most one task: an In Progress task takes priority over a Backlog task.
 - If no actionable task is found, the Job ends immediately with no side effects.
 - Task progress reporting and status updates happen asynchronously within the background Job.
+
+**Authentication rules:**
+
+- Authentication is **opt-in**: when no Heartbeat Token is configured, `/heartbeat` accepts all requests without inspecting the `Authorization` header (backward-compatible).
+- When a Heartbeat Token is configured, every request must carry `Authorization: Bearer <token>` where `<token>` exactly equals the configured value. Requests without the header, with a non-`Bearer` scheme, or with a mismatched value are rejected with `401 Unauthorized` before the Job Queue is consulted.
+- Token comparison is performed in constant time to avoid leaking information through response-time differences.
+- `GET /health` is not subject to this authentication — health checks remain unauthenticated so Docker/Coolify liveness probes keep working without token configuration.
 
 ### In-Memory Job Queue
 
@@ -646,6 +656,7 @@ Runtime configuration is supplied through environment variables and a `.mcp.json
 | `TODOIST_API_TOKEN`           | Todoist personal API token                                                                                                                                                                         | Yes                                                                                    |
 | `TODOIST_PROJECT_ID`          | ID of the Todoist project used as the Board                                                                                                                                                        | Yes                                                                                    |
 | `PORT`                        | HTTP port the service listens on                                                                                                                                                                   | No (default: `3000`)                                                                   |
+| `SHRIMP_HEARTBEAT_TOKEN`      | Shared secret that `POST /heartbeat` callers must present as `Authorization: Bearer <token>`. When unset, `/heartbeat` accepts unauthenticated requests                                            | No (default: unset — authentication disabled)                                          |
 | `TELEMETRY_ENABLED`           | Master toggle — enables OTel trace emission; when absent or `false`/`0`, telemetry is disabled                                                                                                     | No (default: off)                                                                      |
 | `OTEL_SERVICE_NAME`           | Service name resource attribute attached to every emitted span                                                                                                                                     | Yes when telemetry enabled; No otherwise                                               |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP collector URL to which spans are exported                                                                                                                                                     | Yes when telemetry enabled; No otherwise                                               |
@@ -671,6 +682,7 @@ Runtime configuration is supplied through environment variables and a `.mcp.json
 - **When `CHANNELS_ENABLED` is false or unset**, the `TELEGRAM_*` and `SHRIMP_STATE_DIR` variables are neither required nor read; startup validation is skipped for Channel-related configuration. See [Channel Integration](#channel-integration) for runtime rules.
 - **When `CHANNELS_ENABLED` is enabled but a required Telegram variable is missing or malformed**, the process fails fast at startup — consistent with the fail-fast pattern applied to other required variables.
 - **`SHRIMP_STATE_DIR` is read only when Channels are enabled.** If the directory does not exist at startup, Shrimp creates it; if creation fails, the process fails fast.
+- **`SHRIMP_HEARTBEAT_TOKEN` is opt-in.** When unset or empty, heartbeat authentication is disabled and no validation runs. When set to a non-empty string, `/heartbeat` enforces the token on every request (see [`POST /heartbeat`](#post-heartbeat)). The value is treated as an opaque string; Shrimp does not impose a format, length, or rotation policy.
 - **Telegram webhook registration is external to Shrimp.** When the Telegram Channel is enabled, the operator registers the webhook with Telegram pointing at the publicly reachable URL for `POST /channels/telegram` and provides the same value as `TELEGRAM_WEBHOOK_SECRET`. Shrimp does not perform this registration.
 
 ### Docker Deployment
