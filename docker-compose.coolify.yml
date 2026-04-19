@@ -34,4 +34,15 @@ services:
       - "3000"
     volumes:
       - "${SHRIMP_DATA_DIR:-./data/shrimp}:/var/lib/shrimp"
+      # MCP server configuration. Coolify generates this file from the `content:`
+      # block below on first deploy; edit it afterwards via Coolify UI
+      # (Storages → File Mount). The default is an empty, SPEC-valid config so
+      # the service boots with built-in tools only.
+      - type: bind
+        source: ./mcp.json
+        target: /app/.mcp.json
+        content: |
+          {
+            "mcpServers": {}
+          }
     restart: unless-stopped
