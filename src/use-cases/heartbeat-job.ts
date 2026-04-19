@@ -8,6 +8,7 @@ import type { ShrimpAgent } from "./ports/shrimp-agent";
 import type { ToolProviderFactory } from "./ports/tool-provider-factory";
 import type { LoggerPort } from "./ports/logger";
 import type { SpanAttributes, TelemetryPort } from "./ports/telemetry";
+import type { UserAgentsPort } from "./ports/user-agents";
 
 export type HeartbeatJobConfig = {
   board: BoardRepository;
@@ -16,6 +17,7 @@ export type HeartbeatJobConfig = {
   maxSteps: number;
   logger: LoggerPort;
   telemetry: TelemetryPort;
+  userAgents?: UserAgentsPort;
 };
 
 export class HeartbeatJob {
@@ -25,6 +27,7 @@ export class HeartbeatJob {
   private readonly maxSteps: number;
   private readonly logger: LoggerPort;
   private readonly telemetry: TelemetryPort;
+  private readonly userAgents?: UserAgentsPort;
 
   constructor({
     board,
@@ -33,6 +36,7 @@ export class HeartbeatJob {
     maxSteps,
     logger,
     telemetry,
+    userAgents,
   }: HeartbeatJobConfig) {
     this.board = board;
     this.shrimpAgent = shrimpAgent;
@@ -40,6 +44,7 @@ export class HeartbeatJob {
     this.maxSteps = maxSteps;
     this.logger = logger;
     this.telemetry = telemetry;
+    this.userAgents = userAgents;
   }
 
   async run(input: {
@@ -97,10 +102,12 @@ export class HeartbeatJob {
         const toolProvider = this.toolProviderFactory.create();
         const tools = toolProvider.getToolDescriptions();
 
+        const userAgents = (await this.userAgents?.read()) ?? null;
         const { systemPrompt, userPrompt } = assembleHeartbeatPrompts({
           task: selectedTask,
           comments,
           tools,
+          userAgents,
         });
 
         this.logger.debug("cycle invoking shrimp agent", { taskId: task.id });

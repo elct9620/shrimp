@@ -15,6 +15,7 @@ import type { HeartbeatJob } from "../../use-cases/heartbeat-job";
 import type { SessionRepository } from "../../use-cases/ports/session-repository";
 import type { ChannelJob } from "../../use-cases/channel-job";
 import type { StartNewSession } from "../../use-cases/start-new-session";
+import type { UserAgentsPort } from "../../use-cases/ports/user-agents";
 
 export const TOKENS = {
   Logger: Symbol.for("shrimp.LoggerPort"),
@@ -34,6 +35,7 @@ export const TOKENS = {
   SessionRepository: Symbol.for("shrimp.SessionRepository"),
   ChannelJob: Symbol.for("shrimp.ChannelJob"),
   StartNewSession: Symbol.for("shrimp.StartNewSession"),
+  UserAgents: Symbol.for("shrimp.UserAgentsPort"),
 } as const;
 
 export type TokenRegistry = {
@@ -54,4 +56,5 @@ export type TokenRegistry = {
   [TOKENS.SessionRepository]: SessionRepository;
   [TOKENS.ChannelJob]: ChannelJob;
   [TOKENS.StartNewSession]: StartNewSession;
+  [TOKENS.UserAgents]: UserAgentsPort;
 };

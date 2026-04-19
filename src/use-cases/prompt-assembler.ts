@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { Task } from "../entities/task";
 import { Comment } from "../entities/comment";
 import type { ToolDescription } from "./ports/tool-description";
@@ -15,6 +12,7 @@ export type HeartbeatAssembleInput = {
   task: Task;
   comments: Comment[];
   tools: ToolDescription[];
+  userAgents?: string | null;
 };
 
 export type HeartbeatAssembleOutput = {
@@ -26,23 +24,31 @@ export function assembleHeartbeatPrompts({
   task,
   comments,
   tools,
+  userAgents,
 }: HeartbeatAssembleInput): HeartbeatAssembleOutput {
-  const systemPrompt = buildSystemPrompt(systemHeartbeatTemplate, tools);
+  const systemPrompt = buildSystemPrompt(
+    systemHeartbeatTemplate,
+    tools,
+    userAgents,
+  );
   const userPrompt = buildHeartbeatUserPrompt(task, comments);
   return { systemPrompt, userPrompt };
 }
 
 export function assembleChannelSystemPrompt({
   tools,
+  userAgents,
 }: {
   tools: ToolDescription[];
+  userAgents?: string | null;
 }): string {
-  return buildSystemPrompt(systemChannelTemplate, tools);
+  return buildSystemPrompt(systemChannelTemplate, tools, userAgents);
 }
 
 function buildSystemPrompt(
   variantTemplate: string,
   tools: ToolDescription[],
+  userAgents?: string | null,
 ): string {
   const toolList =
     tools.length > 0
@@ -54,16 +60,8 @@ function buildSystemPrompt(
   const toolsSection = `## Tools\n\n${toolList}`;
 
   const prompt = `${base}\n\n${variant}\n\n${toolsSection}`;
-  const userAgents = readUserAgentsFile();
-  return userAgents ? `${prompt}\n\n${userAgents}` : prompt;
-}
-
-function readUserAgentsFile(): string | null {
-  try {
-    return readFileSync(join(homedir(), ".shrimp", "AGENTS.md"), "utf8").trim();
-  } catch {
-    return null;
-  }
+  const extra = userAgents?.trim();
+  return extra ? `${prompt}\n\n${extra}` : prompt;
 }
 
 function buildHeartbeatUserPrompt(task: Task, comments: Comment[]): string {

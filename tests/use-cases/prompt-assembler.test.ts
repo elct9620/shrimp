@@ -141,6 +141,45 @@ describe("assembleHeartbeatPrompts", () => {
       );
     });
 
+    it("appends userAgents content to the system prompt when provided", () => {
+      const { systemPrompt } = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        tools: [],
+        userAgents: "Operator override: prefer XYZ",
+      });
+
+      expect(systemPrompt).toContain("Operator override: prefer XYZ");
+      expect(systemPrompt.indexOf("Operator override:")).toBeGreaterThan(
+        systemPrompt.indexOf("## Tools"),
+      );
+    });
+
+    it("omits userAgents section when null or empty", () => {
+      const base = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        tools: [],
+      }).systemPrompt;
+
+      const withNull = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        tools: [],
+        userAgents: null,
+      }).systemPrompt;
+
+      const withEmpty = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        tools: [],
+        userAgents: "   ",
+      }).systemPrompt;
+
+      expect(withNull).toBe(base);
+      expect(withEmpty).toBe(base);
+    });
+
     it("produces the same output for the same input (pure function)", () => {
       const input = {
         task: makeTask(),
@@ -375,6 +414,18 @@ describe("assembleChannelSystemPrompt", () => {
     expect(principlesIdx).toBeGreaterThan(-1);
     expect(styleIdx).toBeGreaterThan(principlesIdx);
     expect(toolsIdx).toBeGreaterThan(styleIdx);
+  });
+
+  it("appends userAgents content when provided", () => {
+    const systemPrompt = assembleChannelSystemPrompt({
+      tools: [],
+      userAgents: "Channel-wide operator note",
+    });
+
+    expect(systemPrompt).toContain("Channel-wide operator note");
+    expect(systemPrompt.indexOf("Channel-wide operator note")).toBeGreaterThan(
+      systemPrompt.indexOf("## Tools"),
+    );
   });
 
   it("shares the same base section as the heartbeat variant", () => {

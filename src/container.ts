@@ -24,6 +24,7 @@ import { HeartbeatJob } from "./use-cases/heartbeat-job";
 import { NoopChannelGateway } from "./infrastructure/channel/noop-channel-gateway";
 import { TelegramChannel } from "./infrastructure/channel/telegram-channel";
 import { JsonlSessionRepository } from "./infrastructure/session/jsonl-session-repository";
+import { FileUserAgents } from "./infrastructure/prompt/file-user-agents";
 import { ChannelJob } from "./use-cases/channel-job";
 import { StartNewSession } from "./use-cases/start-new-session";
 import { createPinoLogger } from "./infrastructure/logger/pino-logger";
@@ -85,6 +86,7 @@ container.register(TOKENS.HeartbeatJob, {
         .resolve<LoggerPort>(TOKENS.Logger)
         .child({ module: "HeartbeatJob" }),
       telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
+      userAgents: c.resolve(TOKENS.UserAgents),
     }),
 });
 
@@ -98,6 +100,12 @@ export async function bootstrap(): Promise<void> {
   // 1. Env config — fails fast with EnvConfigError if required vars are missing
   const env = loadEnvConfig();
   container.registerInstance(TOKENS.EnvConfig, env);
+
+  // 1a. UserAgents — reads optional ~/.shrimp/AGENTS.md (or $SHRIMP_STATE_DIR/AGENTS.md)
+  container.registerInstance(
+    TOKENS.UserAgents,
+    new FileUserAgents({ stateDir: env.shrimpStateDir }),
+  );
 
   // 2. Logger
   const { logger, pino: pinoInstance } = createPinoLogger({
@@ -155,6 +163,7 @@ export async function bootstrap(): Promise<void> {
             .resolve<LoggerPort>(TOKENS.Logger)
             .child({ module: "ChannelJob" }),
           telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
+          userAgents: c.resolve(TOKENS.UserAgents),
         }),
     });
 

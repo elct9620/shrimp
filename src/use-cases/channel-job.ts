@@ -6,6 +6,7 @@ import type { ShrimpAgent } from "./ports/shrimp-agent";
 import type { ToolProviderFactory } from "./ports/tool-provider-factory";
 import type { LoggerPort } from "./ports/logger";
 import type { SpanAttributes, TelemetryPort } from "./ports/telemetry";
+import type { UserAgentsPort } from "./ports/user-agents";
 import { assembleChannelSystemPrompt } from "./prompt-assembler";
 
 export type ChannelJobConfig = {
@@ -16,6 +17,7 @@ export type ChannelJobConfig = {
   maxSteps: number;
   logger: LoggerPort;
   telemetry: TelemetryPort;
+  userAgents?: UserAgentsPort;
 };
 
 export class ChannelJob {
@@ -26,6 +28,7 @@ export class ChannelJob {
   private readonly maxSteps: number;
   private readonly logger: LoggerPort;
   private readonly telemetry: TelemetryPort;
+  private readonly userAgents?: UserAgentsPort;
 
   constructor({
     sessionRepository,
@@ -35,6 +38,7 @@ export class ChannelJob {
     maxSteps,
     logger,
     telemetry,
+    userAgents,
   }: ChannelJobConfig) {
     this.sessionRepository = sessionRepository;
     this.channelGateway = channelGateway;
@@ -43,6 +47,7 @@ export class ChannelJob {
     this.maxSteps = maxSteps;
     this.logger = logger;
     this.telemetry = telemetry;
+    this.userAgents = userAgents;
   }
 
   async run(event: {
@@ -75,8 +80,10 @@ export class ChannelJob {
         await this.sessionRepository.append(session.id, [userMsg]);
 
         const toolProvider = this.toolProviderFactory.create();
+        const userAgents = (await this.userAgents?.read()) ?? null;
         const systemPrompt = assembleChannelSystemPrompt({
           tools: toolProvider.getToolDescriptions(),
+          userAgents,
         });
 
         // Surface a platform-native processing hint (e.g. Telegram "typing…")
