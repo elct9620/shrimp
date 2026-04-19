@@ -35,6 +35,9 @@ export type EnvConfig = {
   // (AGENTS.md) on every Job regardless of channelsEnabled.
   shrimpHome: string;
   heartbeatToken?: string;
+  // Only present when channelsEnabled is true.
+  autoCompactTokenThreshold?: number;
+  autoCompactModel?: string;
 };
 
 export class EnvConfigError extends Error {
@@ -103,6 +106,22 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function parseRequiredPositiveInt(
+  value: string | undefined,
+  key: string,
+): number {
+  if (value === undefined || value === "") {
+    throw new EnvConfigError(`Missing required environment variable: ${key}`);
+  }
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new EnvConfigError(
+      `Invalid ${key}: "${value}". Must be a positive integer (>= 1).`,
+    );
+  }
+  return parsed;
+}
+
 function parseTelemetryEnabled(value: string | undefined): boolean {
   return value === "true" || value === "1";
 }
@@ -138,6 +157,8 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
 
   let telegramBotToken: string | undefined;
   let telegramWebhookSecret: string | undefined;
+  let autoCompactTokenThreshold: number | undefined;
+  let autoCompactModel: string | undefined;
   const shrimpHome = resolveShrimpHome(env);
 
   if (channelsEnabled) {
@@ -150,6 +171,12 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
 
     telegramBotToken = env["TELEGRAM_BOT_TOKEN"] as string;
     telegramWebhookSecret = env["TELEGRAM_WEBHOOK_SECRET"] as string;
+
+    autoCompactTokenThreshold = parseRequiredPositiveInt(
+      env["AUTO_COMPACT_TOKEN_THRESHOLD"],
+      "AUTO_COMPACT_TOKEN_THRESHOLD",
+    );
+    autoCompactModel = env["AUTO_COMPACT_MODEL"] || undefined;
 
     try {
       mkdirSync(shrimpHome, { recursive: true });
@@ -185,5 +212,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     telegramWebhookSecret,
     shrimpHome,
     heartbeatToken: env["SHRIMP_HEARTBEAT_TOKEN"] || undefined,
+    autoCompactTokenThreshold,
+    autoCompactModel,
   };
 }

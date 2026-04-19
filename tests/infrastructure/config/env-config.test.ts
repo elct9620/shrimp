@@ -41,6 +41,8 @@ describe("loadEnvConfig", () => {
         telegramWebhookSecret: undefined,
         shrimpHome: expect.any(String),
         heartbeatToken: undefined,
+        autoCompactTokenThreshold: undefined,
+        autoCompactModel: undefined,
       });
     });
 
@@ -374,6 +376,7 @@ describe("loadEnvConfig", () => {
         TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
         TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
         SHRIMP_HOME: testStateDir,
+        AUTO_COMPACT_TOKEN_THRESHOLD: "100000",
       });
 
       expect(config.channelsEnabled).toBe(true);
@@ -482,6 +485,123 @@ describe("loadEnvConfig", () => {
           SHRIMP_HOME: testStateDir,
         }),
       ).toThrow(EnvConfigError);
+    });
+  });
+
+  describe("AUTO_COMPACT_*", () => {
+    let testStateDir: string;
+
+    const CHANNELS_ON_ENV = {
+      ...REQUIRED_ENV,
+      CHANNELS_ENABLED: "true",
+      TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
+      TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
+    };
+
+    afterEach(() => {
+      if (testStateDir && existsSync(testStateDir)) {
+        rmSync(testStateDir, { recursive: true });
+      }
+    });
+
+    it("should not read AUTO_COMPACT_* when CHANNELS_ENABLED is off, even if values are invalid", () => {
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        AUTO_COMPACT_TOKEN_THRESHOLD: "not-a-number",
+        AUTO_COMPACT_MODEL: "some-model",
+      });
+
+      expect(config.autoCompactTokenThreshold).toBeUndefined();
+      expect(config.autoCompactModel).toBeUndefined();
+    });
+
+    it("should parse AUTO_COMPACT_TOKEN_THRESHOLD as a positive integer when CHANNELS_ENABLED=true", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+      const config = loadEnvConfig({
+        ...CHANNELS_ON_ENV,
+        SHRIMP_HOME: testStateDir,
+        AUTO_COMPACT_TOKEN_THRESHOLD: "120000",
+      });
+
+      expect(config.autoCompactTokenThreshold).toBe(120000);
+    });
+
+    it("should throw EnvConfigError mentioning AUTO_COMPACT_TOKEN_THRESHOLD when CHANNELS_ENABLED=true and it is missing", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+      expect(() =>
+        loadEnvConfig({
+          ...CHANNELS_ON_ENV,
+          SHRIMP_HOME: testStateDir,
+        }),
+      ).toThrow(EnvConfigError);
+      expect(() =>
+        loadEnvConfig({
+          ...CHANNELS_ON_ENV,
+          SHRIMP_HOME: testStateDir,
+        }),
+      ).toThrow("AUTO_COMPACT_TOKEN_THRESHOLD");
+    });
+
+    it.each(["0", "-1", "abc", "1.5", ""])(
+      'should throw EnvConfigError when AUTO_COMPACT_TOKEN_THRESHOLD is "%s"',
+      (value) => {
+        testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+        expect(() =>
+          loadEnvConfig({
+            ...CHANNELS_ON_ENV,
+            SHRIMP_HOME: testStateDir,
+            AUTO_COMPACT_TOKEN_THRESHOLD: value,
+          }),
+        ).toThrow(EnvConfigError);
+        expect(() =>
+          loadEnvConfig({
+            ...CHANNELS_ON_ENV,
+            SHRIMP_HOME: testStateDir,
+            AUTO_COMPACT_TOKEN_THRESHOLD: value,
+          }),
+        ).toThrow("AUTO_COMPACT_TOKEN_THRESHOLD");
+      },
+    );
+
+    it("should expose AUTO_COMPACT_MODEL when set", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+      const config = loadEnvConfig({
+        ...CHANNELS_ON_ENV,
+        SHRIMP_HOME: testStateDir,
+        AUTO_COMPACT_TOKEN_THRESHOLD: "100000",
+        AUTO_COMPACT_MODEL: "gpt-4o-mini",
+      });
+
+      expect(config.autoCompactModel).toBe("gpt-4o-mini");
+    });
+
+    it("should leave AUTO_COMPACT_MODEL undefined when unset (consumer falls back to AI_MODEL)", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+      const config = loadEnvConfig({
+        ...CHANNELS_ON_ENV,
+        SHRIMP_HOME: testStateDir,
+        AUTO_COMPACT_TOKEN_THRESHOLD: "100000",
+      });
+
+      expect(config.autoCompactModel).toBeUndefined();
+    });
+
+    it("should leave AUTO_COMPACT_MODEL undefined when set to empty string", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+      const config = loadEnvConfig({
+        ...CHANNELS_ON_ENV,
+        SHRIMP_HOME: testStateDir,
+        AUTO_COMPACT_TOKEN_THRESHOLD: "100000",
+        AUTO_COMPACT_MODEL: "",
+      });
+
+      expect(config.autoCompactModel).toBeUndefined();
     });
   });
 
