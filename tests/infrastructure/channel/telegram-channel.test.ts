@@ -289,6 +289,79 @@ describe("TelegramChannel.reply", () => {
       expect(callCount).toBe(2);
       expect(logger.warn).not.toHaveBeenCalled();
     });
+
+    it("retries after AbortSignal.timeout fires on a hung first request", async () => {
+      // shouldAdvanceTime: true makes the fake clock track real wall-clock
+      // time, so AbortSignal.timeout(10_000) fires after ~10s without
+      // explicit vi.advanceTimersByTime calls. The never-resolving handler
+      // stays pending until the fetch aborts; the abort throws TimeoutError
+      // into the catch branch which schedules the 250ms retry sleep.
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+
+      let callCount = 0;
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          if (callCount === 1) {
+            // Never resolves — AbortSignal.timeout(10_000ms) aborts the fetch.
+            return new Promise<never>(() => {});
+          }
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+      await channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 5 } },
+        "hi",
+      );
+
+      expect(callCount).toBe(2);
+      expect(logger.warn).not.toHaveBeenCalled();
+    }, 15_000);
+
+    it("falls back to exponential backoff when retry_after exceeds the 10s cap", async () => {
+      let callCount = 0;
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          if (callCount === 1) {
+            return HttpResponse.json(
+              {
+                ok: false,
+                error_code: 429,
+                description: "Too Many Requests: retry after 30",
+                parameters: { retry_after: 30 },
+              },
+              { status: 429 },
+            );
+          }
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 6 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(callCount).toBe(2);
+      expect(logger.warn).not.toHaveBeenCalled();
+      // The sleep() call for retry_after:30 must use exponential backoff (250ms),
+      // not the uncapped 30 000ms value.
+      const sleepCalls = setTimeoutSpy.mock.calls.filter(
+        ([, delay]) => typeof delay === "number" && delay > 0,
+      );
+      expect(sleepCalls.every(([, delay]) => (delay as number) <= 500)).toBe(
+        true,
+      );
+    });
   });
 
   it("is Fail-Open when a middle chunk returns ok:false — all three requests are made and warn includes chunkIndex", async () => {
