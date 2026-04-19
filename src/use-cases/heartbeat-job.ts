@@ -47,72 +47,76 @@ export class HeartbeatJob {
     // currently returns v4 which is the acceptable fallback per spec.
     const jobId = randomUUID();
 
-    return this.telemetry.runInSpan("shrimp.job", async () => {
-      this.logger.info("cycle started");
+    return this.telemetry.runInSpan(
+      "POST /heartbeat",
+      async () => {
+        this.logger.info("cycle started");
 
-      let inProgressTasks, backlogTasks;
+        let inProgressTasks, backlogTasks;
 
-      try {
-        await this.board.validateSections();
-        inProgressTasks = await this.board.getTasks(Section.InProgress);
-        backlogTasks = await this.board.getTasks(Section.Backlog);
-      } catch (error) {
-        if (error instanceof BoardSectionMissingError) {
-          this.logger.warn("cycle skipped — board section missing", {
-            missingSection: error.message,
+        try {
+          await this.board.validateSections();
+          inProgressTasks = await this.board.getTasks(Section.InProgress);
+          backlogTasks = await this.board.getTasks(Section.Backlog);
+        } catch (error) {
+          if (error instanceof BoardSectionMissingError) {
+            this.logger.warn("cycle skipped — board section missing", {
+              missingSection: error.message,
+            });
+            return;
+          }
+          throw error;
+        }
+
+        const task = selectTask(inProgressTasks, backlogTasks);
+        if (task === null) {
+          this.logger.info("cycle idle", {
+            reason: "no tasks available",
+            inProgressCount: inProgressTasks.length,
+            backlogCount: backlogTasks.length,
           });
           return;
         }
-        throw error;
-      }
 
-      const task = selectTask(inProgressTasks, backlogTasks);
-      if (task === null) {
-        this.logger.info("cycle idle", {
-          reason: "no tasks available",
-          inProgressCount: inProgressTasks.length,
-          backlogCount: backlogTasks.length,
+        this.logger.info("cycle task selected", {
+          taskId: task.id,
+          section: task.section,
+          priority: task.priority,
         });
-        return;
-      }
 
-      this.logger.info("cycle task selected", {
-        taskId: task.id,
-        section: task.section,
-        priority: task.priority,
-      });
+        let selectedTask = task;
+        if (task.section === Section.Backlog) {
+          await this.board.moveTask(task.id, Section.InProgress);
+          selectedTask = { ...task, section: Section.InProgress };
+          this.logger.debug("cycle task promoted", { taskId: task.id });
+        }
 
-      let selectedTask = task;
-      if (task.section === Section.Backlog) {
-        await this.board.moveTask(task.id, Section.InProgress);
-        selectedTask = { ...task, section: Section.InProgress };
-        this.logger.debug("cycle task promoted", { taskId: task.id });
-      }
+        const comments = await this.board.getComments(selectedTask.id);
+        const toolProvider = this.toolProviderFactory.create();
+        const tools = toolProvider.getToolDescriptions();
 
-      const comments = await this.board.getComments(selectedTask.id);
-      const toolProvider = this.toolProviderFactory.create();
-      const tools = toolProvider.getToolDescriptions();
+        const { systemPrompt, userPrompt } = assembleHeartbeatPrompts({
+          task: selectedTask,
+          comments,
+          tools,
+        });
 
-      const { systemPrompt, userPrompt } = assembleHeartbeatPrompts({
-        task: selectedTask,
-        comments,
-        tools,
-      });
+        this.logger.debug("cycle invoking shrimp agent", { taskId: task.id });
+        const result = await this.shrimpAgent.run({
+          systemPrompt,
+          userPrompt,
+          tools: toolProvider.getTools(),
+          maxSteps: this.maxSteps,
+          jobId,
+          history: [],
+        });
 
-      this.logger.debug("cycle invoking shrimp agent", { taskId: task.id });
-      const result = await this.shrimpAgent.run({
-        systemPrompt,
-        userPrompt,
-        tools: toolProvider.getTools(),
-        maxSteps: this.maxSteps,
-        jobId,
-        history: [],
-      });
-
-      this.logger.info("cycle finished", {
-        taskId: task.id,
-        reason: result.reason,
-      });
-    });
+        this.logger.info("cycle finished", {
+          taskId: task.id,
+          reason: result.reason,
+        });
+      },
+      { "http.request.method": "POST", "http.route": "/heartbeat" },
+    );
   }
 }

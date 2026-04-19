@@ -13,6 +13,10 @@ import type { ToolProviderFactory } from "../../src/use-cases/ports/tool-provide
 import type { LoggerPort } from "../../src/use-cases/ports/logger";
 import type { ChannelGateway } from "../../src/use-cases/ports/channel-gateway";
 import { NoopTelemetry } from "../../src/infrastructure/telemetry/noop-telemetry";
+import type {
+  SpanAttributes,
+  TelemetryPort,
+} from "../../src/use-cases/ports/telemetry";
 import { makeFakeLogger } from "../mocks/fake-logger";
 import type { ConversationMessage } from "../../src/entities/conversation-message";
 import type { ConversationRef } from "../../src/entities/conversation-ref";
@@ -23,6 +27,11 @@ const makeRef = (): ConversationRef => ({
   channel: "telegram",
   payload: { chatId: "123" },
 });
+
+const DEFAULT_SOURCE = {
+  spanName: "POST /channels/telegram",
+  httpRoute: "/channels/telegram",
+};
 
 function makeSession(overrides: Partial<Session> = {}): Session {
   return {
@@ -112,7 +121,11 @@ describe("ChannelJob.run", () => {
     sessionRepo.getCurrent = vi.fn().mockResolvedValue(null);
     sessionRepo.createNew = vi.fn().mockResolvedValue(newSession);
 
-    await job.run({ message: "Hello bot", ref: makeRef() });
+    await job.run({
+      message: "Hello bot",
+      ref: makeRef(),
+      source: DEFAULT_SOURCE,
+    });
 
     expect(sessionRepo.createNew).toHaveBeenCalledTimes(1);
 
@@ -152,7 +165,11 @@ describe("ChannelJob.run", () => {
     });
     sessionRepo.getCurrent = vi.fn().mockResolvedValue(existingSession);
 
-    await job.run({ message: "Follow up", ref: makeRef() });
+    await job.run({
+      message: "Follow up",
+      ref: makeRef(),
+      source: DEFAULT_SOURCE,
+    });
 
     expect(sessionRepo.createNew).not.toHaveBeenCalled();
     expect(agent.capturedInput?.history).toEqual(priorMessages);
@@ -166,7 +183,11 @@ describe("ChannelJob.run", () => {
     agent.run = vi.fn().mockRejectedValue(new Error("agent exploded"));
 
     await expect(
-      job.run({ message: "Trigger error", ref: makeRef() }),
+      job.run({
+        message: "Trigger error",
+        ref: makeRef(),
+        source: DEFAULT_SOURCE,
+      }),
     ).rejects.toThrow("agent exploded");
   });
 
@@ -183,7 +204,7 @@ describe("ChannelJob.run", () => {
     };
     const j = makeJob(sessionRepo, agent, logger, factory);
 
-    await j.run({ message: "Hi", ref: makeRef() });
+    await j.run({ message: "Hi", ref: makeRef(), source: DEFAULT_SOURCE });
 
     const systemPrompt = agent.capturedInput?.systemPrompt ?? "";
     expect(systemPrompt).toContain("## Operating Principles");
@@ -204,7 +225,7 @@ describe("ChannelJob.run", () => {
       gateway,
     );
 
-    await j.run({ message: "Hi", ref });
+    await j.run({ message: "Hi", ref, source: DEFAULT_SOURCE });
 
     expect(gateway.reply).toHaveBeenCalledWith(ref, "Reply text");
   });
@@ -222,9 +243,45 @@ describe("ChannelJob.run", () => {
       return { reason: "finished", newMessages: [] };
     });
 
-    await job.run({ message: "Msg", ref: makeRef() });
+    await job.run({ message: "Msg", ref: makeRef(), source: DEFAULT_SOURCE });
 
     expect(appendOrder[0]).toBe("append");
     expect(appendOrder[1]).toBe("agent");
+  });
+
+  it("runs the Job inside a span named after the HTTP entry route with http.* attributes", async () => {
+    const calls: Array<{ name: string; attributes?: SpanAttributes }> = [];
+    const spyTelemetry: TelemetryPort = {
+      async runInSpan(name, fn, attributes) {
+        calls.push({ name, attributes });
+        return fn();
+      },
+      async shutdown() {},
+    };
+    const j = new ChannelJob({
+      sessionRepository: sessionRepo,
+      channelGateway: makeChannelGateway(),
+      shrimpAgent: agent,
+      toolProviderFactory: makeToolProviderFactory(),
+      maxSteps: 10,
+      logger,
+      telemetry: spyTelemetry,
+    });
+
+    await j.run({
+      message: "Hi",
+      ref: makeRef(),
+      source: {
+        spanName: "POST /channels/telegram",
+        httpRoute: "/channels/telegram",
+      },
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.name).toBe("POST /channels/telegram");
+    expect(calls[0]!.attributes).toEqual({
+      "http.request.method": "POST",
+      "http.route": "/channels/telegram",
+    });
   });
 });

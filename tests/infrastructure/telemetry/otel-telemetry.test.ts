@@ -289,6 +289,7 @@ describe("OtelTelemetry", () => {
       end: ReturnType<typeof vi.fn>;
       recordException: ReturnType<typeof vi.fn>;
       setStatus: ReturnType<typeof vi.fn>;
+      setAttributes: ReturnType<typeof vi.fn>;
     };
 
     function makeFakeTracer(span: FakeSpan): Tracer {
@@ -310,6 +311,7 @@ describe("OtelTelemetry", () => {
         end: vi.fn(),
         recordException: vi.fn(),
         setStatus: vi.fn(),
+        setAttributes: vi.fn(),
       };
     }
 
@@ -343,6 +345,36 @@ describe("OtelTelemetry", () => {
         code: SpanStatusCode.ERROR,
       });
       expect(span.end).toHaveBeenCalledTimes(1);
+    });
+
+    it("should set attributes on the span before invoking the callback", async () => {
+      const span = makeSpan();
+      const telemetry = buildTelemetry(span);
+      const order: string[] = [];
+      span.setAttributes.mockImplementation(() => {
+        order.push("setAttributes");
+      });
+
+      await telemetry.runInSpan(
+        "x",
+        async () => {
+          order.push("fn");
+        },
+        { "http.request.method": "POST", "http.route": "/heartbeat" },
+      );
+
+      expect(span.setAttributes).toHaveBeenCalledWith({
+        "http.request.method": "POST",
+        "http.route": "/heartbeat",
+      });
+      expect(order).toEqual(["setAttributes", "fn"]);
+    });
+
+    it("should not call setAttributes when attributes are omitted", async () => {
+      const span = makeSpan();
+      const telemetry = buildTelemetry(span);
+      await telemetry.runInSpan("x", async () => undefined);
+      expect(span.setAttributes).not.toHaveBeenCalled();
     });
   });
 

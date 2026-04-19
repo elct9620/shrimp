@@ -53,5 +53,15 @@ describe("NoopTelemetry", () => {
         }),
       ).rejects.toBe(boom);
     });
+
+    it("should accept and ignore optional attributes without throwing", async () => {
+      const noop = new NoopTelemetry();
+      await expect(
+        noop.runInSpan("x", async () => 42, {
+          "http.request.method": "POST",
+          "http.route": "/heartbeat",
+        }),
+      ).resolves.toBe(42);
+    });
   });
 });

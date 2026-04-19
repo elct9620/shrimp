@@ -45,69 +45,77 @@ export class ChannelJob {
     this.telemetry = telemetry;
   }
 
-  async run(event: { message: string; ref: ConversationRef }): Promise<void> {
+  async run(event: {
+    message: string;
+    ref: ConversationRef;
+    source: { spanName: string; httpRoute: string };
+  }): Promise<void> {
     // TODO: Use crypto.randomUUID() v7 when Node.js exposes it natively;
     // currently returns v4 which is the acceptable fallback per spec.
     const jobId = randomUUID();
 
-    return this.telemetry.runInSpan("shrimp.job", async () => {
-      this.logger.info("cycle started");
+    return this.telemetry.runInSpan(
+      event.source.spanName,
+      async () => {
+        this.logger.info("cycle started");
 
-      // Load or lazily create the current session.
-      let session = await this.sessionRepository.getCurrent();
-      if (!session) {
-        session = await this.sessionRepository.createNew();
-        this.logger.debug("cycle new session created", {
+        // Load or lazily create the current session.
+        let session = await this.sessionRepository.getCurrent();
+        if (!session) {
+          session = await this.sessionRepository.createNew();
+          this.logger.debug("cycle new session created", {
+            sessionId: session.id,
+          });
+        }
+
+        const userMsg = { role: "user" as const, content: event.message };
+
+        // Persist the incoming user message before agent invocation so the
+        // transcript is preserved even if the agent call fails (Fail-Open per SPEC).
+        await this.sessionRepository.append(session.id, [userMsg]);
+
+        const toolProvider = this.toolProviderFactory.create();
+        const systemPrompt = assembleChannelSystemPrompt({
+          tools: toolProvider.getToolDescriptions(),
+        });
+
+        this.logger.debug("cycle invoking shrimp agent", {
           sessionId: session.id,
         });
-      }
 
-      const userMsg = { role: "user" as const, content: event.message };
+        // Pass the prior session messages as history (snapshot before the new
+        // user message was appended). The new user message becomes the userPrompt.
+        const result = await this.shrimpAgent.run({
+          systemPrompt,
+          userPrompt: event.message,
+          tools: toolProvider.getTools(),
+          maxSteps: this.maxSteps,
+          jobId,
+          history: session.messages,
+          sessionId: session.id,
+        });
 
-      // Persist the incoming user message before agent invocation so the
-      // transcript is preserved even if the agent call fails (Fail-Open per SPEC).
-      await this.sessionRepository.append(session.id, [userMsg]);
-
-      const toolProvider = this.toolProviderFactory.create();
-      const systemPrompt = assembleChannelSystemPrompt({
-        tools: toolProvider.getToolDescriptions(),
-      });
-
-      this.logger.debug("cycle invoking shrimp agent", {
-        sessionId: session.id,
-      });
-
-      // Pass the prior session messages as history (snapshot before the new
-      // user message was appended). The new user message becomes the userPrompt.
-      const result = await this.shrimpAgent.run({
-        systemPrompt,
-        userPrompt: event.message,
-        tools: toolProvider.getTools(),
-        maxSteps: this.maxSteps,
-        jobId,
-        history: session.messages,
-        sessionId: session.id,
-      });
-
-      // Append assistant turn(s) — Fail-Open: sessionRepository.append must not throw.
-      if (result.newMessages.length > 0) {
-        await this.sessionRepository.append(session.id, result.newMessages);
-      }
-
-      // Deliver the agent's final text response to the originating Channel.
-      // ChannelGateway.reply is Fail-Open per SPEC §Channel Integration — if
-      // delivery fails the Job is not failed. We iterate newMessages so any
-      // assistant turn the agent produced is sent; typically this is one.
-      for (const msg of result.newMessages) {
-        if (msg.role === "assistant" && msg.content.length > 0) {
-          await this.channelGateway.reply(event.ref, msg.content);
+        // Append assistant turn(s) — Fail-Open: sessionRepository.append must not throw.
+        if (result.newMessages.length > 0) {
+          await this.sessionRepository.append(session.id, result.newMessages);
         }
-      }
 
-      this.logger.info("cycle finished", {
-        sessionId: session.id,
-        reason: result.reason,
-      });
-    });
+        // Deliver the agent's final text response to the originating Channel.
+        // ChannelGateway.reply is Fail-Open per SPEC §Channel Integration — if
+        // delivery fails the Job is not failed. We iterate newMessages so any
+        // assistant turn the agent produced is sent; typically this is one.
+        for (const msg of result.newMessages) {
+          if (msg.role === "assistant" && msg.content.length > 0) {
+            await this.channelGateway.reply(event.ref, msg.content);
+          }
+        }
+
+        this.logger.info("cycle finished", {
+          sessionId: session.id,
+          reason: result.reason,
+        });
+      },
+      { "http.request.method": "POST", "http.route": event.source.httpRoute },
+    );
   }
 }

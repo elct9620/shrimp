@@ -92,7 +92,14 @@ export function createTelegramRoute(deps: {
     }
 
     const accepted = deps.jobQueue.tryEnqueue(() =>
-      deps.channelJob.run({ message: text, ref }),
+      deps.channelJob.run({
+        message: text,
+        ref,
+        source: {
+          spanName: "POST /channels/telegram",
+          httpRoute: "/channels/telegram",
+        },
+      }),
     );
     deps.logger.info("telegram message received", {
       accepted,

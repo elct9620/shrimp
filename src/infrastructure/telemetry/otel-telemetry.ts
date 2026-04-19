@@ -11,7 +11,10 @@ import {
   type Tracer,
 } from "@opentelemetry/api";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
-import type { TelemetryPort } from "../../use-cases/ports/telemetry";
+import type {
+  SpanAttributes,
+  TelemetryPort,
+} from "../../use-cases/ports/telemetry";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import { GenAiBridgeSpanProcessor } from "./gen-ai-bridge-span-processor";
 
@@ -79,8 +82,15 @@ export class OtelTelemetry implements TelemetryPort {
     });
   }
 
-  async runInSpan<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  async runInSpan<T>(
+    name: string,
+    fn: () => Promise<T>,
+    attributes?: SpanAttributes,
+  ): Promise<T> {
     return this.tracer.startActiveSpan(name, async (span) => {
+      if (attributes) {
+        span.setAttributes(attributes);
+      }
       try {
         return await fn();
       } catch (err) {

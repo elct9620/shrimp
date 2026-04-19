@@ -10,6 +10,10 @@ import type { ToolProvider } from "../../src/use-cases/ports/tool-provider";
 import type { ToolProviderFactory } from "../../src/use-cases/ports/tool-provider-factory";
 import type { LoggerPort } from "../../src/use-cases/ports/logger";
 import { NoopTelemetry } from "../../src/infrastructure/telemetry/noop-telemetry";
+import type {
+  SpanAttributes,
+  TelemetryPort,
+} from "../../src/use-cases/ports/telemetry";
 import { makeFakeLogger } from "../mocks/fake-logger";
 import { Section } from "../../src/entities/section";
 import { Priority } from "../../src/entities/priority";
@@ -186,5 +190,38 @@ describe("HeartbeatJob.run", () => {
 
     await expect(job.run()).rejects.toThrow("network failure");
     expect(agent.run).not.toHaveBeenCalled();
+  });
+
+  it("runs the Job inside a span named POST /heartbeat with http.* attributes", async () => {
+    const calls: Array<{ name: string; attributes?: SpanAttributes }> = [];
+    const spyTelemetry: TelemetryPort = {
+      async runInSpan(name, fn, attributes) {
+        calls.push({ name, attributes });
+        return fn();
+      },
+      async shutdown() {},
+    };
+    const j = new HeartbeatJob({
+      board,
+      shrimpAgent: agent,
+      toolProviderFactory: {
+        create: vi.fn(() => ({
+          getTools: vi.fn().mockReturnValue({}),
+          getToolDescriptions: vi.fn().mockReturnValue([]),
+        })),
+      },
+      maxSteps: 10,
+      logger,
+      telemetry: spyTelemetry,
+    });
+
+    await j.run();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.name).toBe("POST /heartbeat");
+    expect(calls[0]!.attributes).toEqual({
+      "http.request.method": "POST",
+      "http.route": "/heartbeat",
+    });
   });
 });
