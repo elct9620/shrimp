@@ -333,7 +333,7 @@ _Compaction procedure (ordered):_
 
 1. Take a snapshot of the current Session's full ConversationMessage list as it stands after the just-completed turn's entries have been appended (the current Session JSONL is therefore complete and faithful before any rotation begins).
 2. Invoke the SummarizePort with that ConversationMessage list; receive a Conversation Summary string.
-3. Generate a new Session UUID (UUID v4).
+3. Generate a new Session UUID.
 4. Create a new Session JSONL file at `<SHRIMP_STATE_DIR>/sessions/<new-id>.jsonl` whose first and only entry is a `ConversationMessage` with `role: "system"` carrying the Conversation Summary as its content. (`role: "system"` is the ConversationMessage variant that represents a Conversation Summary; it is the same role field used to carry system-level context in the conversation history.)
 5. Atomically update `state.json` to point to the new Session ID.
 6. Leave the previous Session JSONL file on disk untouched as an archive — identical semantics to the `/new` Slash Command rotation (see [Session rotation via `/new`](#session-lifecycle) above).
@@ -363,10 +363,10 @@ See [Failure Handling](#failure-handling) for Auto Compact failure rules (item c
 
 **Participation in Jobs:**
 
-| Job type     | Session access                                                                        |
-| ------------ | ------------------------------------------------------------------------------------- |
-| ChannelJob   | Reads the current Session before invoking the Shrimp Agent; appends new entries after |
-| HeartbeatJob | Does not read or write any Session                                                    |
+| Job type     | Session access                                                                        | Auto Compact participation                                                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ChannelJob   | Reads the current Session before invoking the Shrimp Agent; appends new entries after | Subject to Auto Compact; after new entries are appended, the Job Worker evaluates the Compaction Threshold and, if met, rotates the Session via SummarizePort (see [Auto Compact](#session-lifecycle) above) |
+| HeartbeatJob | Does not read or write any Session                                                    | Not subject to Auto Compact; has no Session, never evaluates the Compaction Threshold, never invokes SummarizePort                                                                                           |
 
 **Failure handling:**
 
