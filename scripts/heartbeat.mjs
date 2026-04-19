@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 const url =
   process.env.SHRIMP_HEARTBEAT_URL ??
   `http://localhost:${process.env.PORT ?? 3000}/heartbeat`;
