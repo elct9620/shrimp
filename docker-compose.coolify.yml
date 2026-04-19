@@ -44,9 +44,7 @@ services:
             "mcpServers": {}
           }
       # User Agents appendix overlaid onto the SHRIMP_HOME data volume.
-      # Default content is a neutral notice — non-empty so Coolify detects
-      # it as a file (avoids coollabsio/coolify#3375), and informational
-      # enough that operators reading it learn where to edit it.
+      # Seeded on first deploy; edit via Coolify UI (Storages → File Mount).
       - type: bind
         source: ./agents.md
         target: /var/lib/shrimp/AGENTS.md
