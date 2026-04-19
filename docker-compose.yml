@@ -4,8 +4,30 @@ services:
       context: .
     image: shrimp:latest
     container_name: shrimp
-    env_file:
-      - .env
+    environment:
+      # AI provider
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:?}"
+      AI_MODEL: "${AI_MODEL:-google/gemma-4-26b-a4b-it}"
+      AI_MAX_STEPS: "${AI_MAX_STEPS:-50}"
+      AI_REASONING_EFFORT: "${AI_REASONING_EFFORT:-}"
+      # Todoist Board
+      TODOIST_API_TOKEN: "${TODOIST_API_TOKEN:?}"
+      TODOIST_PROJECT_ID: "${TODOIST_PROJECT_ID:?}"
+      # Logging
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      # Telemetry (required keys validated by app when TELEMETRY_ENABLED=true)
+      TELEMETRY_ENABLED: "${TELEMETRY_ENABLED:-false}"
+      OTEL_SERVICE_NAME: "${OTEL_SERVICE_NAME:-shrimp}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OTEL_EXPORTER_OTLP_HEADERS: "${OTEL_EXPORTER_OTLP_HEADERS:-}"
+      OTEL_LOG_LEVEL: "${OTEL_LOG_LEVEL:-}"
+      TELEMETRY_RECORD_INPUTS: "${TELEMETRY_RECORD_INPUTS:-}"
+      TELEMETRY_RECORD_OUTPUTS: "${TELEMETRY_RECORD_OUTPUTS:-}"
+      # Channels (required keys validated by app when CHANNELS_ENABLED=true)
+      CHANNELS_ENABLED: "${CHANNELS_ENABLED:-false}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_WEBHOOK_SECRET: "${TELEGRAM_WEBHOOK_SECRET:-}"
     ports:
       - "${HOST_PORT:-3000}:3000"
     volumes:
