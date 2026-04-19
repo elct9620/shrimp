@@ -36,6 +36,8 @@ All Docker workflows are exposed as `pnpm docker:*` scripts:
 
 `docker:dev` always rebuilds the image (Docker layer cache keeps it cheap), so the freshly baked `dist/` is what the container starts with. Compose watch then syncs `./dist` into the container on subsequent rebuilds — pair with `pnpm dev` in another terminal, or rely on the Claude Stop hook (see below).
 
+Session state is persisted in the `/var/lib/shrimp` VOLUME; Compose mounts `${SHRIMP_DATA_DIR:-./data/shrimp}` from the host so it survives container rebuilds. `docker-compose.yml` declares runtime variables in an `environment:` block with `${VAR}` / `${VAR:-default}` / `${VAR:?}` interpolation (so Coolify can detect and expose them in its UI); local dev still reads values from `.env` via Compose's standard interpolation, and `pnpm dev` reads `.env` directly through `dotenv`.
+
 ## Architecture
 
 Two documents are authoritative:
@@ -48,6 +50,7 @@ Three facts worth internalizing before touching Job or Shrimp Agent code:
 - **Shrimp is NOT the Supervisor.** The Supervisor is an internal component of Shrimp that receives heartbeats, owns the Job Queue, and dispatches Job Workers. The Shrimp process contains the Supervisor; it is not the Supervisor.
 - **The Shrimp Agent is a black-box executor.** A `Job` (the Job Worker, in code) invokes the `ShrimpAgent` port exactly once per Heartbeat; iterations inside the loop cannot be driven from outside. `AiSdkShrimpAgent` implements this port via AI SDK's `ToolLoopAgent`.
 - **Built-in Todoist tools are inbound adapters**, not use cases. They live in `adapters/tools/built-in/` and call `BoardRepository` directly. Do not create per-operation use-case classes for them.
+- **Channels are optional inbound adapters parallel to the Todoist Board**, gated by `CHANNELS_ENABLED`. When enabled, Shrimp accepts webhooks (e.g. Telegram), persists conversation state via `JsonlSessionRepository` under `SHRIMP_STATE_DIR` (default `~/.shrimp`; `/var/lib/shrimp` in the Docker image), and processes messages as `ChannelJob`s on the same Supervisor queue.
 
 Layer layout at a glance:
 
@@ -87,3 +90,4 @@ Layer layout at a glance:
 - DI uses Symbol-based tokens defined in `infrastructure/container/tokens.ts`, not decorator-based injection. All wiring happens in `container.ts` via `useFactory` / `useClass`.
 - Prompt templates are `.md` files imported as raw strings via `unplugin-raw` (`import tpl from "./prompts/system.md?raw"`). These live alongside their use-case files.
 - A Claude Code Stop hook (`.claude/settings.json`) runs `pnpm build` asynchronously after each session so `dist/` stays in sync with `docker compose --watch`. Do not hand-maintain `dist/`.
+- Adding a new runtime env var means updating three places together: `infrastructure/config/env-config.ts` (parsing + validation), `.env.example` (documentation + local default), and the `environment:` block in `docker-compose.yml` (Coolify UI exposure).
