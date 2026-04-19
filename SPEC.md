@@ -315,6 +315,52 @@ No Session exists at process startup. The first non-command Channel message crea
 
 When the `/new` Slash Command is received, a new Session is created and becomes current. The previous Session file is retained on disk as an archive. Full Slash Command parsing rules are defined in [Slash Commands](#slash-commands).
 
+**Auto Compact:**
+
+Auto Compact is the mechanism that automatically rotates a ChannelJob Session when its conversation history has grown large enough that the next agent invocation would consume tokens near the model's context limit. It is triggered by the Job Worker based on the prompt token usage reported by the AI provider for the turn just completed — not by message count, not by a client-side estimate. When triggered, Auto Compact invokes the SummarizePort to condense the conversation, then rotates to a new Session whose sole initial entry is the resulting Conversation Summary. The previous Session is archived identically to a `/new` rotation.
+
+_Trigger rule:_
+
+| Property            | Value                                                                                                                                                                                                                                                                 |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Evaluation actor    | Job Worker (not Shrimp Agent)                                                                                                                                                                                                                                         |
+| Evaluation timing   | After the ChannelJob's Shrimp Agent invocation completes successfully AND after the new ConversationMessage entries for that turn have been appended to the current Session JSONL file — i.e., the archived Session is always faithful to what was actually exchanged |
+| Input to the check  | `promptTokens` from the just-completed Shrimp Agent invocation (the value the AI provider reports as `ai.usage.promptTokens` / `gen_ai.usage.input_tokens` for that turn's last step)                                                                                 |
+| Comparison operator | `promptTokens >= Compaction Threshold` ⇒ compaction runs                                                                                                                                                                                                              |
+| Missing token count | If the AI provider does not return a token count for the completed turn, compaction is skipped for this turn; the turn's messages remain in the current Session normally; see [Failure Handling](#failure-handling) for the failure rule                              |
+
+_Compaction procedure (ordered):_
+
+1. Take a snapshot of the current Session's full ConversationMessage list as it stands after the just-completed turn's entries have been appended (the current Session JSONL is therefore complete and faithful before any rotation begins).
+2. Invoke the SummarizePort with that ConversationMessage list; receive a Conversation Summary string.
+3. Generate a new Session UUID (UUID v4).
+4. Create a new Session JSONL file at `<SHRIMP_STATE_DIR>/sessions/<new-id>.jsonl` whose first and only entry is a `ConversationMessage` with `role: "system"` carrying the Conversation Summary as its content. (`role: "system"` is the ConversationMessage variant that represents a Conversation Summary; it is the same role field used to carry system-level context in the conversation history.)
+5. Atomically update `state.json` to point to the new Session ID.
+6. Leave the previous Session JSONL file on disk untouched as an archive — identical semantics to the `/new` Slash Command rotation (see [Session rotation via `/new`](#session-lifecycle) above).
+
+_Effect on the next ChannelJob:_
+
+- The next ChannelJob reads the new Session, whose history contains exactly one entry: the `role: "system"` Conversation Summary. The Shrimp Agent receives this summary in place of the older individual turns.
+- Subsequent turns are appended to the new Session JSONL normally.
+
+_HeartbeatJob exclusion:_
+
+- HeartbeatJob has no Session, does not evaluate the Compaction Threshold, and never invokes SummarizePort. Auto Compact applies only to ChannelJob.
+
+_Concurrency and timing invariants:_
+
+- Auto Compact runs inside the Job Worker's Job Queue slot for the same ChannelJob that triggered the threshold evaluation. It is therefore serialized with all other Jobs; no parallel compaction can occur.
+- One ChannelJob triggers at most one compaction. If the threshold is met, compaction runs once; the next ChannelJob evaluates the threshold anew against the new Session's prompt token usage.
+
+_Relationship to `/new`:_
+
+- `/new` continues to work as defined: the user can always manually rotate Sessions. Auto Compact performs the same rotation automatically when the token threshold is met.
+- If Auto Compact rotated during a ChannelJob and `/new` arrives in a subsequent message, `/new` rotates from the (post-compaction) new Session normally. No interaction hazard exists beyond that.
+
+_Failure handling:_
+
+See [Failure Handling](#failure-handling) for Auto Compact failure rules (item covers SummarizePort errors, missing token counts, and JSONL/state.json write failures).
+
 **Participation in Jobs:**
 
 | Job type     | Session access                                                                        |
