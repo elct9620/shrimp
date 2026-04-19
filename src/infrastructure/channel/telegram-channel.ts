@@ -62,19 +62,16 @@ export function chunkText(text: string, limit: number): string[] {
 const MAX_ATTEMPTS = 3;
 const BACKOFF_MS = [250, 500] as const;
 const RETRY_AFTER_CAP_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 function isRetryableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status < 600);
 }
 
-function retryDelayMs(
-  attempt: number,
-  retryAfterHeader?: string | null,
-): number {
-  if (retryAfterHeader != null) {
-    const seconds = parseInt(retryAfterHeader, 10);
-    const ms = seconds * 1000;
-    if (!isNaN(seconds) && ms <= RETRY_AFTER_CAP_MS) return ms;
+function retryDelayMs(attempt: number, retryAfterSeconds?: number): number {
+  if (retryAfterSeconds != null && Number.isFinite(retryAfterSeconds)) {
+    const ms = retryAfterSeconds * 1000;
+    if (ms > 0 && ms <= RETRY_AFTER_CAP_MS) return ms;
   }
   return BACKOFF_MS[attempt] ?? BACKOFF_MS[BACKOFF_MS.length - 1];
 }
@@ -116,13 +113,16 @@ export class TelegramChannel implements ChannelGateway {
     const body = JSON.stringify({ chat_id: chatId, text: chunk });
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      // Network-level attempt — transient socket failures land in the catch block.
+      // Network-level attempt — transient socket failures and timeout land in
+      // the catch block. AbortSignal.timeout bounds each attempt so a hung
+      // request cannot stall the Job Queue.
       let resp: Response;
       try {
         resp = await fetch(url, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body,
+          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
       } catch (err) {
         const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
@@ -138,19 +138,33 @@ export class TelegramChannel implements ChannelGateway {
         continue;
       }
 
+      // Parse body for every response — Telegram Bot API reports application-
+      // level failures (including 429 throttling) via `ok:false` + description,
+      // with the retry delay carried in `parameters.retry_after` (seconds).
+      // The HTTP `Retry-After` header is not guaranteed.
+      const responseBody = (await resp.json().catch(() => null)) as {
+        ok: boolean;
+        error_code?: number;
+        description?: string;
+        parameters?: { retry_after?: number };
+      } | null;
+
       // 429 / 5xx are transient; retry with appropriate backoff.
       if (isRetryableStatus(resp.status)) {
         const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
         if (isLastAttempt) {
           this.logger.warn("telegram reply failed — upstream status", {
             status: resp.status,
+            error_code: responseBody?.error_code,
+            description: responseBody?.description,
             attempts: MAX_ATTEMPTS,
             ...chunkContext,
           });
           return;
         }
-        const delay = retryDelayMs(attempt, resp.headers.get("Retry-After"));
-        await sleep(delay);
+        await sleep(
+          retryDelayMs(attempt, responseBody?.parameters?.retry_after),
+        );
         continue;
       }
 
@@ -158,23 +172,19 @@ export class TelegramChannel implements ChannelGateway {
       if (!resp.ok) {
         this.logger.warn("telegram reply failed — upstream status", {
           status: resp.status,
+          error_code: responseBody?.error_code,
+          description: responseBody?.description,
           ...chunkContext,
         });
         return;
       }
 
-      // Telegram Bot API may return HTTP 200 with { ok: false, error_code, description }
-      // when the request is accepted at transport level but rejected at application level
-      // (e.g. message too long, invalid chat_id). We must parse the body to detect this.
-      const responseBody = (await resp.json()) as {
-        ok: boolean;
-        error_code?: number;
-        description?: string;
-      };
-      if (!responseBody.ok) {
+      // Application-level failure over HTTP 200 (e.g. message too long, invalid
+      // chat_id). Not retryable — would waste calls.
+      if (!responseBody?.ok) {
         this.logger.warn("telegram reply failed — upstream error", {
-          error_code: responseBody.error_code,
-          description: responseBody.description,
+          error_code: responseBody?.error_code,
+          description: responseBody?.description,
           ...chunkContext,
         });
         return;

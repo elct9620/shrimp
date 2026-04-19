@@ -257,16 +257,21 @@ describe("TelegramChannel.reply", () => {
       );
     });
 
-    it("retries on 429 and respects Retry-After if within cap", async () => {
+    it("retries on 429 using parameters.retry_after from the Telegram body", async () => {
       let callCount = 0;
       server.use(
         http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
           callCount += 1;
           if (callCount === 1) {
-            return new HttpResponse(null, {
-              status: 429,
-              headers: { "Retry-After": "1" },
-            });
+            return HttpResponse.json(
+              {
+                ok: false,
+                error_code: 429,
+                description: "Too Many Requests: retry after 1",
+                parameters: { retry_after: 1 },
+              },
+              { status: 429 },
+            );
           }
           return HttpResponse.json({ ok: true, result: {} });
         }),
