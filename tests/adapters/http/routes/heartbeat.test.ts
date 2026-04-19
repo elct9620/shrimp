@@ -62,7 +62,7 @@ describe("POST /heartbeat", () => {
     expect(jobQueue.tryEnqueue).toHaveBeenCalledTimes(1);
   });
 
-  it("should pass a job closure that invokes heartbeatJob.run when executed", async () => {
+  it("should pass a job closure that invokes heartbeatJob.run with HTTP span attributes", async () => {
     let capturedJob: (() => Promise<void>) | undefined;
     const jobQueue: JobQueue = {
       tryEnqueue: vi.fn().mockImplementation((job: () => Promise<void>) => {
@@ -77,18 +77,22 @@ describe("POST /heartbeat", () => {
       logger: makeFakeLogger(),
     });
 
-    await app.request("/heartbeat", { method: "POST" });
+    await app.request("/heartbeat", {
+      method: "POST",
+      headers: { "User-Agent": "curl/8.0" },
+    });
 
     expect(capturedJob).toBeDefined();
     await capturedJob!();
-    expect(heartbeatJob.run).toHaveBeenCalledWith({
-      telemetry: {
-        spanName: "POST /heartbeat",
-        attributes: {
-          "http.request.method": "POST",
-          "http.route": "/heartbeat",
-        },
-      },
+    expect(heartbeatJob.run).toHaveBeenCalledTimes(1);
+    const runArg = (heartbeatJob.run as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0];
+    expect(runArg.telemetry.spanName).toBe("POST /heartbeat");
+    expect(runArg.telemetry.attributes).toMatchObject({
+      "http.request.method": "POST",
+      "http.route": "/heartbeat",
+      "url.path": "/heartbeat",
+      "user_agent.original": "curl/8.0",
     });
   });
 

@@ -139,7 +139,10 @@ describe("POST /channels/telegram", () => {
 
     const res = await post(
       app,
-      { message: { text: "hello", chat: { id: 42 } } },
+      {
+        update_id: 987654321,
+        message: { text: "hello", chat: { id: 42 } },
+      },
       VALID_SECRET,
     );
 
@@ -148,16 +151,22 @@ describe("POST /channels/telegram", () => {
     expect(capturedFn).toBeDefined();
 
     await capturedFn!();
-    expect(channelJob.run).toHaveBeenCalledWith({
-      message: "hello",
-      ref: { channel: "telegram", payload: { chatId: 42 } },
-      telemetry: {
-        spanName: "POST /channels/telegram",
-        attributes: {
-          "http.request.method": "POST",
-          "http.route": "/channels/telegram",
-        },
-      },
+    expect(channelJob.run).toHaveBeenCalledTimes(1);
+    const runArg = (channelJob.run as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0];
+    expect(runArg.message).toBe("hello");
+    expect(runArg.ref).toEqual({
+      channel: "telegram",
+      payload: { chatId: 42 },
+    });
+    expect(runArg.telemetry.spanName).toBe("POST /channels/telegram");
+    expect(runArg.telemetry.attributes).toMatchObject({
+      "http.request.method": "POST",
+      "http.route": "/channels/telegram",
+      "url.path": "/channels/telegram",
+      "telegram.chat.id": 42,
+      "telegram.update.id": 987654321,
+      "telegram.message.text.length": 5,
     });
   });
 

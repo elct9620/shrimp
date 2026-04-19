@@ -8,9 +8,11 @@ import type { ChannelGateway } from "../../../../use-cases/ports/channel-gateway
 import type { LoggerPort } from "../../../../use-cases/ports/logger";
 import type { ConversationRef } from "../../../../entities/conversation-ref";
 import { TELEGRAM_CHANNEL_NAME } from "../../../../infrastructure/channel/telegram-channel";
+import { collectHttpSpanAttributes } from "../../telemetry-attributes";
 import { timingSafeEqualStr } from "../../timing-safe-compare";
 
 const TelegramUpdate = z.object({
+  update_id: z.number().optional(),
   message: z
     .object({
       text: z.string().optional(),
@@ -91,16 +93,20 @@ export function createTelegramRoute(deps: {
       return c.body(null, 200);
     }
 
+    const attributes = collectHttpSpanAttributes(c, "/channels/telegram");
+    attributes["telegram.chat.id"] = msg.chat.id;
+    attributes["telegram.message.text.length"] = text.length;
+    if (parsed.data.update_id !== undefined) {
+      attributes["telegram.update.id"] = parsed.data.update_id;
+    }
+
     const accepted = deps.jobQueue.tryEnqueue(() =>
       deps.channelJob.run({
         message: text,
         ref,
         telemetry: {
           spanName: "POST /channels/telegram",
-          attributes: {
-            "http.request.method": "POST",
-            "http.route": "/channels/telegram",
-          },
+          attributes,
         },
       }),
     );

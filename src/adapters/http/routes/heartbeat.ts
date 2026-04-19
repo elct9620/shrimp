@@ -3,6 +3,7 @@ import type { AppEnv } from "../context-variables";
 import type { JobQueue } from "../../../use-cases/ports/job-queue";
 import type { HeartbeatJob } from "../../../use-cases/heartbeat-job";
 import type { LoggerPort } from "../../../use-cases/ports/logger";
+import { collectHttpSpanAttributes } from "../telemetry-attributes";
 import { timingSafeEqualStr } from "../timing-safe-compare";
 
 const BEARER_PREFIX = "Bearer ";
@@ -31,15 +32,10 @@ export function createHeartbeatRoute(deps: {
     }
 
     deps.logger.info("heartbeat received");
+    const attributes = collectHttpSpanAttributes(c, "/heartbeat");
     const accepted = deps.jobQueue.tryEnqueue(() =>
       deps.heartbeatJob.run({
-        telemetry: {
-          spanName: "POST /heartbeat",
-          attributes: {
-            "http.request.method": "POST",
-            "http.route": "/heartbeat",
-          },
-        },
+        telemetry: { spanName: "POST /heartbeat", attributes },
       }),
     );
     deps.logger.info("heartbeat enqueued", { accepted });
