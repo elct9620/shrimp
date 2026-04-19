@@ -32,12 +32,10 @@ function makeClient(
   };
 }
 
-function makeConfig(
-  servers: Record<string, { command: string; args?: string[] }>,
-): McpConfig {
+function makeConfig(...names: string[]): McpConfig {
   return {
     mcpServers: Object.fromEntries(
-      Object.entries(servers).map(([name]) => [
+      names.map((name) => [
         name,
         { type: "http" as const, url: `https://example.com/${name}` },
       ]),
@@ -54,7 +52,7 @@ describe("McpToolLoader", () => {
     it("should return empty result when mcpServers is empty", async () => {
       const factory: McpClientFactory = vi.fn();
       const loader = new McpToolLoader(makeFakeLogger(), factory);
-      const config = makeConfig({});
+      const config = makeConfig();
 
       const result = await loader.load(config);
 
@@ -70,9 +68,7 @@ describe("McpToolLoader", () => {
       ]);
       const factory: McpClientFactory = vi.fn().mockResolvedValue(client);
       const loader = new McpToolLoader(makeFakeLogger(), factory);
-      const config = makeConfig({
-        fs: { command: "node", args: ["fs-server.js"] },
-      });
+      const config = makeConfig("fs");
 
       const result = await loader.load(config);
 
@@ -100,10 +96,7 @@ describe("McpToolLoader", () => {
         .mockResolvedValueOnce(clientA)
         .mockResolvedValueOnce(clientB);
       const loader = new McpToolLoader(makeFakeLogger(), factory);
-      const config = makeConfig({
-        search: { command: "node", args: ["search.js"] },
-        runner: { command: "node", args: ["runner.js"] },
-      });
+      const config = makeConfig("search", "runner");
 
       const result = await loader.load(config);
 
@@ -122,10 +115,7 @@ describe("McpToolLoader", () => {
         .mockRejectedValueOnce(new Error("connection refused"))
         .mockResolvedValueOnce(goodClient);
       const loader = new McpToolLoader(makeFakeLogger(), factory);
-      const config = makeConfig({
-        bad: { command: "bad-server" },
-        good: { command: "good-server" },
-      });
+      const config = makeConfig("bad", "good");
 
       const result = await loader.load(config);
 
@@ -140,10 +130,7 @@ describe("McpToolLoader", () => {
         .fn()
         .mockRejectedValue(new Error("all down"));
       const loader = new McpToolLoader(makeFakeLogger(), factory);
-      const config = makeConfig({
-        serverA: { command: "a" },
-        serverB: { command: "b" },
-      });
+      const config = makeConfig("serverA", "serverB");
 
       const result = await loader.load(config);
 
@@ -164,10 +151,7 @@ describe("McpToolLoader", () => {
         .mockResolvedValueOnce(failingClient)
         .mockResolvedValueOnce(goodClient);
       const loader = new McpToolLoader(makeFakeLogger(), factory);
-      const config = makeConfig({
-        broken: { command: "x" },
-        ok: { command: "y" },
-      });
+      const config = makeConfig("broken", "ok");
 
       const result = await loader.load(config);
 
@@ -179,9 +163,7 @@ describe("McpToolLoader", () => {
       const client = makeClient([{ name: "tool1", description: "Tool one" }]);
       const factory: McpClientFactory = vi.fn().mockResolvedValue(client);
       const loader = new McpToolLoader(makeFakeLogger(), factory);
-      const config = makeConfig({
-        myServer: { command: "myCmd", args: ["--flag"] },
-      });
+      const config = makeConfig("myServer");
 
       await loader.load(config);
 
@@ -201,10 +183,7 @@ describe("McpToolLoader", () => {
         .mockResolvedValueOnce(clientA)
         .mockResolvedValueOnce(clientB);
       const loader = new McpToolLoader(makeFakeLogger(), factory);
-      const config = makeConfig({
-        serverA: { command: "a" },
-        serverB: { command: "b" },
-      });
+      const config = makeConfig("serverA", "serverB");
 
       await loader.load(config);
       await loader.close();
@@ -220,7 +199,7 @@ describe("McpToolLoader", () => {
       );
       const factory: McpClientFactory = vi.fn().mockResolvedValue(client);
       const loader = new McpToolLoader(makeFakeLogger(), factory);
-      const config = makeConfig({ server: { command: "cmd" } });
+      const config = makeConfig("server");
 
       await loader.load(config);
 
@@ -244,9 +223,7 @@ describe("McpToolLoader", () => {
       const factory: McpClientFactory = vi.fn().mockResolvedValue(client);
       const logger = makeFakeLogger();
       const loader = new McpToolLoader(logger, factory);
-      const config = makeConfig({
-        fs: { command: "node", args: ["fs-server.js"] },
-      });
+      const config = makeConfig("fs");
 
       await loader.load(config);
 
@@ -266,9 +243,7 @@ describe("McpToolLoader", () => {
         .mockRejectedValue(new Error("connection refused"));
       const logger = makeFakeLogger();
       const loader = new McpToolLoader(logger, factory);
-      const config = makeConfig({
-        bad: { command: "bad-server", args: ["--x"] },
-      });
+      const config = makeConfig("bad");
 
       await loader.load(config);
 
@@ -290,7 +265,7 @@ describe("McpToolLoader", () => {
       const factory = vi.fn().mockResolvedValue(failingClient);
       const logger = makeFakeLogger();
       const loader = new McpToolLoader(logger, factory);
-      const config = makeConfig({ broken: { command: "x" } });
+      const config = makeConfig("broken");
 
       await loader.load(config);
 
@@ -309,7 +284,7 @@ describe("McpToolLoader", () => {
         .mockRejectedValue(new Error("nope"));
       const logger = makeFakeLogger();
       const loader = new McpToolLoader(logger, factory);
-      const config = makeConfig({ bad: { command: "x" } });
+      const config = makeConfig("bad");
 
       await loader.load(config);
 
@@ -328,7 +303,7 @@ describe("McpToolLoader", () => {
         .mockResolvedValueOnce(goodClient);
       const logger = makeFakeLogger();
       const loader = new McpToolLoader(logger, factory);
-      const config = makeConfig({ a: { command: "x" }, b: { command: "y" } });
+      const config = makeConfig("a", "b");
 
       await loader.load(config);
       await loader.close();
@@ -344,7 +319,7 @@ describe("McpToolLoader", () => {
       const factory: McpClientFactory = vi.fn().mockResolvedValue(client);
       const logger = makeFakeLogger();
       const loader = new McpToolLoader(logger, factory);
-      const config = makeConfig({ serverA: { command: "a" } });
+      const config = makeConfig("serverA");
 
       await loader.load(config);
       await loader.close();

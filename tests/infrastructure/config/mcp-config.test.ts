@@ -187,6 +187,16 @@ describe("parseMcpConfig", () => {
       ).toThrow(McpConfigError);
     });
 
+    it("should throw McpConfigError when type is a number instead of a string", () => {
+      expect(() =>
+        parseMcpConfig(
+          JSON.stringify({
+            mcpServers: { srv: { type: 123, url: "https://example.com" } },
+          }),
+        ),
+      ).toThrow(/field "type" must be a string/);
+    });
+
     it("should throw McpConfigError when type is sse (not supported)", () => {
       expect(() =>
         parseMcpConfig(

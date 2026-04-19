@@ -44,7 +44,12 @@ function parseServerDefinition(
   defRecord: Record<string, unknown>,
 ): McpServerDefinition {
   const rawType = defRecord["type"];
-  const type = typeof rawType === "string" ? rawType : "http";
+  if (rawType !== undefined && typeof rawType !== "string") {
+    throw new McpConfigError(
+      `Invalid .mcp.json: server "${name}" field "type" must be a string`,
+    );
+  }
+  const type = rawType ?? "http";
 
   if (type !== "http") {
     throw new McpConfigError(
