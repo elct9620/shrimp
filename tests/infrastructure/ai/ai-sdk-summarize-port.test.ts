@@ -159,4 +159,33 @@ describe("AiSdkSummarizePort.summarize", () => {
       expect(callOptions.tools).toBeUndefined();
     });
   });
+
+  describe("jobId isolation", () => {
+    it("should not include jobId in any message sent to the model", async () => {
+      const model = makeModel();
+      const port = makePort(model);
+      const jobId = "00000000-0000-0000-0000-000000000099";
+
+      await port.summarize({ ...baseInput, jobId });
+
+      const callOptions = model.doGenerateCalls[0];
+      const allText = callOptions.prompt
+        .map((m: { role: string; content: unknown }) =>
+          typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+        )
+        .join(" ");
+      expect(allText).not.toContain(jobId);
+    });
+  });
+
+  describe("empty model response", () => {
+    it("should return an empty string when the model returns empty text", async () => {
+      const model = makeModel("");
+      const port = makePort(model);
+
+      const result = await port.summarize(baseInput);
+
+      expect(result).toBe("");
+    });
+  });
 });
