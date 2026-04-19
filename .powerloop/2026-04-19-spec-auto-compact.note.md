@@ -17,8 +17,8 @@ review_cycles: 0
 
 | # | Item | Execute | Review | Sample | Notes |
 |---|------|---------|--------|--------|-------|
-| 1 | Add Glossary entries for Auto Compact, Conversation Summary, Compaction Threshold, and SummarizePort | in_progress | pending | pending | Foundational vocabulary used by later items |
-| 2 | Extend Scope IS list with Auto Compact (token-threshold triggered, per-Session) | pending | pending | pending | Depends on #1 |
+| 1 | Add Glossary entries for Auto Compact, Conversation Summary, Compaction Threshold, and SummarizePort | done | pending | pending | Foundational vocabulary used by later items; commit 3a45b73 |
+| 2 | Extend Scope IS list with Auto Compact (token-threshold triggered, per-Session) | in_progress | pending | pending | Depends on #1 |
 | 3 | Extend Scope IS-NOT to exclude cross-Session summarization, manual compact command, and HeartbeatJob participation | pending | pending | pending | Depends on #1; makes boundaries explicit |
 | 4 | Add Auto Compact behavior subsection under Session Lifecycle: token-threshold trigger using last-turn prompt tokens, new Session UUID rotation, state.json pointer switch, previous Session file retained as archive (mirroring /new) | pending | pending | pending | Depends on #1–#2; core behavior |
 | 5 | Update Session Lifecycle participation/coverage table to state HeartbeatJob has no Session and is not subject to Auto Compact; confirm ChannelJob is the only participant | pending | pending | pending | Depends on #4; covers requirement 4 |
@@ -33,3 +33,4 @@ review_cycles: 0
 | Cycle | Phase | Summary | Decision | Handoff |
 |-------|-------|---------|----------|---------|
 | 1 | plan | Decomposed Auto Compact spec goal into 10 ordered items covering Glossary, Scope, Session Lifecycle behavior, Prompt Structure, SummarizePort Design, env vars, Failure Handling, and cross-reference sweep. | Items ordered so vocabulary (Glossary) precedes Scope, Behavior, Design, Config. Each item is one section or one coherent cross-section change to fit a single 10m cycle. | Execute phase starts next cycle with item #1 (Glossary). Use /spec:spec-write workflow per cycle; self-review before commit. Do NOT expand scope beyond the 4 stated requirements — no manual /compact command, no cross-Session summarization, no user-facing compaction notifications. |
+| 2 | execute | Item #1 done: added 4 Glossary entries (Auto Compact, Compaction Threshold, Conversation Summary, SummarizePort) as a cluster after Session row. Commit 3a45b73. SubAgent self-review PASS. | Cluster-after-Session placement chosen over strict alphabetical because SPEC.md Glossary groups conceptually (Channel terms cluster together), not alphabetically — verified against existing ordering. | Next cycle: item #2 (Scope IS entry for Auto Compact). New Glossary terms are now available as vocabulary for Scope/Behavior items. Reminder: SummarizePort is "Shrimp Agent" with space in Glossary — future items must use the same spelling. |
