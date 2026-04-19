@@ -18,6 +18,7 @@ import { makeFakeLogger } from "../mocks/fake-logger";
 import { makeSpyTelemetry } from "../mocks/spy-telemetry";
 import type { ConversationMessage } from "../../src/entities/conversation-message";
 import type { ConversationRef } from "../../src/entities/conversation-ref";
+import type { SummarizePort } from "../../src/use-cases/ports/summarize";
 
 // --- Fakes ---
 
@@ -58,6 +59,7 @@ function makeShrimpAgent(
   result = {
     reason: "finished" as const,
     newMessages: [{ role: "assistant" as const, content: "Reply text" }],
+    promptTokens: undefined as number | undefined,
   },
 ) {
   const agent: ShrimpAgent & { capturedInput?: JobInput } = {
@@ -89,6 +91,14 @@ function makeChannelGateway(): ChannelGateway & {
   };
 }
 
+function makeSummarizePort(summary = "Summarized history"): SummarizePort & {
+  summarize: ReturnType<typeof vi.fn>;
+} {
+  return {
+    summarize: vi.fn().mockResolvedValue(summary),
+  };
+}
+
 function makeJob(
   sessionRepo: SessionRepository,
   shrimpAgent: ShrimpAgent,
@@ -96,6 +106,8 @@ function makeJob(
   toolProviderFactory?: ToolProviderFactory,
   channelGateway?: ChannelGateway,
   telemetry: TelemetryPort = new NoopTelemetry(),
+  summarize?: SummarizePort,
+  compactionThreshold?: number,
 ): ChannelJob {
   return new ChannelJob({
     sessionRepository: sessionRepo,
@@ -105,6 +117,8 @@ function makeJob(
     maxSteps: 10,
     logger,
     telemetry,
+    summarize,
+    compactionThreshold,
   });
 }
 
@@ -335,5 +349,271 @@ describe("ChannelJob.run", () => {
     ).rejects.toThrow("boom");
     expect(spy.calls).toHaveLength(1);
     expect(spy.calls[0]!.name).toBe("POST /channels/telegram");
+  });
+});
+
+describe("ChannelJob.run — Auto Compact", () => {
+  const THRESHOLD = 1000;
+
+  function makeAgentWithTokens(promptTokens: number | undefined) {
+    return makeShrimpAgent({
+      reason: "finished" as const,
+      newMessages: [{ role: "assistant" as const, content: "Reply" }],
+      promptTokens,
+    });
+  }
+
+  it("should invoke SummarizePort and rotateWithSummary when promptTokens meets threshold", async () => {
+    const priorMessages: ConversationMessage[] = [
+      { role: "user", content: "Earlier message" },
+      { role: "assistant", content: "Earlier reply" },
+    ];
+    const session = makeSession({ id: "session-1", messages: priorMessages });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+    });
+    const summarizePort = makeSummarizePort("Compact summary text");
+    const agentWithTokens = makeAgentWithTokens(THRESHOLD); // exactly at threshold
+    const logger = makeFakeLogger();
+
+    const job = makeJob(
+      sessionRepo,
+      agentWithTokens,
+      logger,
+      undefined,
+      undefined,
+      new NoopTelemetry(),
+      summarizePort,
+      THRESHOLD,
+    );
+
+    await job.run({
+      message: "New message",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
+
+    expect(summarizePort.summarize).toHaveBeenCalledTimes(1);
+    expect(sessionRepo.rotateWithSummary).toHaveBeenCalledTimes(1);
+    expect(sessionRepo.rotateWithSummary).toHaveBeenCalledWith(
+      "Compact summary text",
+    );
+  });
+
+  it("should pass post-append snapshot (prior + user + assistant messages) to SummarizePort", async () => {
+    const priorMessages: ConversationMessage[] = [
+      { role: "user", content: "Earlier" },
+      { role: "assistant", content: "Earlier reply" },
+    ];
+    const session = makeSession({ id: "session-1", messages: priorMessages });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+    });
+    const summarizePort = makeSummarizePort();
+    const agentWithTokens = makeAgentWithTokens(THRESHOLD);
+
+    const job = makeJob(
+      sessionRepo,
+      agentWithTokens,
+      makeFakeLogger(),
+      undefined,
+      undefined,
+      new NoopTelemetry(),
+      summarizePort,
+      THRESHOLD,
+    );
+
+    await job.run({
+      message: "New message",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
+
+    // Snapshot must include prior messages + user message + assistant reply
+    const capturedHistory = summarizePort.summarize.mock.calls[0]?.[0]?.history;
+    expect(capturedHistory).toEqual([
+      { role: "user", content: "Earlier" },
+      { role: "assistant", content: "Earlier reply" },
+      { role: "user", content: "New message" },
+      { role: "assistant", content: "Reply" },
+    ]);
+  });
+
+  it("should pass jobId to SummarizePort for correlation", async () => {
+    const session = makeSession({ id: "session-1", messages: [] });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+    });
+    const summarizePort = makeSummarizePort();
+    const agentWithTokens = makeAgentWithTokens(THRESHOLD);
+
+    const job = makeJob(
+      sessionRepo,
+      agentWithTokens,
+      makeFakeLogger(),
+      undefined,
+      undefined,
+      new NoopTelemetry(),
+      summarizePort,
+      THRESHOLD,
+    );
+
+    await job.run({
+      message: "Hi",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
+
+    const capturedJobId = summarizePort.summarize.mock.calls[0]?.[0]?.jobId;
+    expect(typeof capturedJobId).toBe("string");
+    expect(capturedJobId).toBeTruthy();
+  });
+
+  it("should skip compaction when promptTokens is below threshold", async () => {
+    const session = makeSession({ id: "session-1", messages: [] });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+    });
+    const summarizePort = makeSummarizePort();
+    const agentBelowThreshold = makeAgentWithTokens(THRESHOLD - 1);
+
+    const job = makeJob(
+      sessionRepo,
+      agentBelowThreshold,
+      makeFakeLogger(),
+      undefined,
+      undefined,
+      new NoopTelemetry(),
+      summarizePort,
+      THRESHOLD,
+    );
+
+    await job.run({
+      message: "Hi",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
+
+    expect(summarizePort.summarize).not.toHaveBeenCalled();
+    expect(sessionRepo.rotateWithSummary).not.toHaveBeenCalled();
+  });
+
+  it("should skip compaction when promptTokens is undefined (provider did not report usage)", async () => {
+    const session = makeSession({ id: "session-1", messages: [] });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+    });
+    const summarizePort = makeSummarizePort();
+    const agentNoTokens = makeAgentWithTokens(undefined);
+
+    const job = makeJob(
+      sessionRepo,
+      agentNoTokens,
+      makeFakeLogger(),
+      undefined,
+      undefined,
+      new NoopTelemetry(),
+      summarizePort,
+      THRESHOLD,
+    );
+
+    await job.run({
+      message: "Hi",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
+
+    expect(summarizePort.summarize).not.toHaveBeenCalled();
+    expect(sessionRepo.rotateWithSummary).not.toHaveBeenCalled();
+  });
+
+  it("should skip compaction when no compactionThreshold is configured (channels-disabled path)", async () => {
+    const session = makeSession({ id: "session-1", messages: [] });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+    });
+    const summarizePort = makeSummarizePort();
+    // No threshold provided — simulates ChannelJob built without auto-compact config
+    const agentWithTokens = makeAgentWithTokens(9999);
+
+    const job = makeJob(
+      sessionRepo,
+      agentWithTokens,
+      makeFakeLogger(),
+      undefined,
+      undefined,
+      new NoopTelemetry(),
+      summarizePort,
+      undefined, // no threshold
+    );
+
+    await job.run({
+      message: "Hi",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
+
+    expect(summarizePort.summarize).not.toHaveBeenCalled();
+    expect(sessionRepo.rotateWithSummary).not.toHaveBeenCalled();
+  });
+
+  it("should ensure append happens before the snapshot is taken for SummarizePort", async () => {
+    const session = makeSession({ id: "session-1", messages: [] });
+    const sessionRepo = makeSessionRepository({
+      getCurrent: vi.fn().mockResolvedValue(session),
+    });
+    const appendOrder: string[] = [];
+    let snapshotAtSummarizeCall: readonly ConversationMessage[] = [];
+
+    sessionRepo.append = vi.fn().mockImplementation(async () => {
+      appendOrder.push("append");
+    });
+
+    const summarizePort: SummarizePort = {
+      summarize: vi
+        .fn()
+        .mockImplementation(
+          async ({ history }: { history: readonly ConversationMessage[] }) => {
+            snapshotAtSummarizeCall = history;
+            appendOrder.push("summarize");
+            return "summary";
+          },
+        ),
+    };
+
+    const agentWithTokens = makeAgentWithTokens(THRESHOLD);
+
+    const job = makeJob(
+      sessionRepo,
+      agentWithTokens,
+      makeFakeLogger(),
+      undefined,
+      undefined,
+      new NoopTelemetry(),
+      summarizePort,
+      THRESHOLD,
+    );
+
+    await job.run({
+      message: "Hello",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
+
+    // Both appends happen before summarize
+    expect(appendOrder[0]).toBe("append"); // user msg append
+    expect(appendOrder[1]).toBe("append"); // assistant msg append
+    expect(appendOrder[2]).toBe("summarize");
+
+    // Snapshot includes the user message that was appended
+    expect(snapshotAtSummarizeCall).toContainEqual({
+      role: "user",
+      content: "Hello",
+    });
+    // Snapshot includes the assistant reply that was appended
+    expect(snapshotAtSummarizeCall).toContainEqual({
+      role: "assistant",
+      content: "Reply",
+    });
   });
 });

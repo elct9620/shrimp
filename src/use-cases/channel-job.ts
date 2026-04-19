@@ -7,6 +7,7 @@ import type { ToolProviderFactory } from "./ports/tool-provider-factory";
 import type { LoggerPort } from "./ports/logger";
 import type { SpanAttributes, TelemetryPort } from "./ports/telemetry";
 import type { UserAgentsPort } from "./ports/user-agents";
+import type { SummarizePort } from "./ports/summarize";
 import { assembleChannelSystemPrompt } from "./prompt-assembler";
 
 export type ChannelJobConfig = {
@@ -18,6 +19,8 @@ export type ChannelJobConfig = {
   logger: LoggerPort;
   telemetry: TelemetryPort;
   userAgents?: UserAgentsPort;
+  summarize?: SummarizePort;
+  compactionThreshold?: number;
 };
 
 export class ChannelJob {
@@ -29,6 +32,8 @@ export class ChannelJob {
   private readonly logger: LoggerPort;
   private readonly telemetry: TelemetryPort;
   private readonly userAgents?: UserAgentsPort;
+  private readonly summarize?: SummarizePort;
+  private readonly compactionThreshold?: number;
 
   constructor({
     sessionRepository,
@@ -39,6 +44,8 @@ export class ChannelJob {
     logger,
     telemetry,
     userAgents,
+    summarize,
+    compactionThreshold,
   }: ChannelJobConfig) {
     this.sessionRepository = sessionRepository;
     this.channelGateway = channelGateway;
@@ -48,6 +55,8 @@ export class ChannelJob {
     this.logger = logger;
     this.telemetry = telemetry;
     this.userAgents = userAgents;
+    this.summarize = summarize;
+    this.compactionThreshold = compactionThreshold;
   }
 
   async run(event: {
@@ -110,6 +119,39 @@ export class ChannelJob {
         // Append assistant turn(s) — Fail-Open: sessionRepository.append must not throw.
         if (result.newMessages.length > 0) {
           await this.sessionRepository.append(session.id, result.newMessages);
+        }
+
+        // Auto Compact: evaluate the Compaction Threshold AFTER all entries for
+        // this turn have been appended (SPEC §Session Lifecycle §Auto Compact).
+        // Missing token count → skip silently (provider did not report usage).
+        // Below threshold → skip silently (no compaction needed yet).
+        if (
+          this.summarize !== undefined &&
+          this.compactionThreshold !== undefined &&
+          result.promptTokens !== undefined &&
+          result.promptTokens >= this.compactionThreshold
+        ) {
+          // Step 1: snapshot the full post-append ConversationMessage list.
+          const snapshot = [
+            ...session.messages,
+            userMsg,
+            ...result.newMessages,
+          ];
+
+          // Step 2: produce the Conversation Summary.
+          const summary = await this.summarize.summarize({
+            history: snapshot,
+            jobId,
+          });
+
+          // Steps 3–5: create new Session JSONL + update state.json (rotateWithSummary).
+          await this.sessionRepository.rotateWithSummary(summary);
+
+          this.logger.info("auto compact: session rotated", {
+            sessionId: session.id,
+            promptTokens: result.promptTokens,
+            threshold: this.compactionThreshold,
+          });
         }
 
         // Deliver the agent's final text response to the originating Channel.

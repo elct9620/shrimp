@@ -176,6 +176,8 @@ export async function bootstrap(): Promise<void> {
             .child({ module: "ChannelJob" }),
           telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
           userAgents: c.resolve(TOKENS.UserAgents),
+          summarize: c.resolve(TOKENS.Summarize),
+          compactionThreshold: env.autoCompactTokenThreshold!,
         }),
     });
 
