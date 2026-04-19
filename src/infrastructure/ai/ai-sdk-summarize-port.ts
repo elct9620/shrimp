@@ -34,11 +34,16 @@ export class AiSdkSummarizePort implements SummarizePort {
     // AI SDK requires at least one message when using the `messages` shape.
     // When history is empty (degenerate case), fall back to `prompt` so the
     // system instruction is still delivered to the model.
-    const result = await generateText(
-      messages.length > 0
+    const result = await generateText({
+      ...(messages.length > 0
         ? { model: this.model, system: summarizePrompt, messages }
-        : { model: this.model, prompt: summarizePrompt },
-    );
+        : { model: this.model, prompt: summarizePrompt }),
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: "shrimp.summarize",
+        metadata: { jobId: input.jobId },
+      },
+    });
 
     this.logger.debug("summarize finished", { jobId: input.jobId });
 
