@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   TelegramChannel,
   TELEGRAM_CHANNEL_NAME,
+  TELEGRAM_MAX_MESSAGE_LENGTH,
 } from "../../../src/infrastructure/channel/telegram-channel";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 
@@ -127,6 +128,71 @@ describe("TelegramChannel.reply", () => {
     expect(logger.warn).toHaveBeenCalledWith(
       "telegram reply skipped — wrong channel",
       expect.objectContaining({ channel: "slack" }),
+    );
+  });
+
+  it("sends two sendMessage calls for a 5000-char text; chunks are <=4096 chars and reconstruct the original", async () => {
+    const capturedBodies: Array<Record<string, unknown>> = [];
+    server.use(
+      http.post(`${TELEGRAM_BASE}/sendMessage`, async ({ request }) => {
+        capturedBodies.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ ok: true, result: {} });
+      }),
+    );
+    const logger = makeFakeLogger();
+    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    // Paragraph boundary at char 4000 lets the chunker split cleanly under the limit.
+    const longText = "a".repeat(4000) + "\n\n" + "b".repeat(1000);
+
+    await channel.reply(
+      { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 55 } },
+      longText,
+    );
+
+    expect(capturedBodies).toHaveLength(2);
+    for (const body of capturedBodies)
+      expect((body.text as string).length).toBeLessThanOrEqual(
+        TELEGRAM_MAX_MESSAGE_LENGTH,
+      );
+    // Chunks joined with the stripped boundary reproduce the original.
+    expect(capturedBodies.map((b) => b.text as string).join("\n\n")).toBe(
+      longText,
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("is Fail-Open when a middle chunk returns ok:false — all three requests are made and warn includes chunkIndex", async () => {
+    let callCount = 0;
+    server.use(
+      http.post(`${TELEGRAM_BASE}/sendMessage`, async () => {
+        callCount += 1;
+        if (callCount === 2)
+          return HttpResponse.json({
+            ok: false,
+            error_code: 400,
+            description: "Bad Request: message is too long",
+          });
+        return HttpResponse.json({ ok: true, result: {} });
+      }),
+    );
+    const logger = makeFakeLogger();
+    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    // ~9000 chars with paragraph breaks near each 3000-char boundary → 3 chunks.
+    const nineKText =
+      "x".repeat(3000) + "\n\n" + "y".repeat(3000) + "\n\n" + "z".repeat(3000);
+
+    await expect(
+      channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 77 } },
+        nineKText,
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(callCount).toBe(3);
+    expect(logger.warn).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledWith(
+      "telegram reply failed — upstream error",
+      expect.objectContaining({ chunkIndex: 2, totalChunks: 3 }),
     );
   });
 });
