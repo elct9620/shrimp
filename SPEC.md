@@ -705,6 +705,38 @@ Built-in tools handle core Todoist operations. MCP tools extend the agent's capa
 
 The Post Comment tool is responsible for prepending the Comment Tag to every comment. The AI model's text input is preserved as-is; the tag is added at the tool boundary before the Todoist API call.
 
+### SummarizePort
+
+**SummarizePort** is the AI port invoked by the Job Worker during a ChannelJob when the Compaction Threshold is met (see [Session Lifecycle § Auto Compact](#session-lifecycle)). It receives the pre-compaction ConversationMessage list and returns a single Conversation Summary string. SummarizePort is **distinct from and independent of** the Shrimp Agent — it is not an agent, has no tool-calling loop, and is not involved in task execution. It exists solely to compress Session history into a summary that the Job Worker can use as the first entry of the new Session.
+
+**Role contract:**
+
+| Contract   | Description                                                                                                                                                                                                                                                          |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Input      | An ordered list of ConversationMessage entries representing the pre-compaction history of the current Session (the full snapshot taken by the Job Worker in Auto Compact Step 1), and the Job ID from the invoking ChannelJob for correlation purposes               |
+| Output     | A single Conversation Summary string. The content is determined by the AI model; no fixed template is imposed by Shrimp. The string becomes the `content` of a `role: "system"` ConversationMessage that the Job Worker places as the first entry of the new Session |
+| Invocation | Exactly once per Auto Compact event. Not invoked by HeartbeatJob (see [Session Lifecycle § Auto Compact](#session-lifecycle)). Not invoked by any other component.                                                                                                   |
+| Completion | Returns when the model produces the summary. No multi-step loop, no tool calls.                                                                                                                                                                                      |
+| Failure    | Any error is returned synchronously to the Job Worker. Failure handling rules are defined in [Failure Handling](#failure-handling).                                                                                                                                  |
+
+**Provider abstraction:**
+
+SummarizePort uses AI SDK's provider interface with OpenAI-compatible conventions (`OPENAI_BASE_URL` / `OPENAI_API_KEY`) in the same style as the Shrimp Agent. The summarization model identifier is configurable independently of the agent model (see [Environment Variables](#environment-variables) — item #8 will specify the env var name). Because SummarizePort does not use tools, the configured summarization model does **not** need to support tool calling (function calling).
+
+| Dimension              | Inside the SummarizePort                                                                                                                                                          | Outside the SummarizePort                                      |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Model selection        | No — reads from configuration                                                                                                                                                     | Provider endpoint and model name are environment configuration |
+| Prompt construction    | Yes — the port builds whatever prompt it needs to produce a Conversation Summary from the input ConversationMessage list; the Job Worker does not assemble a summarization prompt | Input ConversationMessage list originates in the Session       |
+| Tool execution         | No — SummarizePort has no tools                                                                                                                                                   | N/A                                                            |
+| Summary interpretation | No — the Job Worker treats the returned string as opaque content and places it into the new Session as-is                                                                         | Job Worker owns Session construction after compaction          |
+
+**Independence from Shrimp Agent:**
+
+- SummarizePort does **not** share the Shrimp Agent's tool set (Built-in or MCP). It has no tools of any kind.
+- SummarizePort does **not** participate in the Job Queue separately — it runs inline inside the ChannelJob that triggered compaction (see [Session Lifecycle § Auto Compact](#session-lifecycle)).
+- Swapping the SummarizePort implementation requires no change to the Shrimp Agent; swapping the Shrimp Agent requires no change to SummarizePort.
+- HeartbeatJob never invokes SummarizePort (see [Session Lifecycle § Auto Compact](#session-lifecycle)).
+
 ## Deployment & Configuration
 
 ### Environment Variables
