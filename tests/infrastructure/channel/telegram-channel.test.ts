@@ -81,6 +81,35 @@ describe("TelegramChannel.reply", () => {
     );
   });
 
+  it("swallows HTTP-200 with ok:false body and logs warn with description", async () => {
+    server.use(
+      http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+        return HttpResponse.json({
+          ok: false,
+          error_code: 400,
+          description: "Bad Request: message is too long",
+        });
+      }),
+    );
+    const logger = makeFakeLogger();
+    const channel = new TelegramChannel(BOT_TOKEN, logger);
+
+    await expect(
+      channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 99 } },
+        "a".repeat(4097),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      "telegram reply failed — upstream error",
+      expect.objectContaining({
+        error_code: 400,
+        description: "Bad Request: message is too long",
+      }),
+    );
+  });
+
   it("skips Telegram endpoint for wrong-channel ref and logs warn", async () => {
     let handlerCalled = false;
     server.use(

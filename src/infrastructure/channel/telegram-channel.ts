@@ -40,6 +40,21 @@ export class TelegramChannel implements ChannelGateway {
         });
         return;
       }
+      // Telegram Bot API may return HTTP 200 with { ok: false, error_code, description }
+      // when the request is accepted at transport level but rejected at application level
+      // (e.g. message too long, invalid chat_id). We must parse the body to detect this.
+      const body = (await resp.json()) as {
+        ok: boolean;
+        error_code?: number;
+        description?: string;
+      };
+      if (!body.ok) {
+        this.logger.warn("telegram reply failed — upstream error", {
+          error_code: body.error_code,
+          description: body.description,
+        });
+        return;
+      }
     } catch (err) {
       this.logger.warn("telegram reply failed — network", {
         error: err instanceof Error ? err.message : String(err),
