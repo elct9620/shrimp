@@ -8,4 +8,6 @@ services:
       - .env
     ports:
       - "${HOST_PORT:-3000}:3000"
+    volumes:
+      - "${SHRIMP_DATA_DIR:-./data/shrimp}:/var/lib/shrimp"
     restart: unless-stopped

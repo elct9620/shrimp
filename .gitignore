@@ -146,6 +146,7 @@ vite.config.ts.timestamp-*
 # Project-specific
 .mcp.json
 *.local.md
+/data/
 
 # macOS
 .DS_Store

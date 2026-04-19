@@ -13,8 +13,11 @@ RUN pnpm build
 FROM node:${NODE_VERSION}-${NODE_VARIANT} AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
-    PORT=3000
+    PORT=3000 \
+    SHRIMP_STATE_DIR=/var/lib/shrimp
 COPY --from=builder /app/dist ./dist
+RUN mkdir -p "$SHRIMP_STATE_DIR" && chown -R node:node "$SHRIMP_STATE_DIR"
+VOLUME ["/var/lib/shrimp"]
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
