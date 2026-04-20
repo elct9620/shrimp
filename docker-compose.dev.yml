@@ -3,6 +3,13 @@ services:
     build:
       context: .
     restart: "no"
+    sysctls:
+      # Host dev environments often lack IPv6 egress while the container's
+      # kernel v6 stack stays enabled, so getaddrinfo still returns AAAA and
+      # connect() stalls in a black hole. Disable v6 in-container to keep
+      # getaddrinfo honest and force all fetches onto IPv4.
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
     volumes:
       - "${SHRIMP_DATA_DIR:-./data/shrimp}:/var/lib/shrimp"
       - "${SHRIMP_MCP_CONFIG:-./data/.mcp.json}:/app/.mcp.json:ro"
