@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assembleHeartbeatPrompts,
   assembleChannelSystemPrompt,
+  assembleSummarizeSystemPrompt,
 } from "../../src/use-cases/prompt-assembler";
 import type { ToolDescription } from "../../src/use-cases/ports/tool-description";
 import { Task } from "../../src/entities/task";
@@ -442,5 +443,53 @@ describe("assembleChannelSystemPrompt", () => {
 
     expect(heartbeatBase).toBe(channelBase);
     expect(heartbeatBase).toContain("## Operating Principles");
+  });
+});
+
+describe("assembleSummarizeSystemPrompt", () => {
+  it("includes the shared base operating principles", () => {
+    const systemPrompt = assembleSummarizeSystemPrompt();
+
+    expect(systemPrompt).toContain("## Operating Principles");
+  });
+
+  it("includes the summarize objective and preservation guidance", () => {
+    const systemPrompt = assembleSummarizeSystemPrompt();
+
+    expect(systemPrompt).toContain("## Objective");
+    expect(systemPrompt).toContain("## What to Preserve");
+    expect(systemPrompt).toContain("## Output Format");
+  });
+
+  it("does not include a Tools section (summarize has no tool loop)", () => {
+    const systemPrompt = assembleSummarizeSystemPrompt();
+
+    expect(systemPrompt).not.toContain("## Tools");
+  });
+
+  it("orders sections from stable to dynamic: base → variant", () => {
+    const systemPrompt = assembleSummarizeSystemPrompt();
+
+    const principlesIdx = systemPrompt.indexOf("## Operating Principles");
+    const objectiveIdx = systemPrompt.indexOf("## Objective");
+
+    expect(principlesIdx).toBeGreaterThan(-1);
+    expect(objectiveIdx).toBeGreaterThan(principlesIdx);
+  });
+
+  it("shares the same base section as the channel variant", () => {
+    const summarize = assembleSummarizeSystemPrompt();
+    const channel = assembleChannelSystemPrompt({ tools: [] });
+
+    const summarizeBase = summarize.slice(0, summarize.indexOf("## Objective"));
+    const channelBase = channel.slice(0, channel.indexOf("## Objective"));
+
+    expect(summarizeBase).toBe(channelBase);
+  });
+
+  it("is a pure function (same output for repeated calls)", () => {
+    expect(assembleSummarizeSystemPrompt()).toBe(
+      assembleSummarizeSystemPrompt(),
+    );
   });
 });

@@ -4,7 +4,7 @@ import type {
   SummarizeInput,
 } from "../../use-cases/ports/summarize";
 import type { LoggerPort } from "../../use-cases/ports/logger";
-import summarizePrompt from "./prompts/summarize.md?raw";
+import { assembleSummarizeSystemPrompt } from "../../use-cases/prompt-assembler";
 
 export type AiSdkSummarizePortOptions = {
   model: LanguageModel;
@@ -12,17 +12,22 @@ export type AiSdkSummarizePortOptions = {
   // Optional upper bound on generated summary length. When undefined, no limit
   // is passed and the provider's default applies.
   maxOutputTokens?: number;
+  // Optional override for the assembled summarize system prompt. Primarily
+  // intended for tests; defaults to the shared assembler output.
+  systemPrompt?: string;
 };
 
 export class AiSdkSummarizePort implements SummarizePort {
   private readonly model: LanguageModel;
   private readonly logger: LoggerPort;
   private readonly maxOutputTokens: number | undefined;
+  private readonly systemPrompt: string;
 
   constructor(options: AiSdkSummarizePortOptions) {
     this.model = options.model;
     this.logger = options.logger.child({ module: "AiSdkSummarizePort" });
     this.maxOutputTokens = options.maxOutputTokens;
+    this.systemPrompt = options.systemPrompt ?? assembleSummarizeSystemPrompt();
   }
 
   async summarize(input: SummarizeInput): Promise<string> {
@@ -41,8 +46,8 @@ export class AiSdkSummarizePort implements SummarizePort {
     // system instruction is still delivered to the model.
     const result = await generateText({
       ...(messages.length > 0
-        ? { model: this.model, system: summarizePrompt, messages }
-        : { model: this.model, prompt: summarizePrompt }),
+        ? { model: this.model, system: this.systemPrompt, messages }
+        : { model: this.model, prompt: this.systemPrompt }),
       ...(this.maxOutputTokens !== undefined
         ? { maxOutputTokens: this.maxOutputTokens }
         : {}),

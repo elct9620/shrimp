@@ -1,1 +1,0 @@
-Summarize the following conversation into a concise paragraph that preserves the essential context, decisions, and outcomes. The summary will replace the original messages as the starting context for the next conversation turn.

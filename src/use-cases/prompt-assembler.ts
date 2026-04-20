@@ -4,6 +4,7 @@ import type { ToolDescription } from "./ports/tool-description";
 import systemBaseTemplate from "./prompts/system-base.md?raw";
 import systemHeartbeatTemplate from "./prompts/system-heartbeat.md?raw";
 import systemChannelTemplate from "./prompts/system-channel.md?raw";
+import systemSummarizeTemplate from "./prompts/system-summarize.md?raw";
 import userHeartbeatTemplate from "./prompts/user-heartbeat.md?raw";
 
 export type { ToolDescription };
@@ -45,21 +46,28 @@ export function assembleChannelSystemPrompt({
   return buildSystemPrompt(systemChannelTemplate, tools, userAgents);
 }
 
+export function assembleSummarizeSystemPrompt(): string {
+  return buildSystemPrompt(systemSummarizeTemplate);
+}
+
 function buildSystemPrompt(
   variantTemplate: string,
-  tools: ToolDescription[],
+  tools?: ToolDescription[],
   userAgents?: string | null,
 ): string {
-  const toolList =
-    tools.length > 0
-      ? tools.map((t) => `- ${t.name}: ${t.description}`).join("\n")
-      : "(none)";
-
   const base = systemBaseTemplate.trimEnd();
   const variant = variantTemplate.trimEnd();
-  const toolsSection = `## Tools\n\n${toolList}`;
 
-  const prompt = `${base}\n\n${variant}\n\n${toolsSection}`;
+  let prompt = `${base}\n\n${variant}`;
+
+  if (tools !== undefined) {
+    const toolList =
+      tools.length > 0
+        ? tools.map((t) => `- ${t.name}: ${t.description}`).join("\n")
+        : "(none)";
+    prompt = `${prompt}\n\n## Tools\n\n${toolList}`;
+  }
+
   const extra = userAgents?.trim();
   return extra ? `${prompt}\n\n${extra}` : prompt;
 }

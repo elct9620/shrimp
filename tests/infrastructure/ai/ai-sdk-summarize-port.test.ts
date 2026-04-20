@@ -109,6 +109,22 @@ describe("AiSdkSummarizePort.summarize", () => {
       expect((systemMessage?.content as string).length).toBeGreaterThan(0);
     });
 
+    it("should use the assembled system prompt including base operating principles", async () => {
+      const model = makeModel();
+      const port = makePort(model);
+
+      await port.summarize(baseInput);
+
+      const callOptions = model.doGenerateCalls[0];
+      const systemMessage = callOptions.prompt.find(
+        (m: { role: string }) => m.role === "system",
+      );
+      const content = systemMessage?.content as string;
+      expect(content).toContain("## Operating Principles");
+      expect(content).toContain("## Objective");
+      expect(content).toContain("## What to Preserve");
+    });
+
     it("should work with an empty history", async () => {
       const model = makeModel("Nothing to summarize.");
       const port = makePort(model);
