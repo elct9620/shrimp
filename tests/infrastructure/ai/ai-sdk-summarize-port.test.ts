@@ -109,7 +109,7 @@ describe("AiSdkSummarizePort.summarize", () => {
       expect((systemMessage?.content as string).length).toBeGreaterThan(0);
     });
 
-    it("should use the assembled system prompt including base operating principles", async () => {
+    it("should deliver the assembled system prompt (not a bare one-liner)", async () => {
       const model = makeModel();
       const port = makePort(model);
 
@@ -119,10 +119,9 @@ describe("AiSdkSummarizePort.summarize", () => {
       const systemMessage = callOptions.prompt.find(
         (m: { role: string }) => m.role === "system",
       );
-      const content = systemMessage?.content as string;
-      expect(content).toContain("## Operating Principles");
-      expect(content).toContain("## Objective");
-      expect(content).toContain("## What to Preserve");
+      // Sentinel from the summarize variant; assembler-level content is
+      // covered in tests/use-cases/prompt-assembler.test.ts.
+      expect(systemMessage?.content as string).toContain("## Objective");
     });
 
     it("should work with an empty history", async () => {
