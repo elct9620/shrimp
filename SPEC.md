@@ -73,23 +73,24 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 
 ### IS
 
-| Feature                             | Description                                                                                                                                                             |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| In-memory Job Queue                 | Single-slot concurrency gate; admits one Job at a time                                                                                                                  |
-| Heartbeat-triggered task selection  | On `/heartbeat`, dispatch a HeartbeatJob that selects one task (In Progress first, then Backlog)                                                                        |
-| Heartbeat authentication            | When a Heartbeat Token is configured, `/heartbeat` requires a matching bearer token on every request; unauthenticated requests rejected                                 |
-| AI-driven task execution            | The Shrimp Agent executes the selected task via built-in and MCP tools until the task is complete, max steps reached, or an error occurs                                |
-| Progress reporting via comments     | Agent posts a Todoist comment with status after each execution                                                                                                          |
-| Task completion                     | Agent marks the task Done when it determines the task is finished                                                                                                       |
-| Health check endpoint               | `/health` returns a liveness signal for Docker health check                                                                                                             |
-| Built-in Todoist tools              | Core Todoist operations (get tasks, get comments, post comment, move task) are built-in to the agent                                                                    |
-| MCP-based tool extension            | Additional capabilities can be added via MCP servers without modifying the agent                                                                                        |
-| Distributed tracing                 | The Job, Shrimp Agent execution, and each tool call emit OpenTelemetry spans that downstream collectors can consume                                                     |
-| Channel-triggered Jobs              | External Channels (e.g., Telegram) can push messages that produce Jobs in the same Job Queue as Heartbeat-triggered Jobs                                                |
-| Session-scoped conversation history | Single global Session persisted as append-only JSONL; provides conversation history to the Shrimp Agent on each Channel-triggered Job                                   |
-| Auto Compact                        | Automatically compacts a Channel Session's conversation history when context token usage approaches the model's limit, preserving continuity across long conversations. |
-| Slash Commands                      | `/`-prefixed messages received through a Channel are parsed by the Channel adapter; `/new` starts a new Session                                                         |
-| User Agents Appendix                | Optional `AGENTS.md` file under `SHRIMP_HOME`; when present, its content is appended to the System Prompt of every Job (both HeartbeatJob and ChannelJob)               |
+| Feature                             | Description                                                                                                                                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| In-memory Job Queue                 | Single-slot concurrency gate; admits one Job at a time                                                                                                                   |
+| Heartbeat-triggered task selection  | On `/heartbeat`, dispatch a HeartbeatJob that selects one task (In Progress first, then Backlog)                                                                         |
+| Heartbeat authentication            | When a Heartbeat Token is configured, `/heartbeat` requires a matching bearer token on every request; unauthenticated requests rejected                                  |
+| AI-driven task execution            | The Shrimp Agent executes the selected task via built-in and MCP tools until the task is complete, max steps reached, or an error occurs                                 |
+| Progress reporting via comments     | Agent posts a Todoist comment with status after each execution                                                                                                           |
+| Task completion                     | Agent marks the task Done when it determines the task is finished                                                                                                        |
+| Health check endpoint               | `/health` returns a liveness signal for Docker health check                                                                                                              |
+| Built-in Todoist tools              | Core Todoist operations (get tasks, get comments, post comment, move task) are built-in to the agent                                                                     |
+| MCP-based tool extension            | Additional capabilities can be added via MCP servers without modifying the agent                                                                                         |
+| Distributed tracing                 | The Job, Shrimp Agent execution, and each tool call emit OpenTelemetry spans that downstream collectors can consume                                                      |
+| Channel-triggered Jobs              | External Channels (e.g., Telegram) can push messages that produce Jobs in the same Job Queue as Heartbeat-triggered Jobs                                                 |
+| Session-scoped conversation history | Single global Session persisted as append-only JSONL; provides conversation history to the Shrimp Agent on each Channel-triggered Job                                    |
+| Auto Compact                        | Automatically compacts a Channel Session's conversation history when context token usage approaches the model's limit, preserving continuity across long conversations.  |
+| Slash Commands                      | `/`-prefixed messages received through a Channel are parsed by the Channel adapter; `/new` starts a new Session                                                          |
+| User Agents Appendix                | Optional `AGENTS.md` file under `SHRIMP_HOME`; when present, its content is appended to the System Prompt of every Job (both HeartbeatJob and ChannelJob)                |
+| Agent Skill mechanism               | System Prompt surfaces a catalog of discovered skills (progressive disclosure); the Shrimp Agent loads each skill's full instructions and referenced resources on demand |
 
 ### IS NOT
 
