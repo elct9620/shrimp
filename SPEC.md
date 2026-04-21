@@ -547,6 +547,7 @@ Shrimp is a single-process service composed of multiple collaborating components
 | Job Worker        | Orchestrates one Job: selects a task, promotes Backlog→In Progress, retrieves comment history, assembles prompts, and dispatches to the Shrimp Agent                                                          |
 | Shrimp Agent      | AI execution engine: given prompts and a tool set, runs the tool-calling loop until the task is done, max steps reached, or an error occurs; posts progress comments and moves the task to Done when complete |
 | Tool Layer        | Built-in Todoist tools for core operations; MCP servers for extensible capabilities                                                                                                                           |
+| Skill Layer       | Discovered Agent Skills surfaced to the Shrimp Agent as a catalog in the System Prompt; full instructions and referenced resources are loaded on demand via dedicated tools                                   |
 
 ### System Boundary
 
@@ -570,8 +571,9 @@ POST /heartbeat
   → Supervisor: accept or drop heartbeat
   → Job Queue (accept or drop)
     → Job Worker: select task, promote Backlog→InProgress, assemble prompts
+        (System Prompt construction includes the Skill catalog and the User Agents Appendix)
       → Shrimp Agent: run tool-calling loop (execute, report progress, update status)
-        → Built-in Tools + MCP Tools
+        → Built-in Tools + MCP Tools + Skill Tools
     → Job Queue: release slot
 ```
 
