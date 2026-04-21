@@ -486,6 +486,10 @@ Additional frontmatter fields MAY be present. Shrimp parses and ignores them. Th
 - A refused path, a missing file, or a non-file target (e.g. a directory) MUST be reported as an error result returned to the Shrimp Agent, not raised as an exception out of the tool. The agent loop continues and MAY adapt its strategy based on the error content. Full error-handling semantics are defined in [Failure Handling](#failure-handling).
 - Symlink resolution MUST precede the prefix check so a symlink inside a skills root pointing outside those roots is refused.
 
+**Built-in `todoist` skill:**
+
+Shrimp ships a single Built-in skill named `todoist`, packaged with the application under the Built-in Skills root as a directory containing a `SKILL.md` whose frontmatter sets `name: todoist` and a `description` summarising Todoist board interaction. Its body documents how the Shrimp Agent should use the four Built-in Todoist tools — Get Tasks, Get Comments, Post Comment, and Move Task (see [Todoist Integration](#todoist-integration)). The skill's presence is what relocates the Todoist tool-usage guidance out of the System Prompt; the four tools themselves remain registered unchanged (Plan A, see [Shrimp Agent](#shrimp-agent)). Authoring of the `SKILL.md` body follows standard skill-creator conventions and is out of scope for this spec entry.
+
 ### Telemetry Emission
 
 Every Job that runs produces one OTel trace. Spans within that trace expose task selection, agent execution, and each tool call as separately timed, attributable units of work that downstream collectors and dashboards can query.
