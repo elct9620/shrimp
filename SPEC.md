@@ -430,6 +430,62 @@ Only `/new` is supported. Additional commands are out of scope (see [IS NOT](#is
 
 If a command handler fails (e.g., `/new` cannot create a new Session), the adapter replies to the Channel with a short failure message and logs the error. No Job is created. Fail-Open Recovery applies — the process remains available for subsequent events.
 
+### Skill Layer
+
+The Skill Layer surfaces Agent Skills to the Shrimp Agent using the progressive-disclosure shape defined by [agentskills.io](https://agentskills.io/specification). Each Job's System Prompt carries the Skill Catalog (name + description + absolute `SKILL.md` path); the Shrimp Agent loads a skill's full instructions on demand via the `skill` tool, and any additional resources referenced from `SKILL.md` via the `read` tool. Tool registration is unchanged by this layer — only prompt content and the two new tools are introduced.
+
+**Discovery:**
+
+- Discovery runs once at process startup. The Skill Layer scans two filesystem roots: the Built-in Skills root packaged with the application, and the Custom Skills root at `SHRIMP_HOME/skills/` (see [Deployment & Configuration](#deployment--configuration) for root locations).
+- A directory under either root is a candidate skill if it contains a `SKILL.md` file at its top level. Nested skills (a skill directory inside another skill directory) are not discovered recursively; only first-level children of each root are considered.
+- A candidate skill becomes a valid skill only if its `SKILL.md` frontmatter parses successfully and satisfies the required-field rules below. Invalid skills are not added to the Skill Catalog; handling of unparseable or invalid `SKILL.md` files is governed by [Failure Handling](#failure-handling).
+- The set of discovered skills is fixed for the process lifetime. Skills added, removed, or edited on disk after startup are not reflected until the process restarts.
+- If neither root contains any valid skill, discovery produces an empty Skill Catalog. The Shrimp Agent still runs normally; only the catalog entries are absent from the System Prompt.
+
+**`SKILL.md` frontmatter:**
+
+Each `SKILL.md` MUST begin with a YAML frontmatter block. The following fields apply:
+
+| Field           | Required | Rule                                                                                                                                                |
+| --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`          | MUST     | 1–64 characters from `[a-z0-9-]`; MUST equal the parent directory name exactly (case-sensitive). Used as the skill's identifier in the `skill` tool |
+| `description`   | MUST     | 1–1024 characters; free-form text; should describe both what the skill does and when to use it                                                      |
+| `license`       | MAY      | Accepted and preserved; Shrimp applies no behavior to it                                                                                            |
+| `compatibility` | MAY      | Accepted and preserved; Shrimp applies no behavior to it                                                                                            |
+| `metadata`      | MAY      | Accepted and preserved; Shrimp applies no behavior to it                                                                                            |
+| `allowed-tools` | MAY      | Accepted and preserved; Shrimp performs no enforcement (see [IS NOT](#is-not))                                                                      |
+
+Additional frontmatter fields MAY be present. Shrimp parses and ignores them. The body of `SKILL.md` following the frontmatter is free-form Markdown; Shrimp does not validate its structure.
+
+**Skill Catalog assembly:**
+
+- The Skill Catalog is assembled once per Job at System Prompt construction time, from the set of skills fixed at startup. Its exact placement and formatting inside the System Prompt are defined under [Job Prompt rules](#job); this subsection covers only the catalog's logical contents.
+- Each valid skill contributes exactly one catalog entry consisting of three fields: `name` (from the frontmatter), `description` (from the frontmatter), and the absolute filesystem path to that skill's `SKILL.md`.
+- The absolute `SKILL.md` path MUST be an absolute path on the running container's filesystem so the Shrimp Agent MAY pass it directly to the `read` tool without resolving it against any root.
+- When no valid skill exists, the catalog is empty; the System Prompt MUST still indicate the catalog section (empty) rather than omit it silently, so the model's contract is stable across deployments.
+
+**`skill(name)` tool:**
+
+- Argument: a single `name` string matching the `name` field of a valid skill.
+- Return value: the full textual content of that skill's `SKILL.md`, with the relative-to-absolute path rewrite applied (see below). The frontmatter is included in the returned content.
+- Relative-to-absolute path rewrite: before returning the content, every **relative** resource reference in the `SKILL.md` MUST be rewritten to an absolute path anchored at the skill's own directory (the parent of its `SKILL.md`). Rewriting MUST cover:
+  - Markdown link and image targets whose target is a relative path, e.g. `[example](./references/example.md)` or `![diagram](images/flow.png)`.
+  - Bare relative paths that appear in backticked code spans, e.g. `` `references/example.md` `` or `` `scripts/extract.py` ``.
+  - Bare relative paths that appear as stand-alone prose references recognisable as file paths under the skill directory.
+- Rewriting MUST NOT alter:
+  - Absolute paths (targets beginning with `/`).
+  - Non-local URLs (targets whose scheme is `http`, `https`, `mailto`, or any other URI scheme).
+  - Relative paths that escape the skill directory (e.g. `../other-skill/file.md`); these are left as written. Access is still gated by the `read` tool's sandbox check, which returns an error result if the resolved target falls outside the allowed roots.
+- An unknown `name` (no valid skill matches) is reported as an error result to the Shrimp Agent per [Failure Handling](#failure-handling); the agent loop continues.
+
+**`read(path)` tool:**
+
+- Argument: a single `path` string. The agent is expected to pass absolute paths obtained from the Skill Catalog or from a `skill(name)` return value; Shrimp does not special-case relative paths.
+- Return value: the textual content of the file at that path on success.
+- Sandbox rule: before reading, the `path` MUST be resolved to its canonical absolute form with all symbolic links followed. The resolved path MUST then be verified to lie under the Built-in Skills root OR the Custom Skills root. Paths outside both roots are refused.
+- A refused path, a missing file, or a non-file target (e.g. a directory) MUST be reported as an error result returned to the Shrimp Agent, not raised as an exception out of the tool. The agent loop continues and MAY adapt its strategy based on the error content. Full error-handling semantics are defined in [Failure Handling](#failure-handling).
+- Symlink resolution MUST precede the prefix check so a symlink inside a skills root pointing outside those roots is refused.
+
 ### Telemetry Emission
 
 Every Job that runs produces one OTel trace. Spans within that trace expose task selection, agent execution, and each tool call as separately timed, attributable units of work that downstream collectors and dashboards can query.
