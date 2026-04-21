@@ -114,6 +114,12 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Auto Compact for HeartbeatJob        | HeartbeatJob has no Session and is not subject to Auto Compact; compaction applies only to ChannelJob                                                                              |
 | Hot-reload of User Agents Appendix   | The `AGENTS.md` file is read per Job execution from disk; Shrimp performs no explicit watching, caching, or reload signalling, and the file is not replayed into existing Sessions |
 | User Agents Appendix schema          | The file content is treated as opaque Markdown text; Shrimp does not validate structure, front-matter, directives, or length                                                       |
+| Automatic skill activation           | The Shrimp Agent must explicitly invoke a skill by name; Shrimp does not infer or auto-load skills based on message content or heuristics                                          |
+| Skill hot-reload                     | The skill catalog is assembled at startup from disk; Shrimp performs no file watching and does not reload skills while the process is running                                      |
+| Cross-skill shared state             | Each skill invocation is independent; Shrimp does not expose shared variables, side effects, or coordination channels between skills                                               |
+| Skill-based code extension           | Skills provide guidance and instructions only; MCP remains the sole mechanism for adding executable tools to the Shrimp Agent                                                      |
+| Per-Session skill customisation      | A single global skill set applies to every Job; Sessions and Channels cannot filter, add, or override skills                                                                       |
+| Remote skill fetching                | Skills must be present on the local filesystem at startup; Shrimp does not download, resolve, or sync skills from remote sources                                                   |
 | Per-Session or per-Channel Appendix  | A single global `AGENTS.md` applies to every Job; per-conversation, per-user, or per-Channel variants are out of scope                                                             |
 
 ## Behavior
