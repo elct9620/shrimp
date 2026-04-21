@@ -898,6 +898,21 @@ Shrimp runs as a single container. There is no multi-instance or multi-tenant de
 - Container restart causes in-flight Job work to be lost; Todoist remains the source of truth and the task is retried on the next heartbeat.
 - In Docker deployments, `dotenv` is not active; all variables are supplied via Docker's env injection mechanisms.
 
+### Skills Layout
+
+Agent Skills are discovered from two filesystem roots at startup (see [Skill Layer](#skill-layer)). No environment variable controls the roots; both are optional — if both are absent or empty, the Skill Catalog is empty and the Shrimp Agent runs without skills.
+
+| Root          | Location                                                                                                                                                    | Owner               |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| Built-in root | Packaged with the application bundle; resolved relative to the app root. In the production Docker image at `/app/skills/`                                   | Shipped with Shrimp |
+| Custom root   | `SHRIMP_HOME/skills/` — follows the same `SHRIMP_HOME` resolution rule (primary `SHRIMP_HOME`, deprecated `SHRIMP_STATE_DIR` fallback, default `~/.shrimp`) | Operator-managed    |
+
+**Rules:**
+
+- Neither root is required at runtime. A missing Built-in root directory yields no Built-in skills (see [Failure Handling](#failure-handling) for the packaging invariant). A missing `SHRIMP_HOME/skills/` directory is treated as an empty Custom catalog and is not created by Shrimp.
+- Discovery runs once at startup — adding a skill requires restarting the process. There is no hot-reload (see [Scope § IS-NOT](#is-not)).
+- In dev-mode Docker, the host's Built-in skills directory is synced into the container at `/app/skills` via Compose watch so source edits are visible after a container restart; no runtime rebuild is required to iterate on skill authoring.
+
 ### Development Setup
 
 For local development, configuration is loaded from a `.env` file in the project root via `dotenv`.
