@@ -779,14 +779,15 @@ The Shrimp Agent uses AI SDK's provider interface with OpenAI-compatible convent
 
 **Tool integration:**
 
-The Shrimp Agent uses two categories of tools:
+The Shrimp Agent uses three categories of tools:
 
-| Category | Tools                                            | Source                                         |
-| -------- | ------------------------------------------------ | ---------------------------------------------- |
-| Built-in | Get tasks, Get comments, Post comment, Move task | Compiled into the agent; always available      |
-| MCP      | Any tools from registered MCP servers            | Discovered from `.mcp.json` at process startup |
+| Category | Tools                                            | Source                                                                                            |
+| -------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Skill    | `skill`, `read`                                  | Compiled into the agent; always available — progressive access to the [Skill Layer](#skill-layer) |
+| Built-in | Get tasks, Get comments, Post comment, Move task | Compiled into the agent; always available                                                         |
+| MCP      | Any tools from registered MCP servers            | Discovered from `.mcp.json` at process startup                                                    |
 
-Built-in tools handle core Todoist operations. MCP tools extend the agent's capabilities without code changes.
+Skill tools surface the Skill Catalog and fetch on-demand SKILL.md content. Built-in tools handle core Todoist operations. MCP tools extend the agent's capabilities without code changes.
 
 The Post Comment tool is responsible for prepending the Comment Tag to every comment. The AI model's text input is preserved as-is; the tag is added at the tool boundary before the Todoist API call.
 
