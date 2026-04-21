@@ -641,7 +641,7 @@ POST /heartbeat
 
 ### Extension Model
 
-The agent has two categories of tools: built-in tools for core Todoist operations, and MCP tools for extensible capabilities. Built-in tools (get tasks, get comments, post comment, move task) are always available and do not require MCP. Additional tools (file access, web search, code execution) are added by registering MCP servers via a `.mcp.json` configuration file; no changes to the agent are required.
+The agent has three categories of tools: Skill tools (`skill`, `read`) for progressive access to the [Skill Layer](#skill-layer), Built-in tools for core Todoist operations, and MCP tools for extensible capabilities. Skill and Built-in tools are compiled into the agent and always available. Additional executable tools (file access, web search, code execution) are added by registering MCP servers via a `.mcp.json` configuration file; no changes to the agent are required. Additional guidance — new Agent Skills — is added by dropping a skill directory under `SHRIMP_HOME/skills/`; it surfaces in the Skill Catalog at the next process start, with no code changes.
 
 ### Telemetry
 
