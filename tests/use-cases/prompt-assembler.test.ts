@@ -5,10 +5,20 @@ import {
   assembleSummarizeSystemPrompt,
 } from "../../src/use-cases/prompt-assembler";
 import type { ToolDescription } from "../../src/use-cases/ports/tool-description";
+import type { SkillCatalogEntry } from "../../src/use-cases/ports/skill-catalog";
 import { Task } from "../../src/entities/task";
 import { Comment } from "../../src/entities/comment";
 import { Section } from "../../src/entities/section";
 import { Priority } from "../../src/entities/priority";
+
+const makeSkillEntry = (
+  overrides: Partial<SkillCatalogEntry> = {},
+): SkillCatalogEntry => ({
+  name: "example-skill",
+  description: "Does something useful",
+  skillFilePath: "/skills/example-skill/SKILL.md",
+  ...overrides,
+});
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
   id: "task-1",
@@ -191,6 +201,121 @@ describe("assembleHeartbeatPrompts", () => {
       expect(assembleHeartbeatPrompts(input)).toEqual(
         assembleHeartbeatPrompts(input),
       );
+    });
+
+    describe("Skill Catalog section", () => {
+      it("emits the Skills section header even when the catalog is empty", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          tools: [],
+          skills: [],
+        });
+
+        expect(systemPrompt).toContain("## Skills");
+      });
+
+      it("renders each skill entry with name, description, and absolute path", () => {
+        const skills = [
+          makeSkillEntry({
+            name: "deploy",
+            description: "Handles deployment workflows",
+            skillFilePath: "/skills/deploy/SKILL.md",
+          }),
+        ];
+
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          tools: [],
+          skills,
+        });
+
+        expect(systemPrompt).toContain("deploy");
+        expect(systemPrompt).toContain("Handles deployment workflows");
+        expect(systemPrompt).toContain("/skills/deploy/SKILL.md");
+      });
+
+      it("preserves skill entry input order", () => {
+        const skills = [
+          makeSkillEntry({
+            name: "alpha",
+            description: "First skill",
+            skillFilePath: "/skills/alpha/SKILL.md",
+          }),
+          makeSkillEntry({
+            name: "beta",
+            description: "Second skill",
+            skillFilePath: "/skills/beta/SKILL.md",
+          }),
+          makeSkillEntry({
+            name: "gamma",
+            description: "Third skill",
+            skillFilePath: "/skills/gamma/SKILL.md",
+          }),
+        ];
+
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          tools: [],
+          skills,
+        });
+
+        const alphaIdx = systemPrompt.indexOf("alpha");
+        const betaIdx = systemPrompt.indexOf("beta");
+        const gammaIdx = systemPrompt.indexOf("gamma");
+
+        expect(alphaIdx).toBeLessThan(betaIdx);
+        expect(betaIdx).toBeLessThan(gammaIdx);
+      });
+
+      it("places the Skills section after base/variant and before User Agents Appendix", () => {
+        const skills = [makeSkillEntry()];
+
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          tools: [],
+          skills,
+          userAgents: "Operator note",
+        });
+
+        const workflowIdx = systemPrompt.indexOf("## Workflow");
+        const skillsIdx = systemPrompt.indexOf("## Skills");
+        const operatorIdx = systemPrompt.indexOf("Operator note");
+
+        expect(skillsIdx).toBeGreaterThan(workflowIdx);
+        expect(operatorIdx).toBeGreaterThan(skillsIdx);
+      });
+
+      it("places the Skills section before the Tools section", () => {
+        const tools = makeTools(["get_tasks", "Retrieve tasks"]);
+        const skills = [makeSkillEntry()];
+
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          tools,
+          skills,
+        });
+
+        const skillsIdx = systemPrompt.indexOf("## Skills");
+        const toolsIdx = systemPrompt.indexOf("## Tools");
+
+        expect(skillsIdx).toBeGreaterThan(-1);
+        expect(toolsIdx).toBeGreaterThan(skillsIdx);
+      });
+
+      it("omits Skills section when skills param is not provided (no-op for summarize variant)", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          tools: [],
+        });
+
+        expect(systemPrompt).not.toContain("## Skills");
+      });
     });
   });
 
@@ -427,6 +552,48 @@ describe("assembleChannelSystemPrompt", () => {
     expect(systemPrompt.indexOf("Channel-wide operator note")).toBeGreaterThan(
       systemPrompt.indexOf("## Tools"),
     );
+  });
+
+  it("emits the Skills section header even when the catalog is empty", () => {
+    const systemPrompt = assembleChannelSystemPrompt({
+      tools: [],
+      skills: [],
+    });
+
+    expect(systemPrompt).toContain("## Skills");
+  });
+
+  it("renders skill entries in the channel system prompt", () => {
+    const skills = [
+      makeSkillEntry({
+        name: "triage",
+        description: "Triage incoming messages",
+        skillFilePath: "/skills/triage/SKILL.md",
+      }),
+    ];
+
+    const systemPrompt = assembleChannelSystemPrompt({ tools: [], skills });
+
+    expect(systemPrompt).toContain("triage");
+    expect(systemPrompt).toContain("Triage incoming messages");
+    expect(systemPrompt).toContain("/skills/triage/SKILL.md");
+  });
+
+  it("places Skills section after variant and before User Agents Appendix in channel prompt", () => {
+    const skills = [makeSkillEntry()];
+
+    const systemPrompt = assembleChannelSystemPrompt({
+      tools: [],
+      skills,
+      userAgents: "Operator channel note",
+    });
+
+    const styleIdx = systemPrompt.indexOf("## Conversation Style");
+    const skillsIdx = systemPrompt.indexOf("## Skills");
+    const operatorIdx = systemPrompt.indexOf("Operator channel note");
+
+    expect(skillsIdx).toBeGreaterThan(styleIdx);
+    expect(operatorIdx).toBeGreaterThan(skillsIdx);
   });
 
   it("shares the same base section as the heartbeat variant", () => {

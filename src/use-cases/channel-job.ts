@@ -8,6 +8,7 @@ import type { LoggerPort } from "./ports/logger";
 import type { SpanAttributes, TelemetryPort } from "./ports/telemetry";
 import type { UserAgentsPort } from "./ports/user-agents";
 import type { SummarizePort } from "./ports/summarize";
+import type { SkillCatalog } from "./ports/skill-catalog";
 import {
   SessionJsonlWriteError,
   SessionStateUpdateError,
@@ -23,6 +24,7 @@ export type ChannelJobConfig = {
   logger: LoggerPort;
   telemetry: TelemetryPort;
   userAgents?: UserAgentsPort;
+  skillCatalog?: SkillCatalog;
   summarize?: SummarizePort;
   compactionThreshold?: number;
 };
@@ -36,6 +38,7 @@ export class ChannelJob {
   private readonly logger: LoggerPort;
   private readonly telemetry: TelemetryPort;
   private readonly userAgents?: UserAgentsPort;
+  private readonly skillCatalog?: SkillCatalog;
   private readonly summarize?: SummarizePort;
   private readonly compactionThreshold?: number;
 
@@ -48,6 +51,7 @@ export class ChannelJob {
     logger,
     telemetry,
     userAgents,
+    skillCatalog,
     summarize,
     compactionThreshold,
   }: ChannelJobConfig) {
@@ -59,6 +63,7 @@ export class ChannelJob {
     this.logger = logger;
     this.telemetry = telemetry;
     this.userAgents = userAgents;
+    this.skillCatalog = skillCatalog;
     this.summarize = summarize;
     this.compactionThreshold = compactionThreshold;
   }
@@ -94,8 +99,10 @@ export class ChannelJob {
 
         const toolProvider = this.toolProviderFactory.create();
         const userAgents = (await this.userAgents?.read()) ?? null;
+        const skills = this.skillCatalog?.list();
         const systemPrompt = assembleChannelSystemPrompt({
           tools: toolProvider.getToolDescriptions(),
+          skills,
           userAgents,
         });
 

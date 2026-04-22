@@ -1,6 +1,7 @@
 import { Task } from "../entities/task";
 import { Comment } from "../entities/comment";
 import type { ToolDescription } from "./ports/tool-description";
+import type { SkillCatalogEntry } from "./ports/skill-catalog";
 import systemBaseTemplate from "./prompts/system-base.md?raw";
 import systemHeartbeatTemplate from "./prompts/system-heartbeat.md?raw";
 import systemChannelTemplate from "./prompts/system-channel.md?raw";
@@ -13,6 +14,7 @@ export type HeartbeatAssembleInput = {
   task: Task;
   comments: Comment[];
   tools: ToolDescription[];
+  skills?: readonly SkillCatalogEntry[];
   userAgents?: string | null;
 };
 
@@ -25,11 +27,13 @@ export function assembleHeartbeatPrompts({
   task,
   comments,
   tools,
+  skills,
   userAgents,
 }: HeartbeatAssembleInput): HeartbeatAssembleOutput {
   const systemPrompt = buildSystemPrompt(
     systemHeartbeatTemplate,
     tools,
+    skills,
     userAgents,
   );
   const userPrompt = buildHeartbeatUserPrompt(task, comments);
@@ -38,27 +42,53 @@ export function assembleHeartbeatPrompts({
 
 export function assembleChannelSystemPrompt({
   tools,
+  skills,
   userAgents,
 }: {
   tools: ToolDescription[];
+  skills?: readonly SkillCatalogEntry[];
   userAgents?: string | null;
 }): string {
-  return buildSystemPrompt(systemChannelTemplate, tools, userAgents);
+  return buildSystemPrompt(systemChannelTemplate, tools, skills, userAgents);
 }
 
 export function assembleSummarizeSystemPrompt(): string {
   return buildSystemPrompt(systemSummarizeTemplate);
 }
 
+function buildSkillCatalogSection(
+  skills: readonly SkillCatalogEntry[],
+): string {
+  const header =
+    "## Skills\n\nThe following skills are available. Use the `skill(name)` tool to load full instructions.";
+
+  if (skills.length === 0) {
+    return `${header}\n\n(none)`;
+  }
+
+  const entries = skills
+    .map(
+      (s) => `- **${s.name}** — ${s.description}\n  Path: ${s.skillFilePath}`,
+    )
+    .join("\n");
+
+  return `${header}\n\n${entries}`;
+}
+
 function buildSystemPrompt(
   variantTemplate: string,
   tools?: ToolDescription[],
+  skills?: readonly SkillCatalogEntry[],
   userAgents?: string | null,
 ): string {
   const base = systemBaseTemplate.trimEnd();
   const variant = variantTemplate.trimEnd();
 
   let prompt = `${base}\n\n${variant}`;
+
+  if (skills !== undefined) {
+    prompt = `${prompt}\n\n${buildSkillCatalogSection(skills)}`;
+  }
 
   if (tools !== undefined) {
     const toolList =

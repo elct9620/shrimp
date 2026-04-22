@@ -9,6 +9,7 @@ import type { ToolProviderFactory } from "./ports/tool-provider-factory";
 import type { LoggerPort } from "./ports/logger";
 import type { SpanAttributes, TelemetryPort } from "./ports/telemetry";
 import type { UserAgentsPort } from "./ports/user-agents";
+import type { SkillCatalog } from "./ports/skill-catalog";
 
 export type HeartbeatJobConfig = {
   board: BoardRepository;
@@ -18,6 +19,7 @@ export type HeartbeatJobConfig = {
   logger: LoggerPort;
   telemetry: TelemetryPort;
   userAgents?: UserAgentsPort;
+  skillCatalog?: SkillCatalog;
 };
 
 export class HeartbeatJob {
@@ -28,6 +30,7 @@ export class HeartbeatJob {
   private readonly logger: LoggerPort;
   private readonly telemetry: TelemetryPort;
   private readonly userAgents?: UserAgentsPort;
+  private readonly skillCatalog?: SkillCatalog;
 
   constructor({
     board,
@@ -37,6 +40,7 @@ export class HeartbeatJob {
     logger,
     telemetry,
     userAgents,
+    skillCatalog,
   }: HeartbeatJobConfig) {
     this.board = board;
     this.shrimpAgent = shrimpAgent;
@@ -45,6 +49,7 @@ export class HeartbeatJob {
     this.logger = logger;
     this.telemetry = telemetry;
     this.userAgents = userAgents;
+    this.skillCatalog = skillCatalog;
   }
 
   async run(input: {
@@ -103,10 +108,12 @@ export class HeartbeatJob {
         const tools = toolProvider.getToolDescriptions();
 
         const userAgents = (await this.userAgents?.read()) ?? null;
+        const skills = this.skillCatalog?.list();
         const { systemPrompt, userPrompt } = assembleHeartbeatPrompts({
           task: selectedTask,
           comments,
           tools,
+          skills,
           userAgents,
         });
 
