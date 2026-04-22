@@ -17,6 +17,7 @@ import type { ChannelJob } from "../../use-cases/channel-job";
 import type { StartNewSession } from "../../use-cases/start-new-session";
 import type { UserAgentsPort } from "../../use-cases/ports/user-agents";
 import type { SummarizePort } from "../../use-cases/ports/summarize";
+import type { SkillCatalog } from "../../use-cases/ports/skill-catalog";
 
 export const TOKENS = {
   Logger: Symbol.for("shrimp.LoggerPort"),
@@ -38,6 +39,7 @@ export const TOKENS = {
   ChannelJob: Symbol.for("shrimp.ChannelJob"),
   StartNewSession: Symbol.for("shrimp.StartNewSession"),
   UserAgents: Symbol.for("shrimp.UserAgentsPort"),
+  SkillCatalog: Symbol.for("shrimp.SkillCatalog"),
 } as const;
 
 export type TokenRegistry = {
@@ -60,4 +62,5 @@ export type TokenRegistry = {
   [TOKENS.ChannelJob]: ChannelJob;
   [TOKENS.StartNewSession]: StartNewSession;
   [TOKENS.UserAgents]: UserAgentsPort;
+  [TOKENS.SkillCatalog]: SkillCatalog;
 };
