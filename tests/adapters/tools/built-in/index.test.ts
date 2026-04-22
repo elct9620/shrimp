@@ -3,11 +3,24 @@ import {
   createBuiltInTools,
   createBuiltInToolDescriptions,
 } from "../../../../src/adapters/tools/built-in/index";
+import type { SkillCatalog } from "../../../../src/use-cases/ports/skill-catalog";
 import { makeFakeRepo, makeFakeLogger } from "./helpers";
+
+function makeFakeSkillCatalog(): SkillCatalog {
+  return {
+    list: vi.fn(),
+    getSkillContent: vi.fn(),
+    readFile: vi.fn(),
+  };
+}
 
 describe("createBuiltInTools", () => {
   it("returns the four built-in Todoist tools with schema and execute", () => {
-    const tools = createBuiltInTools(makeFakeRepo(), makeFakeLogger());
+    const tools = createBuiltInTools(
+      makeFakeRepo(),
+      makeFakeSkillCatalog(),
+      makeFakeLogger(),
+    );
     expect(Object.keys(tools)).toEqual(
       expect.arrayContaining([
         "getTasks",
@@ -23,10 +36,25 @@ describe("createBuiltInTools", () => {
     }
   });
 
+  it("includes skill and read tools alongside Todoist tools", () => {
+    const tools = createBuiltInTools(
+      makeFakeRepo(),
+      makeFakeSkillCatalog(),
+      makeFakeLogger(),
+    );
+    expect(Object.keys(tools)).toEqual(
+      expect.arrayContaining(["skill", "read"]),
+    );
+  });
+
   it("wires the repo through so tool execution reaches it", async () => {
     const repo = makeFakeRepo();
     vi.mocked(repo.getTasks).mockResolvedValue([]);
-    const tools = createBuiltInTools(repo, makeFakeLogger());
+    const tools = createBuiltInTools(
+      repo,
+      makeFakeSkillCatalog(),
+      makeFakeLogger(),
+    );
     await tools.getTasks.execute!(
       { section: "Backlog" },
       { toolCallId: "test", messages: [] },
@@ -39,7 +67,11 @@ describe("createBuiltInToolDescriptions", () => {
   it("returns one description per tool key with matching names", () => {
     const descriptions = createBuiltInToolDescriptions();
     const toolKeys = Object.keys(
-      createBuiltInTools(makeFakeRepo(), makeFakeLogger()),
+      createBuiltInTools(
+        makeFakeRepo(),
+        makeFakeSkillCatalog(),
+        makeFakeLogger(),
+      ),
     );
     expect(descriptions).toHaveLength(toolKeys.length);
     const descriptionNames = descriptions.map((d) => d.name);
@@ -48,5 +80,12 @@ describe("createBuiltInToolDescriptions", () => {
       expect(d.name.length).toBeGreaterThan(0);
       expect(d.description.length).toBeGreaterThan(0);
     }
+  });
+
+  it("includes skill and read tool descriptions", () => {
+    const descriptions = createBuiltInToolDescriptions();
+    const names = descriptions.map((d) => d.name);
+    expect(names).toContain("skill");
+    expect(names).toContain("read");
   });
 });
