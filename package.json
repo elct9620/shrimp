@@ -39,6 +39,7 @@
     "@opentelemetry/semantic-conventions": "^1.40.0",
     "ai": "^6.0.158",
     "dotenv": "^17.4.1",
+    "gray-matter": "^4.0.3",
     "hono": "^4.12.14",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
