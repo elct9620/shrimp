@@ -39,7 +39,8 @@ Developers or individual users who deploy a Shrimp instance, configure a Todoist
 | Heartbeat            | An external `POST /heartbeat` call that triggers a Job                                                                                                                                                                                                                                                                                                                                                                                            |
 | Heartbeat Token      | A shared secret configured on the Shrimp instance that external heartbeat callers must present to authorize a `POST /heartbeat` request. Opt-in: when no token is configured, `/heartbeat` accepts unauthenticated requests                                                                                                                                                                                                                       |
 | Supervisor           | An internal component of Shrimp (not Shrimp itself) that owns the heartbeat-reception lifecycle: receives Heartbeats, manages the Job Queue, and controls Job Worker lifecycle                                                                                                                                                                                                                                                                    |
-| Job Queue            | Concurrency gate managed by the Supervisor that limits how many Jobs run simultaneously (currently one)                                                                                                                                                                                                                                                                                                                                           |
+| Job Queue            | Concurrency gate managed by the Supervisor that serialises Jobs: at most one runs at a time and additional Jobs wait in FIFO buffering order until the slot frees. In-memory only; buffered and in-flight Jobs are lost on restart                                                                                                                                                                                                                |
+| Heartbeat Pre-Check  | A producer-side check applied before enqueueing a HeartbeatJob: if the Board's Backlog section is empty **OR** the In Progress section contains more than one task, the HeartbeatJob is skipped and no Job is produced. Channel messages are not pre-checked — they are always enqueued                                                                                                                                                           |
 | Job                  | An agent invocation unit triggered by either a Heartbeat or a Channel message event. Two variants: **HeartbeatJob** — selects a Todoist task, promotes Backlog→In Progress, assembles prompts from task context and comment history; **ChannelJob** — loads the current Session, assembles prompts from conversation history and the incoming message. Both variants share one Job Queue slot and invoke the Shrimp Agent exactly once.           |
 | Job Worker           | The executor that takes one Job from the Job Queue and runs its full lifecycle. Shared responsibilities: prompt assembly and Shrimp Agent dispatch. Variant-specific responsibilities (Todoist task selection for HeartbeatJob; Session loading for ChannelJob) are defined in the relevant Behavior sections.                                                                                                                                    |
 | Shrimp Agent         | The AI execution engine invoked once per Job. Given a system prompt, a user prompt, and a tool set, it runs the tool-calling loop against the configured AI provider until the task is done, the maximum step limit is reached, or an error occurs. It does not select tasks or assemble prompts — those belong to the Job                                                                                                                        |
@@ -132,18 +133,18 @@ Dispatches one **HeartbeatJob** in the background. Channel-triggered Jobs use a 
 
 **Response:**
 
-| Scenario                               | Status             | Body                       |
-| -------------------------------------- | ------------------ | -------------------------- |
-| Token required but missing or mismatch | `401 Unauthorized` | no body                    |
-| Job Queue slot is free — Job accepted  | `202 Accepted`     | `{ "status": "accepted" }` |
-| Job Queue slot is busy — Job dropped   | `202 Accepted`     | `{ "status": "accepted" }` |
+| Scenario                                           | Status             | Body                       |
+| -------------------------------------------------- | ------------------ | -------------------------- |
+| Token required but missing or mismatch             | `401 Unauthorized` | no body                    |
+| Heartbeat accepted (enqueued or pre-check-skipped) | `202 Accepted`     | `{ "status": "accepted" }` |
 
 **Behavior rules:**
 
-- Always returns `202 Accepted` immediately, regardless of whether the background Job was accepted or dropped. The caller cannot distinguish the two cases; this is intentional fire-and-forget semantics.
-- Returns immediately after accepting; does not wait for Job processing to complete.
-- Each Job selects at most one task: an In Progress task takes priority over a Backlog task.
-- If no actionable task is found, the Job ends immediately with no side effects.
+- Always returns `202 Accepted` immediately whenever authentication succeeds. The response is identical whether a HeartbeatJob was enqueued or whether the Heartbeat Pre-Check skipped enqueueing; the caller cannot distinguish the two cases — this is intentional fire-and-forget semantics.
+- **Heartbeat Pre-Check:** Before enqueueing a HeartbeatJob, Shrimp inspects the Board. If the Backlog section is empty **OR** the In Progress section already contains more than one task, no HeartbeatJob is enqueued; the call still returns 202. This avoids wasting a Job Queue slot when there is no new Backlog work to promote, or when In Progress work is already backed up and spamming more Heartbeats would only compete for the slot with real Channel messages. Channel messages are never pre-checked — they are always enqueued.
+- Returns immediately after the pre-check and enqueue decision; does not wait for Job processing to complete.
+- Each enqueued HeartbeatJob selects at most one task: an In Progress task takes priority over a Backlog task.
+- If an enqueued Job finds no actionable task, it ends immediately with no side effects.
 - Task progress reporting and status updates happen asynchronously within the background Job.
 
 **Authentication rules:**
@@ -155,15 +156,15 @@ Dispatches one **HeartbeatJob** in the background. Channel-triggered Jobs use a 
 
 ### In-Memory Job Queue
 
-Concurrency gate that ensures only one Job runs at a time. The Job Queue accepts both **HeartbeatJob** (from the HTTP heartbeat path) and **ChannelJob** (from the Channel adapter) into the same single slot; it does not distinguish variants when accepting. The Job Queue does not select tasks, load Sessions, assemble prompts, or report progress — all of that belongs to the Job Worker and the Shrimp Agent.
+Concurrency gate that serialises Jobs by buffering them in FIFO order. The Job Queue accepts both **HeartbeatJob** (from the HTTP heartbeat path) and **ChannelJob** (from the Channel adapter) into the same queue; it does not distinguish variants on admission. The Job Queue does not select tasks, load Sessions, assemble prompts, or report progress — all of that belongs to the Job Worker and the Shrimp Agent.
 
 **Behavior rules:**
 
-- The Job Queue admits at most one running Job. If a Heartbeat or Channel message arrives while a Job is already running, the new request is silently dropped (no error, no buffering, no queuing). The drop semantics are identical for both variants.
-- The slot is occupied from the moment a Job is accepted until the Job completes or fails. Any Heartbeat or Channel message event arriving during this window is dropped.
-- On acceptance, the Job Queue starts a Job (executed by a Job Worker); on completion or failure, it releases the slot. The Job Queue has no knowledge of what happens during the Job, nor which variant is running.
-- If the Job fails for any reason, Fail-Open Recovery applies.
-- The Job Queue lives in process memory. On container restart, any in-flight work is lost; Todoist remains the source of truth for HeartbeatJobs, and the next Heartbeat or Channel message re-triggers work.
+- The Job Queue runs at most one Job at a time. Jobs that arrive while the slot is occupied are buffered in FIFO order; each waiting Job starts as soon as the currently-running Job completes or fails. Admission order across both variants is the order in which the Queue received them.
+- Enqueue admission is unconditional from the Queue's perspective — any pre-filtering (such as the Heartbeat Pre-Check that may skip producing a HeartbeatJob entirely) happens on the producer side before the Job reaches the Queue. The Queue itself never drops or distinguishes variants.
+- On dequeue, the Job Queue starts the Job (executed by a Job Worker); on completion or failure, it releases the slot and admits the next buffered Job. The Job Queue has no knowledge of what happens during the Job, nor which variant is running.
+- If a Job fails for any reason, Fail-Open Recovery applies; the slot is released and the next buffered Job proceeds.
+- The Job Queue lives in process memory only. On container restart, both the in-flight Job and any buffered pending Jobs are lost; Todoist remains the source of truth for HeartbeatJobs, and the next Heartbeat or Channel message re-triggers work.
 - No retry logic inside the Job Queue. A failed Job is retried naturally on the next triggering event.
 - Slash Commands bypass the Job Queue entirely; see [Slash Commands](#slash-commands).
 
@@ -173,33 +174,33 @@ End-to-end sequence from external trigger to agent invocation. Two trigger sourc
 
 **HeartbeatJob flow:**
 
-| Step | Actor           | Action                            | Outcome                                                                                                                                                                                       |
-| ---- | --------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | External caller | `POST /heartbeat`                 | Request accepted; see [`POST /heartbeat`](#post-heartbeat) for response rules                                                                                                                 |
-| 2    | Job Queue       | Accept or drop the heartbeat      | If queue slot is free, start a HeartbeatJob; if busy, silently drop; see [In-Memory Job Queue](#in-memory-job-queue)                                                                          |
-| 3    | Job Worker      | Select one task                   | Check for an In Progress task first; if none, take one Backlog task; if no actionable task exists, Job ends immediately                                                                       |
-| 4    | Job Worker      | Promote task and assemble prompts | If task is in Backlog, move to In Progress; retrieve comment history; assemble system prompt and user prompt                                                                                  |
-| 5    | Shrimp Agent    | Execute the task                  | Runs the tool-calling loop with the assembled prompts and full tool set; continues until task is done, max steps reached, or error; posts progress comment and moves task to Done if complete |
-| 6    | Job Queue       | Release queue slot                | Job is finished; queue is ready to accept the next event                                                                                                                                      |
+| Step | Actor             | Action                            | Outcome                                                                                                                                                                                                                                                                                                                                                                  |
+| ---- | ----------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1    | External caller   | `POST /heartbeat`                 | Request accepted; see [`POST /heartbeat`](#post-heartbeat) for response rules                                                                                                                                                                                                                                                                                            |
+| 2    | Shrimp (producer) | Heartbeat Pre-Check + enqueue     | Inspect the Board. If the Backlog section is empty **OR** the In Progress section contains more than one task, skip — no HeartbeatJob is enqueued and no Job trace is emitted. Otherwise enqueue a HeartbeatJob onto the Job Queue; it runs immediately if the slot is free, or waits in FIFO order behind earlier Jobs; see [In-Memory Job Queue](#in-memory-job-queue) |
+| 3    | Job Worker        | Select one task                   | Check for an In Progress task first; if none, take one Backlog task; if no actionable task exists, Job ends immediately                                                                                                                                                                                                                                                  |
+| 4    | Job Worker        | Promote task and assemble prompts | If task is in Backlog, move to In Progress; retrieve comment history; assemble system prompt and user prompt                                                                                                                                                                                                                                                             |
+| 5    | Shrimp Agent      | Execute the task                  | Runs the tool-calling loop with the assembled prompts and full tool set; continues until task is done, max steps reached, or error; posts progress comment and moves task to Done if complete                                                                                                                                                                            |
+| 6    | Job Queue         | Release queue slot                | Job is finished; queue is ready to accept the next event                                                                                                                                                                                                                                                                                                                 |
 
 **ChannelJob flow:**
 
-| Step | Actor           | Action                        | Outcome                                                                                                                                                                                            |
-| ---- | --------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1    | Channel adapter | Receive inbound message event | Non-command message (see [Channel Integration](#channel-integration)); ConversationRef captured; dispatch a ChannelJob                                                                             |
-| 2    | Job Queue       | Accept or drop the event      | If queue slot is free, start a ChannelJob; if busy, silently drop; see [In-Memory Job Queue](#in-memory-job-queue)                                                                                 |
-| 3    | Job Worker      | Load Session                  | Read the current Session via the `SessionRepository`, or create a new Session if this is the first message; see [Session Lifecycle](#session-lifecycle)                                            |
-| 4    | Job Worker      | Assemble prompts              | Assemble the system prompt and a user prompt from the Session's conversation history plus the incoming Channel message                                                                             |
-| 5    | Shrimp Agent    | Execute the conversation turn | Runs the tool-calling loop with the assembled prompts, Session history input, and full tool set; terminates on done, max steps, or error                                                           |
-| 5a   | Job Worker      | Deliver replies               | After the agent returns, delivers each assistant ConversationMessage to the originating Channel conversation via ChannelGateway using the ConversationRef; failures are Fail-Open                  |
-| 6    | Job Worker      | Append to Session             | Append the new conversation entries to the current Session                                                                                                                                         |
-| 6a   | Job Worker      | Evaluate Compaction Threshold | If the AI provider's prompt token usage for this turn meets the Compaction Threshold, invoke SummarizePort and rotate to a new Session; see [Session Lifecycle § Auto Compact](#session-lifecycle) |
-| 7    | Job Queue       | Release queue slot            | Job is finished; queue is ready to accept the next event                                                                                                                                           |
+| Step | Actor           | Action                        | Outcome                                                                                                                                                                                                                                                         |
+| ---- | --------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Channel adapter | Receive inbound message event | Non-command message (see [Channel Integration](#channel-integration)); ConversationRef captured; dispatch a ChannelJob                                                                                                                                          |
+| 2    | Job Queue       | Enqueue the event             | Always enqueue the ChannelJob — Channel messages are never dropped and are never subject to a pre-check. If the slot is free the Job starts immediately; otherwise it waits in FIFO order until the slot frees; see [In-Memory Job Queue](#in-memory-job-queue) |
+| 3    | Job Worker      | Load Session                  | Read the current Session via the `SessionRepository`, or create a new Session if this is the first message; see [Session Lifecycle](#session-lifecycle)                                                                                                         |
+| 4    | Job Worker      | Assemble prompts              | Assemble the system prompt and a user prompt from the Session's conversation history plus the incoming Channel message                                                                                                                                          |
+| 5    | Shrimp Agent    | Execute the conversation turn | Runs the tool-calling loop with the assembled prompts, Session history input, and full tool set; terminates on done, max steps, or error                                                                                                                        |
+| 5a   | Job Worker      | Deliver replies               | After the agent returns, delivers each assistant ConversationMessage to the originating Channel conversation via ChannelGateway using the ConversationRef; failures are Fail-Open                                                                               |
+| 6    | Job Worker      | Append to Session             | Append the new conversation entries to the current Session                                                                                                                                                                                                      |
+| 6a   | Job Worker      | Evaluate Compaction Threshold | If the AI provider's prompt token usage for this turn meets the Compaction Threshold, invoke SummarizePort and rotate to a new Session; see [Session Lifecycle § Auto Compact](#session-lifecycle)                                                              |
+| 7    | Job Queue       | Release queue slot            | Job is finished; queue is ready to accept the next event                                                                                                                                                                                                        |
 
 **Flow invariants (apply to both variants):**
 
-- Only one Job occupies the Job Queue at any time; step 2 enforces mutual exclusion across both variants.
-- All steps after queue acceptance run entirely in the background; the external caller / Channel event never waits for them.
+- Only one Job occupies the Job Queue slot at any time; additional Jobs wait in FIFO order and start as soon as the slot frees. Admission order across both variants is the order in which the Queue received them.
+- All steps after enqueue run entirely in the background; the external caller / Channel event never waits for them. A HeartbeatJob skipped by the Pre-Check never runs, never produces a trace, and is indistinguishable from an enqueued Heartbeat in the 202 response.
 - The queue slot is released regardless of whether intermediate steps succeed or fail; Fail-Open Recovery ensures no failure path can leave the slot occupied.
 - Prompt assembly is the Job Worker's responsibility; agent execution is the Shrimp Agent's responsibility. The Shrimp Agent is not involved in task selection, Session loading, or prompt assembly.
 - A piece of work not completed in one Job is retried naturally when the next triggering event (Heartbeat or Channel message) arrives.
@@ -284,7 +285,7 @@ Channels deliver events via push (webhook or equivalent server-initiated mechani
 **Dispatch rules:**
 
 - Each Channel event carries a ConversationRef so outbound replies can be routed back to the originating Channel conversation.
-- Message events compete with Heartbeat for the single Job Queue slot. If the slot is busy, the event is dropped silently — the same drop semantics as `POST /heartbeat`. No retry inside Shrimp.
+- Channel message events are **always enqueued** onto the Job Queue and are never dropped or pre-checked. When a Job is already running, the ChannelJob waits in FIFO order behind any earlier Jobs and starts as soon as the slot frees. HeartbeatJobs share the same queue but may be filtered by the Heartbeat Pre-Check before enqueueing (see [`POST /heartbeat`](#post-heartbeat)); Channel messages carry user-initiated work and are not subject to any such filter.
 - A Channel reply is delivered by the Job Worker after the agent returns, routed back to the originating Channel conversation via ChannelGateway using the ConversationRef. By design, the Shrimp Agent surfaces at most one assistant ConversationMessage per invocation — its final output text — so the Channel receives at most one reply per ChannelJob; intermediate reasoning and tool-use turns stay inside the agent and are never relayed (relaying them would flood the conversation with redundant scratch messages). Reply failures follow Fail-Open Recovery — the Job is not failed solely because a reply could not be delivered.
 - Before invoking the Shrimp Agent, the Job Worker MAY surface a platform-native processing hint through ChannelGateway so users see the Job is being worked on. This indicator is cosmetic and best-effort: it follows Fail-Open Recovery and never fails the Job, and Channels that cannot or choose not to signal progress simply skip it.
 - Session creation and conversation history for Channel-driven Jobs are governed by the [Session Lifecycle](#session-lifecycle) section.
@@ -496,8 +497,9 @@ Every Job that runs produces one OTel trace. Spans within that trace expose task
 
 **Trace lifecycle rules:**
 
-- A Job that is dropped by the Job Queue (slot busy) does not produce a trace; no spans are emitted for dropped Jobs.
-- A Job that runs but finds no actionable task still produces a trace containing only the root span. This makes "nothing to do" observable and distinguishable from a Job that was never triggered.
+- A Heartbeat skipped by the Heartbeat Pre-Check never becomes a Job and therefore produces no trace — no Job ran. (The Job Queue itself no longer drops work: every enqueued Job eventually runs and produces a trace.)
+- A Job that is enqueued but waiting behind earlier Jobs does not produce a trace until it actually starts running; the trace root span begins at dequeue, not at enqueue, so queue-wait time is not captured as span duration.
+- A Job that runs but finds no actionable task still produces a trace containing only the root span. This makes "nothing to do" observable and distinguishable from a Job that was never triggered (e.g., a Heartbeat skipped by the Pre-Check).
 - A Job that selects and executes a task produces a full trace: root span plus all nested AI SDK spans for that execution.
 
 **Root span:**
