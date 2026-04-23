@@ -659,23 +659,23 @@ describe("assembleChannelSystemPrompt", () => {
     expect(systemPrompt).not.toContain("## Domain Knowledge");
   });
 
-  it("includes Reply Format section between Tools and User Agents Appendix", () => {
+  it("includes Output Format section between Tools and User Agents Appendix", () => {
     const skills = [makeSkillEntry()];
     const systemPrompt = assembleChannelSystemPrompt({
       skills,
       userAgents: "Operator note",
     });
 
-    const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+    const outputFormatIdx = systemPrompt.indexOf("## Output Format");
     const toolsIdx = systemPrompt.indexOf("## Tools");
     const operatorIdx = systemPrompt.indexOf("Operator note");
 
-    expect(replyFormatIdx).toBeGreaterThan(-1);
-    expect(replyFormatIdx).toBeGreaterThan(toolsIdx);
-    expect(operatorIdx).toBeGreaterThan(replyFormatIdx);
+    expect(outputFormatIdx).toBeGreaterThan(-1);
+    expect(outputFormatIdx).toBeGreaterThan(toolsIdx);
+    expect(operatorIdx).toBeGreaterThan(outputFormatIdx);
   });
 
-  it("orders sections: base → variant → Skills → Tools → Reply Format → User Agents Appendix", () => {
+  it("orders sections: base → variant → Skills → Tools → Output Format → User Agents Appendix", () => {
     const skills = [makeSkillEntry()];
     const systemPrompt = assembleChannelSystemPrompt({
       skills,
@@ -686,15 +686,15 @@ describe("assembleChannelSystemPrompt", () => {
     const styleIdx = systemPrompt.indexOf("## Conversation Style");
     const skillsIdx = systemPrompt.indexOf("## Skills");
     const toolsIdx = systemPrompt.indexOf("## Tools");
-    const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+    const outputFormatIdx = systemPrompt.indexOf("## Output Format");
     const operatorIdx = systemPrompt.indexOf("Operator note");
 
     expect(approachIdx).toBeGreaterThan(-1);
     expect(styleIdx).toBeGreaterThan(approachIdx);
     expect(skillsIdx).toBeGreaterThan(styleIdx);
     expect(toolsIdx).toBeGreaterThan(skillsIdx);
-    expect(replyFormatIdx).toBeGreaterThan(toolsIdx);
-    expect(operatorIdx).toBeGreaterThan(replyFormatIdx);
+    expect(outputFormatIdx).toBeGreaterThan(toolsIdx);
+    expect(operatorIdx).toBeGreaterThan(outputFormatIdx);
   });
 
   it("AGENTS.md (User Agents Appendix) is the final block — nothing follows it", () => {
@@ -788,70 +788,70 @@ describe("assembleChannelSystemPrompt", () => {
     expect(heartbeatBase).toContain("## Approach");
   });
 
-  describe("Reply Format section (between Tools and User Agents Appendix)", () => {
-    it("Reply Format section is present in the channel system prompt", () => {
+  describe("Output Format section (between Tools and User Agents Appendix)", () => {
+    it("Output Format section is present in the channel system prompt", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      expect(systemPrompt).toContain("## Reply Format");
+      expect(systemPrompt).toContain("## Output Format");
     });
 
-    it("Reply Format section sits AFTER Tools section", () => {
+    it("Output Format section sits AFTER Tools section", () => {
       const systemPrompt = assembleChannelSystemPrompt({
         skills: [makeSkillEntry()],
       });
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const toolsIdx = systemPrompt.indexOf("## Tools");
 
-      expect(replyFormatIdx).toBeGreaterThan(-1);
-      expect(replyFormatIdx).toBeGreaterThan(toolsIdx);
+      expect(outputFormatIdx).toBeGreaterThan(-1);
+      expect(outputFormatIdx).toBeGreaterThan(toolsIdx);
     });
 
-    it("Reply Format section sits AFTER Skills section", () => {
+    it("Output Format section sits AFTER Skills section", () => {
       const systemPrompt = assembleChannelSystemPrompt({
         skills: [makeSkillEntry()],
       });
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const skillsIdx = systemPrompt.indexOf("## Skills");
 
-      expect(replyFormatIdx).toBeGreaterThan(-1);
-      expect(replyFormatIdx).toBeGreaterThan(skillsIdx);
+      expect(outputFormatIdx).toBeGreaterThan(-1);
+      expect(outputFormatIdx).toBeGreaterThan(skillsIdx);
     });
 
-    it("Reply Format section comes BEFORE User Agents Appendix", () => {
+    it("Output Format section comes BEFORE User Agents Appendix", () => {
       const systemPrompt = assembleChannelSystemPrompt({
         skills: [makeSkillEntry()],
         userAgents: "Operator note",
       });
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const operatorIdx = systemPrompt.indexOf("Operator note");
 
-      expect(replyFormatIdx).toBeGreaterThan(-1);
-      expect(operatorIdx).toBeGreaterThan(replyFormatIdx);
+      expect(outputFormatIdx).toBeGreaterThan(-1);
+      expect(operatorIdx).toBeGreaterThan(outputFormatIdx);
     });
 
-    it("Reply Format is present (as last non-empty block) when userAgents is absent", () => {
+    it("Output Format is present (as last non-empty block) when userAgents is absent", () => {
       const systemPrompt = assembleChannelSystemPrompt({
         skills: [makeSkillEntry()],
       });
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
-      expect(replyFormatIdx).toBeGreaterThan(-1);
-      // Nothing substantive follows Reply Format when no userAgents
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
+      expect(outputFormatIdx).toBeGreaterThan(-1);
+      // Nothing substantive follows Output Format when no userAgents
       const afterReplyFormat = systemPrompt
-        .slice(replyFormatIdx + "## Reply Format".length)
+        .slice(outputFormatIdx + "## Output Format".length)
         .trim();
       expect(afterReplyFormat.length).toBeGreaterThan(0); // has content body
       expect(afterReplyFormat).not.toContain("##"); // no further sections
     });
 
-    it("Reply Format block MUST NOT contain raw Markdown characters", () => {
+    it("Output Format block MUST NOT contain raw Markdown characters", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
-      const replyFormatSection = systemPrompt.slice(replyFormatIdx);
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
+      const replyFormatSection = systemPrompt.slice(outputFormatIdx);
 
       // Hard constraint: no raw Markdown syntax anywhere in the block
       expect(replyFormatSection).not.toMatch(/\*\*\w/); // **bold**
@@ -861,12 +861,12 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatSection).not.toMatch(/^> /m); // blockquote markers
     });
 
-    it("Reply Format block opens with positive plain-text definition ('Plain text means')", () => {
+    it("Output Format block opens with positive plain-text definition ('Plain text means')", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -878,12 +878,12 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatBody.toLowerCase()).toContain("plain text means");
     });
 
-    it("Reply Format block contains channel display context ('no Markdown or HTML rendering')", () => {
+    it("Output Format block contains channel display context ('no Markdown or HTML rendering')", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -895,12 +895,12 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatBody).toContain("no Markdown or HTML rendering");
     });
 
-    it("Reply Format block contains explicit 'Do not use' prohibition", () => {
+    it("Output Format block contains explicit 'Do not use' prohibition", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -912,12 +912,12 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatBody).toContain("Do not use");
     });
 
-    it("Reply Format block prohibition names at least three English symbol words", () => {
+    it("Output Format block prohibition names at least three English symbol words", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -939,12 +939,12 @@ describe("assembleChannelSystemPrompt", () => {
       expect(found.length).toBeGreaterThanOrEqual(3);
     });
 
-    it("Reply Format block contains both concrete examples verbatim", () => {
+    it("Output Format block contains both concrete examples verbatim", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -962,12 +962,12 @@ describe("assembleChannelSystemPrompt", () => {
       );
     });
 
-    it("Reply Format block contains skill-content closing clause", () => {
+    it("Output Format block contains skill-content closing clause", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -978,12 +978,12 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatBody).toContain("put the outcome into your own words");
     });
 
-    it("Reply Format block prohibition includes 'numbered lists'", () => {
+    it("Output Format block prohibition includes 'numbered lists'", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -994,12 +994,12 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatBody.toLowerCase()).toContain("numbered lists");
     });
 
-    it("Reply Format block contains multi-item weaving rule ('weave' or 'running sentences')", () => {
+    it("Output Format block contains multi-item weaving rule ('weave' or 'running sentences')", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -1010,12 +1010,12 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatBody.toLowerCase()).toMatch(/weave|running sentences/);
     });
 
-    it("Reply Format block contains three example introductions", () => {
+    it("Output Format block contains three example introductions", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -1033,12 +1033,12 @@ describe("assembleChannelSystemPrompt", () => {
       expect(markerCount).toBeGreaterThanOrEqual(3);
     });
 
-    it("Reply Format long-form example contains no list structure", () => {
+    it("Output Format long-form example contains no list structure", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -1069,12 +1069,12 @@ describe("assembleChannelSystemPrompt", () => {
       expect(exampleContent).not.toMatch(/^### /m);
     });
 
-    it("Reply Format block is under 220 words", () => {
+    it("Output Format block is under 220 words", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
       const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
+        outputFormatIdx + "## Output Format".length,
       );
       const nextSectionIdx = afterHeader.indexOf("\n##");
       const replyFormatBody =
@@ -1090,7 +1090,7 @@ describe("assembleChannelSystemPrompt", () => {
       expect(wordCount).toBeLessThanOrEqual(220);
     });
 
-    it("Heartbeat system prompt does NOT include Reply Format section", () => {
+    it("Heartbeat system prompt does NOT include Output Format section", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
@@ -1098,13 +1098,7 @@ describe("assembleChannelSystemPrompt", () => {
         userAgents: "Operator note",
       });
 
-      expect(systemPrompt).not.toContain("## Reply Format");
-    });
-
-    it("Summarize system prompt does NOT include Reply Format section", () => {
-      const systemPrompt = assembleSummarizeSystemPrompt();
-
-      expect(systemPrompt).not.toContain("## Reply Format");
+      expect(systemPrompt).not.toContain("## Output Format");
     });
   });
 });

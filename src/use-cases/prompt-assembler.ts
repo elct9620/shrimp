@@ -45,7 +45,7 @@ export function assembleChannelSystemPrompt({
     systemChannelTemplate,
     skills,
     userAgents,
-    buildChannelReplyFormatSection(),
+    buildOutputFormatSection(),
   );
 }
 
@@ -83,9 +83,9 @@ function buildToolsSection(): string {
   ].join("\n");
 }
 
-function buildChannelReplyFormatSection(): string {
+function buildOutputFormatSection(): string {
   return [
-    "## Reply Format",
+    "## Output Format",
     "",
     "Reply in plain text. Plain text means running prose: ordinary sentences separated by line breaks and punctuated normally. Show URLs as bare text.",
     "",
