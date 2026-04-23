@@ -432,7 +432,7 @@ If a command handler fails (e.g., `/new` cannot create a new Session), the adapt
 
 ### Skill Layer
 
-The Skill Layer surfaces Agent Skills to the Shrimp Agent using the progressive-disclosure shape defined by [agentskills.io](https://agentskills.io/specification). Each Job's System Prompt carries the Skill Catalog (name + description + absolute `SKILL.md` path); the Shrimp Agent loads a skill's full instructions on demand via the `skill` tool, and any additional resources referenced from `SKILL.md` via the `read` tool. Tool registration is unchanged by this layer — only prompt content and the two new tools are introduced.
+The Skill Layer surfaces Agent Skills to the Shrimp Agent using the progressive-disclosure shape defined by [agentskills.io](https://agentskills.io/specification). Each Job's System Prompt carries the Skill Catalog (name + description); the Shrimp Agent loads a skill's full instructions on demand via the `skill` tool, and any additional resources referenced from `SKILL.md` via the `read` tool. Tool registration is unchanged by this layer — only prompt content and the two new tools are introduced.
 
 **Discovery:**
 
