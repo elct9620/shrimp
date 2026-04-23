@@ -538,7 +538,7 @@ describe("assembleChannelSystemPrompt", () => {
     expect(systemPrompt).not.toContain("## Domain Knowledge");
   });
 
-  it("orders sections from stable to dynamic: base → variant → Skills → Tools → User Agents Appendix", () => {
+  it("orders sections from stable to dynamic: base → variant → Skills → Tools → User Agents Appendix → Reply Format", () => {
     const skills = [makeSkillEntry()];
     const systemPrompt = assembleChannelSystemPrompt({
       skills,
@@ -550,12 +550,14 @@ describe("assembleChannelSystemPrompt", () => {
     const skillsIdx = systemPrompt.indexOf("## Skills");
     const toolsIdx = systemPrompt.indexOf("## Tools");
     const operatorIdx = systemPrompt.indexOf("Operator note");
+    const replyFormatIdx = systemPrompt.lastIndexOf("Reply Format");
 
     expect(principlesIdx).toBeGreaterThan(-1);
     expect(styleIdx).toBeGreaterThan(principlesIdx);
     expect(skillsIdx).toBeGreaterThan(styleIdx);
     expect(toolsIdx).toBeGreaterThan(skillsIdx);
     expect(operatorIdx).toBeGreaterThan(toolsIdx);
+    expect(replyFormatIdx).toBeGreaterThan(operatorIdx);
   });
 
   it("appends userAgents content when provided", () => {
@@ -636,6 +638,67 @@ describe("assembleChannelSystemPrompt", () => {
 
     expect(heartbeatBase).toBe(channelBase);
     expect(heartbeatBase).toContain("## Operating Principles");
+  });
+
+  describe("Reply Format trailer", () => {
+    it("appends Reply Format section AFTER User Agents Appendix", () => {
+      const systemPrompt = assembleChannelSystemPrompt({
+        skills: [makeSkillEntry()],
+        userAgents: "Operator channel note",
+      });
+
+      const operatorIdx = systemPrompt.indexOf("Operator channel note");
+      const replyFormatIdx = systemPrompt.lastIndexOf("Reply Format");
+
+      expect(replyFormatIdx).toBeGreaterThan(-1);
+      expect(replyFormatIdx).toBeGreaterThan(operatorIdx);
+    });
+
+    it("appends Reply Format section even without User Agents Appendix", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      expect(systemPrompt).toContain("Reply Format");
+    });
+
+    it("Reply Format block is plain prose — no literal markdown syntax demonstrations", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      // Find the Reply Format section (trailer at end)
+      const replyFormatIdx = systemPrompt.lastIndexOf("Reply Format");
+      const replyFormatSection = systemPrompt.slice(replyFormatIdx);
+
+      // Must NOT contain literal markdown syntax being demonstrated
+      expect(replyFormatSection).not.toMatch(/\*\*\w/); // **bold**
+      expect(replyFormatSection).not.toMatch(/`\w/); // `code`
+      expect(replyFormatSection).not.toMatch(/\[text\]\(url\)/); // [text](url)
+      expect(replyFormatSection).not.toMatch(/^#+ /m); // headings
+      expect(replyFormatSection).not.toMatch(/^- /m); // bullet list markers
+    });
+
+    it("Reply Format block contains the skills-not-template clause", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.lastIndexOf("Reply Format");
+      const replyFormatSection = systemPrompt.slice(replyFormatIdx);
+
+      expect(replyFormatSection.toLowerCase()).toContain("execution reference");
+      expect(replyFormatSection.toLowerCase()).toContain(
+        "not an output template",
+      );
+    });
+
+    it("Reply Format section is NOT present inside system-channel.md variant block", () => {
+      // The Reply Format must come only from the trailer, not from the variant template.
+      // We check by ensuring the channel system prompt without skills still has Reply Format
+      // only once (the trailer), not duplicated.
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const firstOccurrence = systemPrompt.indexOf("Reply Format");
+      const lastOccurrence = systemPrompt.lastIndexOf("Reply Format");
+
+      // Only one occurrence — the trailer
+      expect(firstOccurrence).toBe(lastOccurrence);
+    });
   });
 });
 

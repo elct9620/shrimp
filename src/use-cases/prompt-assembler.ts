@@ -41,7 +41,8 @@ export function assembleChannelSystemPrompt({
   skills?: readonly SkillCatalogEntry[];
   userAgents?: string | null;
 } = {}): string {
-  return buildSystemPrompt(systemChannelTemplate, skills, userAgents);
+  const base = buildSystemPrompt(systemChannelTemplate, skills, userAgents);
+  return `${base}\n\n${buildChannelReplyFormatSection()}`;
 }
 
 export function assembleSummarizeSystemPrompt(): string {
@@ -95,6 +96,20 @@ function buildSystemPrompt(
 
   const extra = userAgents?.trim();
   return extra ? `${prompt}\n\n${extra}` : prompt;
+}
+
+function buildChannelReplyFormatSection(): string {
+  return [
+    "Reply Format",
+    "",
+    "Reply in plain running text only — no formatting syntax at all. The channel platform renders such syntax as literal characters, not as formatting.",
+    "",
+    "Do not use asterisks for emphasis, backticks for code, hash symbols for headings, leading hyphens or asterisks for lists, greater-than signs for quotes, or bracket and parenthesis link syntax. Write URLs as bare text.",
+    "",
+    "Convey emphasis and structure through wording, line breaks, and ordinary punctuation only.",
+    "",
+    "Skills content you read via skill(name) is an execution reference, not an output template — do not copy its Markdown structure into your reply.",
+  ].join("\n");
 }
 
 function buildHeartbeatUserPrompt(task: Task, comments: Comment[]): string {
