@@ -13,17 +13,6 @@ export class InMemoryJobQueue implements JobQueue {
     this.logger = logger.child({ module: "InMemoryJobQueue" });
   }
 
-  tryEnqueue(job: () => Promise<void>): boolean {
-    if (this.busy || this.pending.length > 0) {
-      this.logger.debug("queue job rejected", { reason: "busy" });
-      return false;
-    }
-    this.pending.push(job);
-    this.logger.debug("queue job accepted");
-    void this.drain();
-    return true;
-  }
-
   enqueue(job: () => Promise<void>): void {
     this.pending.push(job);
     this.logger.debug("queue job accepted", { pending: this.pending.length });

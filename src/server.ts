@@ -5,6 +5,7 @@ import { container, bootstrap } from "./container";
 import { TOKENS } from "./infrastructure/container/tokens";
 import { McpToolLoader } from "./infrastructure/mcp/mcp-tool-loader";
 import type { HeartbeatJob } from "./use-cases/heartbeat-job";
+import type { BoardRepository } from "./use-cases/ports/board-repository";
 import type { TelemetryPort } from "./use-cases/ports/telemetry";
 import type { ChannelJob } from "./use-cases/channel-job";
 import type { StartNewSession } from "./use-cases/start-new-session";
@@ -22,6 +23,7 @@ async function main() {
   >(TOKENS.EnvConfig);
   const mcpToolLoader = container.resolve(McpToolLoader);
   const heartbeatJob = container.resolve<HeartbeatJob>(TOKENS.HeartbeatJob);
+  const board = container.resolve<BoardRepository>(TOKENS.BoardRepository);
   const telemetry = container.resolve<TelemetryPort>(TOKENS.Telemetry);
   // Raw pino instance registered during bootstrap for pino-http middleware
   const pinoInstance = container.resolve<import("pino").Logger>(
@@ -45,6 +47,7 @@ async function main() {
     pinoInstance,
     jobQueue: container.resolve(TOKENS.JobQueue),
     heartbeatJob,
+    board,
     logger: logger.child({ module: "http.heartbeat" }),
     heartbeatToken: env.heartbeatToken,
     channels,

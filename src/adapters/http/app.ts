@@ -5,6 +5,7 @@ import type { Logger } from "pino";
 import type { AppEnv } from "./context-variables";
 import type { JobQueue } from "../../use-cases/ports/job-queue";
 import type { HeartbeatJob } from "../../use-cases/heartbeat-job";
+import type { BoardRepository } from "../../use-cases/ports/board-repository";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import type { ChannelJob } from "../../use-cases/channel-job";
 import type { StartNewSession } from "../../use-cases/start-new-session";
@@ -17,6 +18,7 @@ export type CreateAppDeps = {
   pinoInstance: Logger;
   jobQueue: JobQueue;
   heartbeatJob: HeartbeatJob;
+  board: BoardRepository;
   logger: LoggerPort;
   heartbeatToken?: string;
   channels?: {
@@ -56,6 +58,7 @@ export function createApp(deps: CreateAppDeps): Hono<AppEnv> {
     createHeartbeatRoute({
       jobQueue: deps.jobQueue,
       heartbeatJob: deps.heartbeatJob,
+      board: deps.board,
       logger: deps.logger,
       heartbeatToken: deps.heartbeatToken,
     }),

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/adapters/http/app";
 import type { JobQueue } from "../../../src/use-cases/ports/job-queue";
 import type { HeartbeatJob } from "../../../src/use-cases/heartbeat-job";
+import type { BoardRepository } from "../../../src/use-cases/ports/board-repository";
 import type { ChannelJob } from "../../../src/use-cases/channel-job";
 import type { StartNewSession } from "../../../src/use-cases/start-new-session";
 import type { ChannelGateway } from "../../../src/use-cases/ports/channel-gateway";
@@ -12,16 +13,23 @@ const VALID_SECRET = "webhook-secret";
 
 function makeBaseDeps() {
   const jobQueue: JobQueue = {
-    tryEnqueue: vi.fn().mockReturnValue(true),
     enqueue: vi.fn(),
   };
   const heartbeatJob: HeartbeatJob = {
     run: vi.fn().mockResolvedValue(undefined),
   } as unknown as HeartbeatJob;
+  const board: BoardRepository = {
+    validateSections: vi.fn().mockResolvedValue(undefined),
+    getTasks: vi.fn().mockResolvedValue([]),
+    getComments: vi.fn().mockResolvedValue([]),
+    postComment: vi.fn().mockResolvedValue(undefined),
+    moveTask: vi.fn().mockResolvedValue(undefined),
+  };
   return {
     pinoInstance: pino({ level: "silent" }),
     jobQueue,
     heartbeatJob,
+    board,
     logger: makeFakeLogger(),
   };
 }

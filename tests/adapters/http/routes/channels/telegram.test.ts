@@ -8,9 +8,8 @@ import { makeFakeLogger } from "../../../../mocks/fake-logger";
 
 const VALID_SECRET = "test-secret-token";
 
-function makeJobQueue(slotFree = true): JobQueue {
+function makeJobQueue(): JobQueue {
   return {
-    tryEnqueue: vi.fn().mockReturnValue(slotFree),
     enqueue: vi.fn(),
   };
 }
@@ -73,7 +72,7 @@ describe("POST /channels/telegram", () => {
     const app = makeApp({ jobQueue });
     const res = await post(app, {}, undefined);
     expect(res.status).toBe(401);
-    expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
   });
 
   it("returns 401 when secret header does not match", async () => {
@@ -81,7 +80,7 @@ describe("POST /channels/telegram", () => {
     const app = makeApp({ jobQueue });
     const res = await post(app, {}, "wrong-secret");
     expect(res.status).toBe(401);
-    expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
   });
 
   it("returns 400 when body is malformed JSON", async () => {
@@ -89,7 +88,7 @@ describe("POST /channels/telegram", () => {
     const app = makeApp({ jobQueue });
     const res = await post(app, "{not-json", VALID_SECRET);
     expect(res.status).toBe(400);
-    expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
   });
 
   it("returns 200 and skips dispatch for a non-message update (empty object)", async () => {
@@ -98,7 +97,7 @@ describe("POST /channels/telegram", () => {
     const app = makeApp({ jobQueue, startNewSession });
     const res = await post(app, {}, VALID_SECRET);
     expect(res.status).toBe(200);
-    expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(startNewSession.execute).not.toHaveBeenCalled();
   });
 
@@ -113,7 +112,7 @@ describe("POST /channels/telegram", () => {
       VALID_SECRET,
     );
     expect(res.status).toBe(200);
-    expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(startNewSession.execute).not.toHaveBeenCalled();
   });
 
@@ -128,17 +127,13 @@ describe("POST /channels/telegram", () => {
       VALID_SECRET,
     );
     expect(res.status).toBe(200);
-    expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(startNewSession.execute).not.toHaveBeenCalled();
   });
 
   it("returns 200 and enqueues ChannelJob for a plain text message", async () => {
     let capturedFn: (() => Promise<void>) | undefined;
     const jobQueue: JobQueue = {
-      tryEnqueue: vi.fn().mockImplementation((fn: () => Promise<void>) => {
-        capturedFn = fn;
-        return true;
-      }),
       enqueue: vi.fn().mockImplementation((fn: () => Promise<void>) => {
         capturedFn = fn;
       }),
@@ -179,7 +174,7 @@ describe("POST /channels/telegram", () => {
     });
   });
 
-  it("returns 200 and calls StartNewSession for /new command — no tryEnqueue", async () => {
+  it("returns 200 and calls StartNewSession for /new command — no enqueue", async () => {
     const jobQueue = makeJobQueue();
     const startNewSession = makeStartNewSession();
     const channelGateway = makeChannelGateway();
@@ -192,7 +187,7 @@ describe("POST /channels/telegram", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(startNewSession.execute).toHaveBeenCalledTimes(1);
     expect(channelGateway.reply).toHaveBeenCalledWith(
       { channel: "telegram", payload: { chatId: 99 } },
@@ -200,7 +195,7 @@ describe("POST /channels/telegram", () => {
     );
   });
 
-  it("returns 200 and replies unknown-command for unrecognised slash command — no tryEnqueue, no StartNewSession", async () => {
+  it("returns 200 and replies unknown-command for unrecognised slash command — no enqueue, no StartNewSession", async () => {
     const jobQueue = makeJobQueue();
     const startNewSession = makeStartNewSession();
     const channelGateway = makeChannelGateway();
@@ -213,7 +208,7 @@ describe("POST /channels/telegram", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(jobQueue.tryEnqueue).not.toHaveBeenCalled();
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(startNewSession.execute).not.toHaveBeenCalled();
     expect(channelGateway.reply).toHaveBeenCalledWith(
       { channel: "telegram", payload: { chatId: 7 } },
