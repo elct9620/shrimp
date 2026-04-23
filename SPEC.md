@@ -286,6 +286,7 @@ Channels deliver events via push (webhook or equivalent server-initiated mechani
 - Each Channel event carries a ConversationRef so outbound replies can be routed back to the originating Channel conversation.
 - Message events compete with Heartbeat for the single Job Queue slot. If the slot is busy, the event is dropped silently — the same drop semantics as `POST /heartbeat`. No retry inside Shrimp.
 - A Channel reply is delivered by the Job Worker after the agent returns, routed back to the originating Channel conversation via ChannelGateway using the ConversationRef. Reply failures follow Fail-Open Recovery — the Job is not failed solely because a reply could not be delivered.
+- Before invoking the Shrimp Agent, the Job Worker MAY surface a platform-native processing hint through ChannelGateway so users see the Job is being worked on. This indicator is cosmetic and best-effort: it follows Fail-Open Recovery and never fails the Job, and Channels that cannot or choose not to signal progress simply skip it.
 - Session creation and conversation history for Channel-driven Jobs are governed by the [Session Lifecycle](#session-lifecycle) section.
 
 **Failure handling:**
