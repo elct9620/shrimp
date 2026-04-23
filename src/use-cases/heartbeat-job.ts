@@ -105,14 +105,12 @@ export class HeartbeatJob {
 
         const comments = await this.board.getComments(selectedTask.id);
         const toolProvider = this.toolProviderFactory.create();
-        const tools = toolProvider.getToolDescriptions();
 
         const userAgents = (await this.userAgents?.read()) ?? null;
         const skills = this.skillCatalog?.list();
         const { systemPrompt, userPrompt } = assembleHeartbeatPrompts({
           task: selectedTask,
           comments,
-          tools,
           skills,
           userAgents,
         });

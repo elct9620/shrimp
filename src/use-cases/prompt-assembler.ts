@@ -1,6 +1,5 @@
 import { Task } from "../entities/task";
 import { Comment } from "../entities/comment";
-import type { ToolDescription } from "./ports/tool-description";
 import type { SkillCatalogEntry } from "./ports/skill-catalog";
 import systemBaseTemplate from "./prompts/system-base.md?raw";
 import systemHeartbeatTemplate from "./prompts/system-heartbeat.md?raw";
@@ -8,12 +7,9 @@ import systemChannelTemplate from "./prompts/system-channel.md?raw";
 import systemSummarizeTemplate from "./prompts/system-summarize.md?raw";
 import userHeartbeatTemplate from "./prompts/user-heartbeat.md?raw";
 
-export type { ToolDescription };
-
 export type HeartbeatAssembleInput = {
   task: Task;
   comments: Comment[];
-  tools: ToolDescription[];
   skills?: readonly SkillCatalogEntry[];
   userAgents?: string | null;
 };
@@ -26,13 +22,11 @@ export type HeartbeatAssembleOutput = {
 export function assembleHeartbeatPrompts({
   task,
   comments,
-  tools,
   skills,
   userAgents,
 }: HeartbeatAssembleInput): HeartbeatAssembleOutput {
   const systemPrompt = buildSystemPrompt(
     systemHeartbeatTemplate,
-    tools,
     skills,
     userAgents,
   );
@@ -41,15 +35,13 @@ export function assembleHeartbeatPrompts({
 }
 
 export function assembleChannelSystemPrompt({
-  tools,
   skills,
   userAgents,
 }: {
-  tools: ToolDescription[];
   skills?: readonly SkillCatalogEntry[];
   userAgents?: string | null;
-}): string {
-  return buildSystemPrompt(systemChannelTemplate, tools, skills, userAgents);
+} = {}): string {
+  return buildSystemPrompt(systemChannelTemplate, skills, userAgents);
 }
 
 export function assembleSummarizeSystemPrompt(): string {
@@ -77,7 +69,6 @@ function buildSkillCatalogSection(
 
 function buildSystemPrompt(
   variantTemplate: string,
-  tools?: ToolDescription[],
   skills?: readonly SkillCatalogEntry[],
   userAgents?: string | null,
 ): string {
@@ -88,14 +79,6 @@ function buildSystemPrompt(
 
   if (skills !== undefined) {
     prompt = `${prompt}\n\n${buildSkillCatalogSection(skills)}`;
-  }
-
-  if (tools !== undefined) {
-    const toolList =
-      tools.length > 0
-        ? tools.map((t) => `- ${t.name}: ${t.description}`).join("\n")
-        : "(none)";
-    prompt = `${prompt}\n\n## Tools\n\n${toolList}`;
   }
 
   const extra = userAgents?.trim();

@@ -4,7 +4,6 @@ import {
   assembleChannelSystemPrompt,
   assembleSummarizeSystemPrompt,
 } from "../../src/use-cases/prompt-assembler";
-import type { ToolDescription } from "../../src/use-cases/ports/tool-description";
 import type { SkillCatalogEntry } from "../../src/use-cases/ports/skill-catalog";
 import { Task } from "../../src/entities/task";
 import { Comment } from "../../src/entities/comment";
@@ -39,16 +38,12 @@ const makeComment = (
   author,
 });
 
-const makeTools = (...pairs: [string, string][]): ToolDescription[] =>
-  pairs.map(([name, description]) => ({ name, description }));
-
 describe("assembleHeartbeatPrompts", () => {
   describe("system prompt", () => {
     it("opens with goal-oriented language, not role-based framing", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
-        tools: [],
       });
 
       expect(systemPrompt).not.toMatch(/^You are/);
@@ -59,7 +54,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
-        tools: [],
       });
 
       expect(systemPrompt).toContain("## Operating Principles");
@@ -70,7 +64,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
-        tools: [],
       });
 
       expect(systemPrompt).toContain("## Objective");
@@ -80,7 +73,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
-        tools: [],
       });
 
       expect(systemPrompt).not.toContain("## Domain Knowledge");
@@ -92,97 +84,66 @@ describe("assembleHeartbeatPrompts", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
-        tools: [],
       });
 
       expect(systemPrompt).not.toContain("## Workflow");
       expect(systemPrompt).not.toContain("## Error Handling");
     });
 
-    it("orders sections from stable to dynamic: base → variant → tools", () => {
-      const tools = makeTools(["get_tasks", "Retrieve tasks"]);
+    it("does not contain a Tools section (tool definitions are provided via AI SDK tools parameter per SPEC L733)", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
-        tools,
+      });
+
+      expect(systemPrompt).not.toContain("## Tools");
+    });
+
+    it("orders sections from stable to dynamic: base → variant → Skills → User Agents Appendix", () => {
+      const skills = [makeSkillEntry()];
+      const { systemPrompt } = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        skills,
+        userAgents: "Operator note",
       });
 
       const principlesIdx = systemPrompt.indexOf("## Operating Principles");
       const objectiveIdx = systemPrompt.indexOf("## Objective");
-      const toolsIdx = systemPrompt.indexOf("## Tools");
+      const skillsIdx = systemPrompt.indexOf("## Skills");
+      const operatorIdx = systemPrompt.indexOf("Operator note");
 
       expect(principlesIdx).toBeGreaterThan(-1);
       expect(objectiveIdx).toBeGreaterThan(principlesIdx);
-      expect(toolsIdx).toBeGreaterThan(objectiveIdx);
-    });
-
-    it("lists each tool name and description in the system prompt", () => {
-      const tools = makeTools(
-        ["get_tasks", "Retrieve tasks from the board"],
-        ["post_comment", "Post a comment on a task"],
-      );
-
-      const { systemPrompt } = assembleHeartbeatPrompts({
-        task: makeTask(),
-        comments: [],
-        tools,
-      });
-
-      expect(systemPrompt).toContain("get_tasks");
-      expect(systemPrompt).toContain("Retrieve tasks from the board");
-      expect(systemPrompt).toContain("post_comment");
-      expect(systemPrompt).toContain("Post a comment on a task");
-    });
-
-    it("preserves tool description input order", () => {
-      const tools = makeTools(
-        ["alpha_tool", "Alpha description"],
-        ["beta_tool", "Beta description"],
-      );
-
-      const { systemPrompt } = assembleHeartbeatPrompts({
-        task: makeTask(),
-        comments: [],
-        tools,
-      });
-
-      expect(systemPrompt.indexOf("alpha_tool")).toBeLessThan(
-        systemPrompt.indexOf("beta_tool"),
-      );
+      expect(skillsIdx).toBeGreaterThan(objectiveIdx);
+      expect(operatorIdx).toBeGreaterThan(skillsIdx);
     });
 
     it("appends userAgents content to the system prompt when provided", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
-        tools: [],
         userAgents: "Operator override: prefer XYZ",
       });
 
       expect(systemPrompt).toContain("Operator override: prefer XYZ");
-      expect(systemPrompt.indexOf("Operator override:")).toBeGreaterThan(
-        systemPrompt.indexOf("## Tools"),
-      );
     });
 
     it("omits userAgents section when null or empty", () => {
       const base = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
-        tools: [],
       }).systemPrompt;
 
       const withNull = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
-        tools: [],
         userAgents: null,
       }).systemPrompt;
 
       const withEmpty = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
-        tools: [],
         userAgents: "   ",
       }).systemPrompt;
 
@@ -194,7 +155,6 @@ describe("assembleHeartbeatPrompts", () => {
       const input = {
         task: makeTask(),
         comments: [],
-        tools: makeTools(["t", "d"]),
       };
 
       expect(assembleHeartbeatPrompts(input)).toEqual(
@@ -207,7 +167,6 @@ describe("assembleHeartbeatPrompts", () => {
         const { systemPrompt } = assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
-          tools: [],
           skills: [],
         });
 
@@ -226,7 +185,6 @@ describe("assembleHeartbeatPrompts", () => {
         const { systemPrompt } = assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
-          tools: [],
           skills,
         });
 
@@ -257,7 +215,6 @@ describe("assembleHeartbeatPrompts", () => {
         const { systemPrompt } = assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
-          tools: [],
           skills,
         });
 
@@ -275,42 +232,22 @@ describe("assembleHeartbeatPrompts", () => {
         const { systemPrompt } = assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
-          tools: [],
           skills,
           userAgents: "Operator note",
         });
 
-        const workflowIdx = systemPrompt.indexOf("## Workflow");
+        const objectiveIdx = systemPrompt.indexOf("## Objective");
         const skillsIdx = systemPrompt.indexOf("## Skills");
         const operatorIdx = systemPrompt.indexOf("Operator note");
 
-        expect(skillsIdx).toBeGreaterThan(workflowIdx);
+        expect(skillsIdx).toBeGreaterThan(objectiveIdx);
         expect(operatorIdx).toBeGreaterThan(skillsIdx);
-      });
-
-      it("places the Skills section before the Tools section", () => {
-        const tools = makeTools(["get_tasks", "Retrieve tasks"]);
-        const skills = [makeSkillEntry()];
-
-        const { systemPrompt } = assembleHeartbeatPrompts({
-          task: makeTask(),
-          comments: [],
-          tools,
-          skills,
-        });
-
-        const skillsIdx = systemPrompt.indexOf("## Skills");
-        const toolsIdx = systemPrompt.indexOf("## Tools");
-
-        expect(skillsIdx).toBeGreaterThan(-1);
-        expect(toolsIdx).toBeGreaterThan(skillsIdx);
       });
 
       it("omits Skills section when skills param is not provided (no-op for summarize variant)", () => {
         const { systemPrompt } = assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
-          tools: [],
         });
 
         expect(systemPrompt).not.toContain("## Skills");
@@ -323,7 +260,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask({ id: "task-abc-123" }),
         comments: [],
-        tools: [],
       });
 
       expect(userPrompt).toContain("task-abc-123");
@@ -333,7 +269,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask({ title: "Deploy to production" }),
         comments: [],
-        tools: [],
       });
 
       expect(userPrompt).toContain("Deploy to production");
@@ -343,7 +278,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask({ description: "Steps: 1, 2, 3" }),
         comments: [],
-        tools: [],
       });
 
       expect(userPrompt).toContain("Steps: 1, 2, 3");
@@ -353,7 +287,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask({ section: Section.InProgress }),
         comments: [],
-        tools: [],
       });
 
       expect(userPrompt).toContain("In Progress");
@@ -363,7 +296,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask({ section: Section.Backlog }),
         comments: [],
-        tools: [],
       });
 
       expect(userPrompt).toContain("Backlog");
@@ -373,7 +305,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask({ section: Section.Done }),
         comments: [],
-        tools: [],
       });
 
       expect(userPrompt).toContain("Done");
@@ -385,7 +316,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments,
-        tools: [],
       });
 
       expect(userPrompt).toContain("First execution: created files");
@@ -401,7 +331,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments,
-        tools: [],
       });
 
       const firstIdx = userPrompt.indexOf("First comment");
@@ -418,7 +347,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments,
-        tools: [],
       });
 
       expect(userPrompt).toContain("[Bot] Progress update");
@@ -430,7 +358,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments,
-        tools: [],
       });
 
       expect(userPrompt).toContain("[User] Please check this");
@@ -446,7 +373,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments,
-        tools: [],
       });
 
       const userIdx = userPrompt.indexOf("[User] User question");
@@ -463,7 +389,6 @@ describe("assembleHeartbeatPrompts", () => {
         assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
-          tools: [],
         }),
       ).not.toThrow();
     });
@@ -474,7 +399,6 @@ describe("assembleHeartbeatPrompts", () => {
       const { userPrompt } = assembleHeartbeatPrompts({
         task,
         comments: [],
-        tools: [],
       });
 
       expect(userPrompt).toContain(task.title);
@@ -486,21 +410,21 @@ describe("assembleHeartbeatPrompts", () => {
 
 describe("assembleChannelSystemPrompt", () => {
   it("opens with goal-oriented language, not role-based framing", () => {
-    const systemPrompt = assembleChannelSystemPrompt({ tools: [] });
+    const systemPrompt = assembleChannelSystemPrompt({});
 
     expect(systemPrompt).not.toMatch(/^You are/);
     expect(systemPrompt).not.toMatch(/\nYou are /);
   });
 
   it("includes the shared base operating principles", () => {
-    const systemPrompt = assembleChannelSystemPrompt({ tools: [] });
+    const systemPrompt = assembleChannelSystemPrompt({});
 
     expect(systemPrompt).toContain("## Operating Principles");
     expect(systemPrompt.toLowerCase()).toContain("guess");
   });
 
   it("includes channel-specific conversation guidance (no reply tool, concise)", () => {
-    const systemPrompt = assembleChannelSystemPrompt({ tools: [] });
+    const systemPrompt = assembleChannelSystemPrompt({});
 
     expect(systemPrompt).toContain("## Conversation Style");
     expect(systemPrompt).toContain("`reply`");
@@ -508,54 +432,46 @@ describe("assembleChannelSystemPrompt", () => {
   });
 
   it("does not include the heartbeat-only board workflow sections", () => {
-    const systemPrompt = assembleChannelSystemPrompt({ tools: [] });
+    const systemPrompt = assembleChannelSystemPrompt({});
 
     expect(systemPrompt).not.toContain("## Workflow");
     expect(systemPrompt).not.toContain("## Domain Knowledge");
   });
 
-  it("lists each tool name and description", () => {
-    const tools = makeTools(
-      ["search_web", "Search the web for info"],
-      ["create_task", "Create a Todoist task"],
-    );
+  it("does not contain a Tools section (tool definitions are provided via AI SDK tools parameter per SPEC L733)", () => {
+    const systemPrompt = assembleChannelSystemPrompt({});
 
-    const systemPrompt = assembleChannelSystemPrompt({ tools });
-
-    expect(systemPrompt).toContain("search_web");
-    expect(systemPrompt).toContain("Search the web for info");
-    expect(systemPrompt).toContain("create_task");
-    expect(systemPrompt).toContain("Create a Todoist task");
+    expect(systemPrompt).not.toContain("## Tools");
   });
 
-  it("orders sections from stable to dynamic: base → variant → tools", () => {
-    const tools = makeTools(["search_web", "Search the web"]);
-    const systemPrompt = assembleChannelSystemPrompt({ tools });
+  it("orders sections from stable to dynamic: base → variant → Skills → User Agents Appendix", () => {
+    const skills = [makeSkillEntry()];
+    const systemPrompt = assembleChannelSystemPrompt({
+      skills,
+      userAgents: "Operator note",
+    });
 
     const principlesIdx = systemPrompt.indexOf("## Operating Principles");
     const styleIdx = systemPrompt.indexOf("## Conversation Style");
-    const toolsIdx = systemPrompt.indexOf("## Tools");
+    const skillsIdx = systemPrompt.indexOf("## Skills");
+    const operatorIdx = systemPrompt.indexOf("Operator note");
 
     expect(principlesIdx).toBeGreaterThan(-1);
     expect(styleIdx).toBeGreaterThan(principlesIdx);
-    expect(toolsIdx).toBeGreaterThan(styleIdx);
+    expect(skillsIdx).toBeGreaterThan(styleIdx);
+    expect(operatorIdx).toBeGreaterThan(skillsIdx);
   });
 
   it("appends userAgents content when provided", () => {
     const systemPrompt = assembleChannelSystemPrompt({
-      tools: [],
       userAgents: "Channel-wide operator note",
     });
 
     expect(systemPrompt).toContain("Channel-wide operator note");
-    expect(systemPrompt.indexOf("Channel-wide operator note")).toBeGreaterThan(
-      systemPrompt.indexOf("## Tools"),
-    );
   });
 
   it("emits the Skills section header even when the catalog is empty", () => {
     const systemPrompt = assembleChannelSystemPrompt({
-      tools: [],
       skills: [],
     });
 
@@ -571,7 +487,7 @@ describe("assembleChannelSystemPrompt", () => {
       }),
     ];
 
-    const systemPrompt = assembleChannelSystemPrompt({ tools: [], skills });
+    const systemPrompt = assembleChannelSystemPrompt({ skills });
 
     expect(systemPrompt).toContain("triage");
     expect(systemPrompt).toContain("Triage incoming messages");
@@ -582,7 +498,6 @@ describe("assembleChannelSystemPrompt", () => {
     const skills = [makeSkillEntry()];
 
     const systemPrompt = assembleChannelSystemPrompt({
-      tools: [],
       skills,
       userAgents: "Operator channel note",
     });
@@ -599,9 +514,8 @@ describe("assembleChannelSystemPrompt", () => {
     const heartbeat = assembleHeartbeatPrompts({
       task: makeTask(),
       comments: [],
-      tools: [],
     }).systemPrompt;
-    const channel = assembleChannelSystemPrompt({ tools: [] });
+    const channel = assembleChannelSystemPrompt({});
 
     // Both should start with the same base content up to the first variant heading.
     const heartbeatBase = heartbeat.slice(0, heartbeat.indexOf("## Objective"));
@@ -645,7 +559,7 @@ describe("assembleSummarizeSystemPrompt", () => {
 
   it("shares the same base section as the channel variant", () => {
     const summarize = assembleSummarizeSystemPrompt();
-    const channel = assembleChannelSystemPrompt({ tools: [] });
+    const channel = assembleChannelSystemPrompt({});
 
     const summarizeBase = summarize.slice(0, summarize.indexOf("## Objective"));
     const channelBase = channel.slice(0, channel.indexOf("## Objective"));

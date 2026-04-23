@@ -101,7 +101,6 @@ export class ChannelJob {
         const userAgents = (await this.userAgents?.read()) ?? null;
         const skills = this.skillCatalog?.list();
         const systemPrompt = assembleChannelSystemPrompt({
-          tools: toolProvider.getToolDescriptions(),
           skills,
           userAgents,
         });

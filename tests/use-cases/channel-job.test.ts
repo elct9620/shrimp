@@ -222,18 +222,8 @@ describe("ChannelJob.run", () => {
     ).rejects.toThrow("agent exploded");
   });
 
-  it("assembles the system prompt via the shared assembler (includes base principles and tool descriptions)", async () => {
-    const factory: ToolProviderFactory = {
-      create: vi.fn(() => ({
-        getTools: vi.fn().mockReturnValue({}),
-        getToolDescriptions: vi
-          .fn()
-          .mockReturnValue([
-            { name: "search_web", description: "Search the web" },
-          ]),
-      })),
-    };
-    const j = makeJob(sessionRepo, agent, logger, factory);
+  it("assembles the system prompt via the shared assembler (includes base principles, no tool list per SPEC L733)", async () => {
+    const j = makeJob(sessionRepo, agent, logger);
 
     await j.run({
       message: "Hi",
@@ -244,8 +234,7 @@ describe("ChannelJob.run", () => {
     const systemPrompt = agent.capturedInput?.systemPrompt ?? "";
     expect(systemPrompt).toContain("## Operating Principles");
     expect(systemPrompt).toContain("## Conversation Style");
-    expect(systemPrompt).toContain("search_web");
-    expect(systemPrompt).toContain("Search the web");
+    expect(systemPrompt).not.toContain("## Tools");
     expect(systemPrompt).not.toMatch(/^You are/);
   });
 
