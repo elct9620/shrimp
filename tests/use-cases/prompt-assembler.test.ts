@@ -636,6 +636,22 @@ describe("assembleChannelSystemPrompt", () => {
     expect(systemPrompt.toLowerCase()).toContain("concise");
   });
 
+  it("Channel ## Objective does not contain output-format language (plain, text, markdown, format)", () => {
+    const systemPrompt = assembleChannelSystemPrompt({});
+
+    const objectiveIdx = systemPrompt.indexOf("## Objective");
+    const conversationStyleIdx = systemPrompt.indexOf("## Conversation Style");
+    const objectiveSection = systemPrompt.slice(
+      objectiveIdx,
+      conversationStyleIdx,
+    );
+
+    expect(objectiveSection.toLowerCase()).not.toContain("plain text");
+    expect(objectiveSection.toLowerCase()).not.toContain("plain");
+    expect(objectiveSection.toLowerCase()).not.toContain("markdown");
+    expect(objectiveSection.toLowerCase()).not.toContain("format");
+  });
+
   it("does not include the heartbeat-only board workflow sections", () => {
     const systemPrompt = assembleChannelSystemPrompt({});
 
@@ -844,7 +860,7 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatSection).not.toMatch(/^- /m); // bullet list markers
     });
 
-    it("Reply Format block names 'plain text' as the output format", () => {
+    it("Reply Format block opens with positive action verb, not 'plain text'", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
       const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
@@ -857,7 +873,44 @@ describe("assembleChannelSystemPrompt", () => {
           ? afterHeader
           : afterHeader.slice(0, nextSectionIdx);
 
-      expect(replyFormatBody.toLowerCase()).toContain("plain text");
+      // Must open with a positive imperative, not "plain text"
+      expect(replyFormatBody.trimStart()).toMatch(/^Write replies/);
+      expect(replyFormatBody.toLowerCase()).not.toContain("plain text");
+    });
+
+    it("Reply Format block contains exactly one Markdown-related sentence ('Markdown symbols' appears once)", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      const matches = replyFormatBody.match(/Markdown symbols/g);
+      expect(matches).not.toBeNull();
+      expect(matches!.length).toBe(1);
+    });
+
+    it("Reply Format block contains both concrete examples ('For example' and 'Another example')", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      expect(replyFormatBody).toContain("For example:");
+      expect(replyFormatBody).toContain("Another example:");
     });
 
     it("Reply Format block contains a concrete example", () => {
