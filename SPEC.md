@@ -343,13 +343,13 @@ Auto Compact is the mechanism that automatically rotates a ChannelJob Session wh
 
 _Trigger rule:_
 
-| Property            | Value                                                                                                                                                                                                                                                                 |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Evaluation actor    | Job Worker (not Shrimp Agent)                                                                                                                                                                                                                                         |
-| Evaluation timing   | After the ChannelJob's Shrimp Agent invocation completes successfully AND after the new ConversationMessage entries for that turn have been appended to the current Session JSONL file — i.e., the archived Session is always faithful to what was actually exchanged |
-| Input to the check  | `promptTokens` from the just-completed Shrimp Agent invocation (the value the AI provider reports as `ai.usage.promptTokens` / `gen_ai.usage.input_tokens` for that turn's last step)                                                                                 |
-| Comparison operator | `promptTokens >= Compaction Threshold` ⇒ compaction runs                                                                                                                                                                                                              |
-| Missing token count | If the AI provider does not return a token count for the completed turn, compaction is skipped for this turn; the turn's messages remain in the current Session normally; see [Failure Handling](#failure-handling) for the failure rule                              |
+| Property            | Value                                                                                                                                                                                                                                    |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Evaluation actor    | Job Worker (not Shrimp Agent)                                                                                                                                                                                                            |
+| Evaluation timing   | After the ChannelJob's Shrimp Agent invocation completes successfully AND after the new ConversationMessage entries for that turn have been appended to the current Session JSONL file                                                   |
+| Input to the check  | `promptTokens` from the just-completed Shrimp Agent invocation (the value the AI provider reports as `ai.usage.promptTokens` / `gen_ai.usage.input_tokens` for that turn's last step)                                                    |
+| Comparison operator | `promptTokens >= Compaction Threshold` ⇒ compaction runs                                                                                                                                                                                 |
+| Missing token count | If the AI provider does not return a token count for the completed turn, compaction is skipped for this turn; the turn's messages remain in the current Session normally; see [Failure Handling](#failure-handling) for the failure rule |
 
 _Compaction procedure (ordered):_
 
