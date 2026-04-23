@@ -268,14 +268,18 @@ describe("assembleHeartbeatPrompts", () => {
         expect(systemPrompt).toContain("read(path)");
       });
 
-      it("Tools section explains progressive-disclosure concept", () => {
+      it("Tools section positions skill/read as primary loaders with fallback note for direct tool use", () => {
         const { systemPrompt } = assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
           skills: [makeSkillEntry()],
         });
 
-        expect(systemPrompt.toLowerCase()).toContain("progressive");
+        // Primary loaders are described
+        expect(systemPrompt).toContain("skill(name)");
+        expect(systemPrompt).toContain("read(path)");
+        // Fallback positioning is explicit
+        expect(systemPrompt.toLowerCase()).toContain("no skill matches");
       });
 
       it("omits Tools section when skills param is not provided", () => {
@@ -313,6 +317,40 @@ describe("assembleHeartbeatPrompts", () => {
 
         expect(toolsIdx).toBeGreaterThan(skillsIdx);
         expect(operatorIdx).toBeGreaterThan(toolsIdx);
+      });
+
+      it("Operating Principles has skill-first directive as first bullet", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills: [makeSkillEntry()],
+        });
+
+        const principlesIdx = systemPrompt.indexOf("## Operating Principles");
+        const principlesSection = systemPrompt.slice(principlesIdx);
+        // The first bullet after the heading should reference Skills catalog
+        const firstBullet = principlesSection.match(/^- (.+)/m)?.[1] ?? "";
+        expect(firstBullet.toLowerCase()).toContain("skills catalog");
+      });
+
+      it("Skills section header describes catalog as primary playbooks", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills: [makeSkillEntry()],
+        });
+
+        expect(systemPrompt.toLowerCase()).toContain("playbook");
+      });
+
+      it("Tools section mentions fallback for direct tool use when no skill matches", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills: [makeSkillEntry()],
+        });
+
+        expect(systemPrompt.toLowerCase()).toContain("no skill matches");
       });
     });
   });
