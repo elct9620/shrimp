@@ -41,7 +41,12 @@ export function assembleChannelSystemPrompt({
   skills?: readonly SkillCatalogEntry[];
   userAgents?: string | null;
 } = {}): string {
-  return buildSystemPrompt(systemChannelTemplate, skills, userAgents);
+  return buildSystemPrompt(
+    systemChannelTemplate,
+    skills,
+    userAgents,
+    buildChannelReplyFormatSection(),
+  );
 }
 
 export function assembleSummarizeSystemPrompt(): string {
@@ -78,10 +83,21 @@ function buildToolsSection(): string {
   ].join("\n");
 }
 
+function buildChannelReplyFormatSection(): string {
+  return [
+    "## Reply Format",
+    "",
+    "Write replies as ordinary conversational sentences. Use line breaks between ideas and normal punctuation to pace the message. Show URLs as bare text.",
+    "",
+    "When a skill guided your work, put the outcome into your own words for the user.",
+  ].join("\n");
+}
+
 function buildSystemPrompt(
   variantTemplate: string,
   skills?: readonly SkillCatalogEntry[],
   userAgents?: string | null,
+  variantPostTools?: string,
 ): string {
   const base = systemBaseTemplate.trimEnd();
   const variant = variantTemplate.trimEnd();
@@ -91,6 +107,10 @@ function buildSystemPrompt(
   if (skills !== undefined) {
     prompt = `${prompt}\n\n${buildSkillCatalogSection(skills)}`;
     prompt = `${prompt}\n\n${buildToolsSection()}`;
+  }
+
+  if (variantPostTools !== undefined) {
+    prompt = `${prompt}\n\n${variantPostTools}`;
   }
 
   const extra = userAgents?.trim();

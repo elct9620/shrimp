@@ -583,18 +583,23 @@ describe("assembleChannelSystemPrompt", () => {
     expect(systemPrompt).not.toContain("## Domain Knowledge");
   });
 
-  it("includes Reply Format section inside the channel variant (before Skills)", () => {
+  it("includes Reply Format section between Tools and User Agents Appendix", () => {
     const skills = [makeSkillEntry()];
-    const systemPrompt = assembleChannelSystemPrompt({ skills });
+    const systemPrompt = assembleChannelSystemPrompt({
+      skills,
+      userAgents: "Operator note",
+    });
 
-    const replyFormatIdx = systemPrompt.indexOf("Reply Format");
-    const skillsIdx = systemPrompt.indexOf("## Skills");
+    const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+    const toolsIdx = systemPrompt.indexOf("## Tools");
+    const operatorIdx = systemPrompt.indexOf("Operator note");
 
     expect(replyFormatIdx).toBeGreaterThan(-1);
-    expect(skillsIdx).toBeGreaterThan(replyFormatIdx);
+    expect(replyFormatIdx).toBeGreaterThan(toolsIdx);
+    expect(operatorIdx).toBeGreaterThan(replyFormatIdx);
   });
 
-  it("orders sections: base → variant (with Reply Format) → Skills → Tools → User Agents Appendix", () => {
+  it("orders sections: base → variant → Skills → Tools → Reply Format → User Agents Appendix", () => {
     const skills = [makeSkillEntry()];
     const systemPrompt = assembleChannelSystemPrompt({
       skills,
@@ -603,17 +608,17 @@ describe("assembleChannelSystemPrompt", () => {
 
     const approachIdx = systemPrompt.indexOf("## Approach");
     const styleIdx = systemPrompt.indexOf("## Conversation Style");
-    const replyFormatIdx = systemPrompt.indexOf("Reply Format");
     const skillsIdx = systemPrompt.indexOf("## Skills");
     const toolsIdx = systemPrompt.indexOf("## Tools");
+    const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
     const operatorIdx = systemPrompt.indexOf("Operator note");
 
     expect(approachIdx).toBeGreaterThan(-1);
     expect(styleIdx).toBeGreaterThan(approachIdx);
-    expect(replyFormatIdx).toBeGreaterThan(styleIdx);
-    expect(skillsIdx).toBeGreaterThan(replyFormatIdx);
+    expect(skillsIdx).toBeGreaterThan(styleIdx);
     expect(toolsIdx).toBeGreaterThan(skillsIdx);
-    expect(operatorIdx).toBeGreaterThan(toolsIdx);
+    expect(replyFormatIdx).toBeGreaterThan(toolsIdx);
+    expect(operatorIdx).toBeGreaterThan(replyFormatIdx);
   });
 
   it("AGENTS.md (User Agents Appendix) is the final block — nothing follows it", () => {
@@ -707,41 +712,69 @@ describe("assembleChannelSystemPrompt", () => {
     expect(heartbeatBase).toContain("## Approach");
   });
 
-  describe("Reply Format section (inside channel variant)", () => {
-    it("Reply Format section is present inside the channel system prompt", () => {
+  describe("Reply Format section (between Tools and User Agents Appendix)", () => {
+    it("Reply Format section is present in the channel system prompt", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      expect(systemPrompt).toContain("Reply Format");
+      expect(systemPrompt).toContain("## Reply Format");
     });
 
-    it("Reply Format section comes before Skills/Tools (it is part of the variant, not a trailer)", () => {
+    it("Reply Format section sits AFTER Tools section", () => {
       const systemPrompt = assembleChannelSystemPrompt({
         skills: [makeSkillEntry()],
       });
 
-      const replyFormatIdx = systemPrompt.indexOf("Reply Format");
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const toolsIdx = systemPrompt.indexOf("## Tools");
+
+      expect(replyFormatIdx).toBeGreaterThan(-1);
+      expect(replyFormatIdx).toBeGreaterThan(toolsIdx);
+    });
+
+    it("Reply Format section sits AFTER Skills section", () => {
+      const systemPrompt = assembleChannelSystemPrompt({
+        skills: [makeSkillEntry()],
+      });
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
       const skillsIdx = systemPrompt.indexOf("## Skills");
 
       expect(replyFormatIdx).toBeGreaterThan(-1);
-      expect(skillsIdx).toBeGreaterThan(replyFormatIdx);
+      expect(replyFormatIdx).toBeGreaterThan(skillsIdx);
     });
 
     it("Reply Format section comes BEFORE User Agents Appendix", () => {
       const systemPrompt = assembleChannelSystemPrompt({
+        skills: [makeSkillEntry()],
         userAgents: "Operator note",
       });
 
-      const replyFormatIdx = systemPrompt.indexOf("Reply Format");
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
       const operatorIdx = systemPrompt.indexOf("Operator note");
 
       expect(replyFormatIdx).toBeGreaterThan(-1);
       expect(operatorIdx).toBeGreaterThan(replyFormatIdx);
     });
 
+    it("Reply Format is present (as last non-empty block) when userAgents is absent", () => {
+      const systemPrompt = assembleChannelSystemPrompt({
+        skills: [makeSkillEntry()],
+      });
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      expect(replyFormatIdx).toBeGreaterThan(-1);
+      // Nothing substantive follows Reply Format when no userAgents
+      const afterReplyFormat = systemPrompt
+        .slice(replyFormatIdx + "## Reply Format".length)
+        .trim();
+      expect(afterReplyFormat.length).toBeGreaterThan(0); // has content body
+      expect(afterReplyFormat).not.toContain("##"); // no further sections
+    });
+
     it("Reply Format block is plain prose — no literal markdown syntax demonstrations", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("Reply Format");
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
       const replyFormatSection = systemPrompt.slice(replyFormatIdx);
 
       // Must NOT contain literal markdown syntax being demonstrated
@@ -751,13 +784,57 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatSection).not.toMatch(/^- /m); // bullet list markers
     });
 
-    it("Reply Format block contains the skills-not-template clause", () => {
+    it("Reply Format block uses no negative phrasing (not, do not, don't)", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.indexOf("Reply Format");
-      const replyFormatSection = systemPrompt.slice(replyFormatIdx);
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      // Extract only the Reply Format block (up to next ## or end)
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
 
-      expect(replyFormatSection.toLowerCase()).toContain("execution reference");
+      expect(replyFormatBody).not.toMatch(/\bnot\b/i);
+      expect(replyFormatBody).not.toMatch(/\bdon't\b/i);
+      expect(replyFormatBody).not.toMatch(/\bdo not\b/i);
+    });
+
+    it("Reply Format block opens sentences with positive action verbs", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      // Should contain at least one sentence starting with a positive imperative
+      expect(replyFormatBody).toMatch(/\b(Write|Use|Put|Keep|Show|Give)\b/);
+    });
+
+    it("Heartbeat system prompt does NOT include Reply Format section", () => {
+      const { systemPrompt } = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        skills: [makeSkillEntry()],
+        userAgents: "Operator note",
+      });
+
+      expect(systemPrompt).not.toContain("## Reply Format");
+    });
+
+    it("Summarize system prompt does NOT include Reply Format section", () => {
+      const systemPrompt = assembleSummarizeSystemPrompt();
+
+      expect(systemPrompt).not.toContain("## Reply Format");
     });
   });
 });
