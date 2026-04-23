@@ -207,6 +207,38 @@ describe("FileSkillRepository", () => {
     expect(logger.warns.length).toBeGreaterThan(0);
   });
 
+  it("unparseable YAML frontmatter → warn+skip; valid sibling skill still loaded", async () => {
+    // Valid sibling that must survive
+    await writeSkill(builtInRoot, "good-skill", {
+      name: "good-skill",
+      description: "Good skill",
+    });
+
+    // Syntactically broken YAML: unterminated flow mapping triggers a js-yaml parse error
+    const badDir = join(builtInRoot, "bad-yaml-skill");
+    await mkdir(badDir);
+    await writeFile(
+      join(badDir, "SKILL.md"),
+      "---\nname: bad-yaml-skill\ndescription: {unterminated bracket\n---\nBody",
+    );
+
+    const repo = new FileSkillRepository(builtInRoot, null, logger);
+    const entries = repo.list();
+
+    // Constructor must not throw
+    expect(entries).toHaveLength(1);
+    expect(entries[0].name).toBe("good-skill");
+
+    // A warn must have been emitted referencing the bad skill's path
+    expect(logger.warns.length).toBeGreaterThan(0);
+    const warnCtx = logger.warns.find(
+      (w) =>
+        w.ctx?.["skillFilePath"] !== undefined &&
+        String(w.ctx["skillFilePath"]).includes("bad-yaml-skill"),
+    );
+    expect(warnCtx).toBeDefined();
+  });
+
   it("SKILL.md file missing in skill dir → skip silently (no warn)", async () => {
     const notASkillDir = join(builtInRoot, "not-a-skill");
     await mkdir(notASkillDir);
