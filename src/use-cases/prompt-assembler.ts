@@ -87,7 +87,13 @@ function buildChannelReplyFormatSection(): string {
   return [
     "## Reply Format",
     "",
-    "Write replies as ordinary conversational sentences. Use line breaks between ideas and normal punctuation to pace the message. Show URLs as bare text.",
+    "Write in plain text. The channel renders characters literally — Markdown symbols appear as raw characters rather than formatting — so plain text keeps the reply readable.",
+    "",
+    "Use ordinary sentences, line breaks between ideas, and regular punctuation. Show URLs as bare text.",
+    "",
+    'For example: "Hakodate has three great spots: the morning market, the cable car up Mt. Hakodate at sunset, and the old brick warehouses in Motomachi. Let me know if you want more detail on any of them."',
+    "",
+    'Another example: "I checked with the search skill. The Hakodate ropeway closes at 10pm from October through April."',
     "",
     "When a skill guided your work, put the outcome into your own words for the user.",
   ].join("\n");

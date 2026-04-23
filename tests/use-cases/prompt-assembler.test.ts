@@ -844,6 +844,38 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatSection).not.toMatch(/^- /m); // bullet list markers
     });
 
+    it("Reply Format block names 'plain text' as the output format", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      expect(replyFormatBody.toLowerCase()).toContain("plain text");
+    });
+
+    it("Reply Format block contains a concrete example", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      expect(replyFormatBody.toLowerCase()).toMatch(/for example|example:/i);
+    });
+
     it("Reply Format block uses no negative phrasing (not, do not, don't)", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
