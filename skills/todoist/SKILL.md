@@ -35,7 +35,7 @@ Comments on a task are prefixed with a label that identifies their source:
 - `[Bot]` — posted by a prior Shrimp Agent execution
 - `[User]` — posted by the task owner
 
-Read both label types to understand full context. Do not repeat work already described in `[Bot]` comments unless the prior attempt failed.
+Read both label types to understand full context. Build on work already described in `[Bot]` comments; revisit a prior attempt only when it failed.
 
 ## Typical Workflow
 
@@ -81,13 +81,13 @@ Moves a task to a different board section.
 
 - **Input**: `taskId` — the Todoist task ID string; `section` — one of `"Backlog"`, `"InProgress"`, or `"Done"`
 - **Returns**: `{ ok: true }` on success
-- **Typical use**: call with `"Done"` only after the work is verified as complete and a progress comment has been posted. Do not move a task to Done unless the outcome has been confirmed. Do not delete tasks; only move them.
+- **Typical use**: call with `"Done"` only after the work is verified as complete and a progress comment has been posted. Move tasks between sections; never delete them.
 
 ## Guardrails
 
 - **Always post a progress comment before ending execution**, regardless of whether the task is complete or not. This is the primary mechanism for continuity across cycles.
-- **Do not move a task to Done unless the work is verified as complete.** If uncertain, leave the task in In Progress and describe the uncertainty in a comment.
-- **Do not repeat prior work.** Read `[Bot]` comments from previous cycles to understand what was already attempted and avoid duplicating effort.
-- **If a tool call fails**, post a comment describing the failure and what was attempted. Do not silently discard errors.
-- **If the task is unclear or blocked**, post a comment explaining what information or action is needed. Do not guess at intent.
+- **Move a task to Done only when the work is verified as complete.** If uncertain, leave the task in In Progress and describe the uncertainty in a comment.
+- **Read `[Bot]` comments from previous cycles** to understand what was already attempted and avoid duplicating effort.
+- **If a tool call fails**, post a comment describing the failure and what was attempted; surface errors rather than discarding them.
+- **If the task is unclear or blocked**, post a comment explaining what information or action is needed rather than guessing at intent.
 - **If running low on remaining steps**, prioritize posting a progress comment over continuing execution. An incomplete task with a good progress comment is better than an incomplete task with no record.

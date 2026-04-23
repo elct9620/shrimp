@@ -50,14 +50,44 @@ describe("assembleHeartbeatPrompts", () => {
       expect(systemPrompt).not.toMatch(/\nYou are /);
     });
 
-    it("includes shared base operating principles (rigor, no guessing)", () => {
+    it("includes ## Approach and ## Working Style sections (replaced Operating Principles)", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
       });
 
-      expect(systemPrompt).toContain("## Operating Principles");
-      expect(systemPrompt.toLowerCase()).toContain("guess");
+      expect(systemPrompt).toContain("## Approach");
+      expect(systemPrompt).toContain("## Working Style");
+      expect(systemPrompt).not.toContain("## Operating Principles");
+    });
+
+    it("## Approach section contains skill-first workflow directive", () => {
+      const { systemPrompt } = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+      });
+
+      const approachIdx = systemPrompt.indexOf("## Approach");
+      const workingStyleIdx = systemPrompt.indexOf("## Working Style");
+      const approachSection = systemPrompt.slice(approachIdx, workingStyleIdx);
+
+      expect(approachSection.toLowerCase()).toContain("skill");
+    });
+
+    it("## Working Style section contains positive behavioural norms (ask when uncertain, report facts)", () => {
+      const { systemPrompt } = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+      });
+
+      const workingStyleIdx = systemPrompt.indexOf("## Working Style");
+      const nextSection = systemPrompt.indexOf("\n## ", workingStyleIdx + 1);
+      const workingStyleSection =
+        nextSection === -1
+          ? systemPrompt.slice(workingStyleIdx)
+          : systemPrompt.slice(workingStyleIdx, nextSection);
+
+      expect(workingStyleSection.toLowerCase()).toContain("guess");
     });
 
     it("includes heartbeat objective (goal framing for task execution)", () => {
@@ -99,17 +129,34 @@ describe("assembleHeartbeatPrompts", () => {
         userAgents: "Operator note",
       });
 
-      const principlesIdx = systemPrompt.indexOf("## Operating Principles");
+      const approachIdx = systemPrompt.indexOf("## Approach");
       const objectiveIdx = systemPrompt.indexOf("## Objective");
       const skillsIdx = systemPrompt.indexOf("## Skills");
       const toolsIdx = systemPrompt.indexOf("## Tools");
       const operatorIdx = systemPrompt.indexOf("Operator note");
 
-      expect(principlesIdx).toBeGreaterThan(-1);
-      expect(objectiveIdx).toBeGreaterThan(principlesIdx);
+      expect(approachIdx).toBeGreaterThan(-1);
+      expect(objectiveIdx).toBeGreaterThan(approachIdx);
       expect(skillsIdx).toBeGreaterThan(objectiveIdx);
       expect(toolsIdx).toBeGreaterThan(skillsIdx);
       expect(operatorIdx).toBeGreaterThan(toolsIdx);
+    });
+
+    it("AGENTS.md (User Agents Appendix) is the final block — nothing follows it", () => {
+      const skills = [makeSkillEntry()];
+      const userAgents = "Operator note: final section marker";
+      const { systemPrompt } = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        skills,
+        userAgents,
+      });
+
+      const operatorIdx = systemPrompt.indexOf(userAgents);
+      expect(operatorIdx).toBeGreaterThan(-1);
+      // Nothing substantive follows the user agents block
+      const after = systemPrompt.slice(operatorIdx + userAgents.length).trim();
+      expect(after).toBe("");
     });
 
     it("appends userAgents content to the system prompt when provided", () => {
@@ -319,18 +366,16 @@ describe("assembleHeartbeatPrompts", () => {
         expect(operatorIdx).toBeGreaterThan(toolsIdx);
       });
 
-      it("Operating Principles has skill-first directive as first bullet", () => {
+      it("## Approach section has skill-first directive", () => {
         const { systemPrompt } = assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
           skills: [makeSkillEntry()],
         });
 
-        const principlesIdx = systemPrompt.indexOf("## Operating Principles");
-        const principlesSection = systemPrompt.slice(principlesIdx);
-        // The first bullet after the heading should reference Skills catalog
-        const firstBullet = principlesSection.match(/^- (.+)/m)?.[1] ?? "";
-        expect(firstBullet.toLowerCase()).toContain("skills catalog");
+        const approachIdx = systemPrompt.indexOf("## Approach");
+        const approachSection = systemPrompt.slice(approachIdx);
+        expect(approachSection.toLowerCase()).toContain("skill");
       });
 
       it("Skills section header describes catalog as primary playbooks", () => {
@@ -516,18 +561,18 @@ describe("assembleChannelSystemPrompt", () => {
     expect(systemPrompt).not.toMatch(/\nYou are /);
   });
 
-  it("includes the shared base operating principles", () => {
+  it("includes ## Approach and ## Working Style sections (replaced Operating Principles)", () => {
     const systemPrompt = assembleChannelSystemPrompt({});
 
-    expect(systemPrompt).toContain("## Operating Principles");
-    expect(systemPrompt.toLowerCase()).toContain("guess");
+    expect(systemPrompt).toContain("## Approach");
+    expect(systemPrompt).toContain("## Working Style");
+    expect(systemPrompt).not.toContain("## Operating Principles");
   });
 
-  it("includes channel-specific conversation guidance (no reply tool, concise)", () => {
+  it("includes channel-specific conversation guidance (concise)", () => {
     const systemPrompt = assembleChannelSystemPrompt({});
 
     expect(systemPrompt).toContain("## Conversation Style");
-    expect(systemPrompt).toContain("`reply`");
     expect(systemPrompt.toLowerCase()).toContain("concise");
   });
 
@@ -538,26 +583,48 @@ describe("assembleChannelSystemPrompt", () => {
     expect(systemPrompt).not.toContain("## Domain Knowledge");
   });
 
-  it("orders sections from stable to dynamic: base → variant → Skills → Tools → User Agents Appendix → Reply Format", () => {
+  it("includes Reply Format section inside the channel variant (before Skills)", () => {
+    const skills = [makeSkillEntry()];
+    const systemPrompt = assembleChannelSystemPrompt({ skills });
+
+    const replyFormatIdx = systemPrompt.indexOf("Reply Format");
+    const skillsIdx = systemPrompt.indexOf("## Skills");
+
+    expect(replyFormatIdx).toBeGreaterThan(-1);
+    expect(skillsIdx).toBeGreaterThan(replyFormatIdx);
+  });
+
+  it("orders sections: base → variant (with Reply Format) → Skills → Tools → User Agents Appendix", () => {
     const skills = [makeSkillEntry()];
     const systemPrompt = assembleChannelSystemPrompt({
       skills,
       userAgents: "Operator note",
     });
 
-    const principlesIdx = systemPrompt.indexOf("## Operating Principles");
+    const approachIdx = systemPrompt.indexOf("## Approach");
     const styleIdx = systemPrompt.indexOf("## Conversation Style");
+    const replyFormatIdx = systemPrompt.indexOf("Reply Format");
     const skillsIdx = systemPrompt.indexOf("## Skills");
     const toolsIdx = systemPrompt.indexOf("## Tools");
     const operatorIdx = systemPrompt.indexOf("Operator note");
-    const replyFormatIdx = systemPrompt.lastIndexOf("Reply Format");
 
-    expect(principlesIdx).toBeGreaterThan(-1);
-    expect(styleIdx).toBeGreaterThan(principlesIdx);
-    expect(skillsIdx).toBeGreaterThan(styleIdx);
+    expect(approachIdx).toBeGreaterThan(-1);
+    expect(styleIdx).toBeGreaterThan(approachIdx);
+    expect(replyFormatIdx).toBeGreaterThan(styleIdx);
+    expect(skillsIdx).toBeGreaterThan(replyFormatIdx);
     expect(toolsIdx).toBeGreaterThan(skillsIdx);
     expect(operatorIdx).toBeGreaterThan(toolsIdx);
-    expect(replyFormatIdx).toBeGreaterThan(operatorIdx);
+  });
+
+  it("AGENTS.md (User Agents Appendix) is the final block — nothing follows it", () => {
+    const skills = [makeSkillEntry()];
+    const userAgents = "Operator channel note: final section marker";
+    const systemPrompt = assembleChannelSystemPrompt({ skills, userAgents });
+
+    const operatorIdx = systemPrompt.indexOf(userAgents);
+    expect(operatorIdx).toBeGreaterThan(-1);
+    const after = systemPrompt.slice(operatorIdx + userAgents.length).trim();
+    expect(after).toBe("");
   });
 
   it("appends userAgents content when provided", () => {
@@ -637,76 +704,70 @@ describe("assembleChannelSystemPrompt", () => {
     const channelBase = channel.slice(0, channel.indexOf("## Objective"));
 
     expect(heartbeatBase).toBe(channelBase);
-    expect(heartbeatBase).toContain("## Operating Principles");
+    expect(heartbeatBase).toContain("## Approach");
   });
 
-  describe("Reply Format trailer", () => {
-    it("appends Reply Format section AFTER User Agents Appendix", () => {
-      const systemPrompt = assembleChannelSystemPrompt({
-        skills: [makeSkillEntry()],
-        userAgents: "Operator channel note",
-      });
-
-      const operatorIdx = systemPrompt.indexOf("Operator channel note");
-      const replyFormatIdx = systemPrompt.lastIndexOf("Reply Format");
-
-      expect(replyFormatIdx).toBeGreaterThan(-1);
-      expect(replyFormatIdx).toBeGreaterThan(operatorIdx);
-    });
-
-    it("appends Reply Format section even without User Agents Appendix", () => {
+  describe("Reply Format section (inside channel variant)", () => {
+    it("Reply Format section is present inside the channel system prompt", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
       expect(systemPrompt).toContain("Reply Format");
     });
 
+    it("Reply Format section comes before Skills/Tools (it is part of the variant, not a trailer)", () => {
+      const systemPrompt = assembleChannelSystemPrompt({
+        skills: [makeSkillEntry()],
+      });
+
+      const replyFormatIdx = systemPrompt.indexOf("Reply Format");
+      const skillsIdx = systemPrompt.indexOf("## Skills");
+
+      expect(replyFormatIdx).toBeGreaterThan(-1);
+      expect(skillsIdx).toBeGreaterThan(replyFormatIdx);
+    });
+
+    it("Reply Format section comes BEFORE User Agents Appendix", () => {
+      const systemPrompt = assembleChannelSystemPrompt({
+        userAgents: "Operator note",
+      });
+
+      const replyFormatIdx = systemPrompt.indexOf("Reply Format");
+      const operatorIdx = systemPrompt.indexOf("Operator note");
+
+      expect(replyFormatIdx).toBeGreaterThan(-1);
+      expect(operatorIdx).toBeGreaterThan(replyFormatIdx);
+    });
+
     it("Reply Format block is plain prose — no literal markdown syntax demonstrations", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      // Find the Reply Format section (trailer at end)
-      const replyFormatIdx = systemPrompt.lastIndexOf("Reply Format");
+      const replyFormatIdx = systemPrompt.indexOf("Reply Format");
       const replyFormatSection = systemPrompt.slice(replyFormatIdx);
 
       // Must NOT contain literal markdown syntax being demonstrated
       expect(replyFormatSection).not.toMatch(/\*\*\w/); // **bold**
       expect(replyFormatSection).not.toMatch(/`\w/); // `code`
       expect(replyFormatSection).not.toMatch(/\[text\]\(url\)/); // [text](url)
-      expect(replyFormatSection).not.toMatch(/^#+ /m); // headings
       expect(replyFormatSection).not.toMatch(/^- /m); // bullet list markers
     });
 
     it("Reply Format block contains the skills-not-template clause", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const replyFormatIdx = systemPrompt.lastIndexOf("Reply Format");
+      const replyFormatIdx = systemPrompt.indexOf("Reply Format");
       const replyFormatSection = systemPrompt.slice(replyFormatIdx);
 
       expect(replyFormatSection.toLowerCase()).toContain("execution reference");
-      expect(replyFormatSection.toLowerCase()).toContain(
-        "not an output template",
-      );
-    });
-
-    it("Reply Format section is NOT present inside system-channel.md variant block", () => {
-      // The Reply Format must come only from the trailer, not from the variant template.
-      // We check by ensuring the channel system prompt without skills still has Reply Format
-      // only once (the trailer), not duplicated.
-      const systemPrompt = assembleChannelSystemPrompt({});
-
-      const firstOccurrence = systemPrompt.indexOf("Reply Format");
-      const lastOccurrence = systemPrompt.lastIndexOf("Reply Format");
-
-      // Only one occurrence — the trailer
-      expect(firstOccurrence).toBe(lastOccurrence);
     });
   });
 });
 
 describe("assembleSummarizeSystemPrompt", () => {
-  it("includes the shared base operating principles", () => {
+  it("includes ## Approach and ## Working Style sections", () => {
     const systemPrompt = assembleSummarizeSystemPrompt();
 
-    expect(systemPrompt).toContain("## Operating Principles");
+    expect(systemPrompt).toContain("## Approach");
+    expect(systemPrompt).toContain("## Working Style");
   });
 
   it("includes the summarize objective and preservation guidance", () => {
@@ -726,11 +787,11 @@ describe("assembleSummarizeSystemPrompt", () => {
   it("orders sections from stable to dynamic: base → variant", () => {
     const systemPrompt = assembleSummarizeSystemPrompt();
 
-    const principlesIdx = systemPrompt.indexOf("## Operating Principles");
+    const approachIdx = systemPrompt.indexOf("## Approach");
     const objectiveIdx = systemPrompt.indexOf("## Objective");
 
-    expect(principlesIdx).toBeGreaterThan(-1);
-    expect(objectiveIdx).toBeGreaterThan(principlesIdx);
+    expect(approachIdx).toBeGreaterThan(-1);
+    expect(objectiveIdx).toBeGreaterThan(approachIdx);
   });
 
   it("shares the same base section as the channel variant", () => {

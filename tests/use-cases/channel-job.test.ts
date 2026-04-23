@@ -232,7 +232,7 @@ describe("ChannelJob.run", () => {
     });
 
     const systemPrompt = agent.capturedInput?.systemPrompt ?? "";
-    expect(systemPrompt).toContain("## Operating Principles");
+    expect(systemPrompt).toContain("## Approach");
     expect(systemPrompt).toContain("## Conversation Style");
     expect(systemPrompt).not.toContain("## Tools");
     expect(systemPrompt).not.toMatch(/^You are/);
