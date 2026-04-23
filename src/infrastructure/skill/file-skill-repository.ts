@@ -85,7 +85,8 @@ export class FileSkillRepository implements SkillCatalog {
 
     const raw = await readFile(entry.skillFilePath, "utf-8");
     const skillDir = dirname(entry.skillFilePath);
-    return rewriteRelativePaths(raw, skillDir);
+    const body = matter(raw).content.replace(/^\n+/, "");
+    return rewriteRelativePaths(body, skillDir);
   }
 
   async readFile(inputPath: string): Promise<string> {

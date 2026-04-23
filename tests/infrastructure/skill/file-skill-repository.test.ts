@@ -408,7 +408,7 @@ describe("FileSkillRepository", () => {
     );
   });
 
-  it("getSkillContent: includes frontmatter in returned content", async () => {
+  it("getSkillContent: strips frontmatter and returns only the body", async () => {
     await writeSkill(
       builtInRoot,
       "my-skill",
@@ -419,9 +419,9 @@ describe("FileSkillRepository", () => {
     const repo = new FileSkillRepository(builtInRoot, null, logger);
     const content = await repo.getSkillContent("my-skill");
 
-    expect(content).toContain("---");
-    expect(content).toContain("name: my-skill");
-    expect(content).toContain("description: Useful skill");
+    expect(content).not.toContain("---");
+    expect(content).not.toContain("name: my-skill");
+    expect(content).not.toContain("description: Useful skill");
     expect(content).toContain("Body of skill.");
   });
 

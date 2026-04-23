@@ -466,7 +466,7 @@ Additional frontmatter fields MAY be present. Shrimp parses and ignores them. Th
 **`skill(name)` tool:**
 
 - Argument: a single `name` string matching the `name` field of a valid skill.
-- Return value: the full textual content of that skill's `SKILL.md`, with the relative-to-absolute path rewrite applied (see below). The frontmatter is included in the returned content.
+- Return value: the body of that skill's `SKILL.md` (the content after the YAML frontmatter block), with the relative-to-absolute path rewrite applied (see below). The frontmatter is stripped from the returned content because its `name` and `description` fields are already delivered to the model via the Skill Catalog in the System Prompt; returning them again duplicates context.
 - Relative-to-absolute path rewrite: before returning the content, every **relative** resource reference in the `SKILL.md` MUST be rewritten to an absolute path anchored at the skill's own directory (the parent of its `SKILL.md`). Rewriting MUST cover:
   - Markdown link and image targets whose target is a relative path, e.g. `[example](./references/example.md)` or `![diagram](images/flow.png)`.
   - Bare relative paths that appear in backticked code spans, e.g. `` `references/example.md` `` or `` `scripts/extract.py` ``.
