@@ -1,12 +1,16 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join, dirname, resolve, isAbsolute } from "node:path";
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { readFile, realpath, stat } from "node:fs/promises";
+import { join, dirname, resolve, isAbsolute, sep } from "node:path";
 import matter from "gray-matter";
 import type {
   SkillCatalog,
   SkillCatalogEntry,
 } from "../../use-cases/ports/skill-catalog";
-import { SkillNotFoundError } from "../../use-cases/ports/skill-catalog";
+import {
+  FileNotFoundError,
+  SandboxViolationError,
+  SkillNotFoundError,
+} from "../../use-cases/ports/skill-catalog";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 
 const NAME_PATTERN = /^[a-z0-9-]+$/;
@@ -25,12 +29,12 @@ const MAX_DESC_LENGTH = 1024;
  *
  * Config wiring (builtInRoot ← bundled path, customRoot ← SHRIMP_HOME/skills/)
  * is handled by the DI container (item #8).
- *
- * `readFile()` sandbox enforcement is deferred to item #7.
  */
 export class FileSkillRepository implements SkillCatalog {
   private readonly catalog: readonly SkillCatalogEntry[];
   private readonly logger: LoggerPort;
+  private readonly builtInRoot: string;
+  private readonly customRoot: string | null;
 
   constructor(
     builtInRoot: string,
@@ -45,6 +49,15 @@ export class FileSkillRepository implements SkillCatalog {
         `Built-in Skills root is missing or not a directory: ${builtInRoot}`,
       );
     }
+
+    // Canonicalise roots once so sandbox comparisons are consistent on
+    // platforms where paths include symlink segments (e.g. macOS's
+    // `/var` → `/private/var`). See `readFile()`.
+    this.builtInRoot = realpathSync(builtInRoot);
+    this.customRoot =
+      customRoot !== null && directoryExists(customRoot)
+        ? realpathSync(customRoot)
+        : customRoot;
 
     const builtInEntries = this.scanRoot(builtInRoot, new Map());
     const builtInNames = new Map<string, SkillCatalogEntry>(
@@ -75,12 +88,73 @@ export class FileSkillRepository implements SkillCatalog {
     return rewriteRelativePaths(raw, skillDir);
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
-  async readFile(_path: string): Promise<string> {
-    // Sandbox logic is implemented in item #7.
-    throw new Error(
-      "FileSkillRepository.readFile() is not yet implemented (item #7).",
-    );
+  async readFile(inputPath: string): Promise<string> {
+    // Step 1: Canonicalise — resolve symlinks and `..` BEFORE the prefix check
+    // so a symlink inside a root pointing outside is caught (SPEC line 487).
+    let canonical: string;
+    try {
+      canonical = await realpath(inputPath);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT" || code === "ENOTDIR") {
+        throw new FileNotFoundError(inputPath);
+      }
+      throw new Error(`Failed to resolve path: ${(err as Error).message}`);
+    }
+
+    // Step 2: Verify the canonical path is strictly inside an allowed root.
+    // Using a trailing sep ensures "/app/skills-extra/foo" is not matched by
+    // "/app/skills" prefix (SPEC line 485).
+    this.assertInsideRoot(canonical, this.builtInRoot, this.customRoot);
+
+    // Step 3: Confirm it is a regular file (not a directory).
+    let fileStat: Awaited<ReturnType<typeof stat>>;
+    try {
+      fileStat = await stat(canonical);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        throw new FileNotFoundError(inputPath);
+      }
+      throw new Error(`Failed to stat file: ${(err as Error).message}`);
+    }
+    if (!fileStat.isFile()) {
+      throw new FileNotFoundError(inputPath);
+    }
+
+    // Step 4: Read and return.
+    try {
+      return await readFile(canonical, "utf-8");
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        // Race: file removed between realpath and read.
+        throw new FileNotFoundError(inputPath);
+      }
+      throw new Error(`Failed to read file: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Throws `SandboxViolationError` if `canonical` is not strictly inside
+   * `builtInRoot` or `customRoot` (when non-null).
+   *
+   * "Strictly inside" means the canonical path begins with the root followed
+   * by `path.sep`, ensuring prefix-only matches (e.g. `/skills-extra`) are
+   * not confused with `/skills`.
+   */
+  private assertInsideRoot(
+    canonical: string,
+    builtInRoot: string,
+    customRoot: string | null,
+  ): void {
+    const isInside = (root: string): boolean =>
+      canonical.startsWith(root + sep);
+
+    if (isInside(builtInRoot)) return;
+    if (customRoot !== null && isInside(customRoot)) return;
+
+    throw new SandboxViolationError(canonical);
   }
 
   /**

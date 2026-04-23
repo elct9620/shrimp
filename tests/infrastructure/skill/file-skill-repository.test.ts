@@ -1,9 +1,13 @@
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { FileSkillRepository } from "../../../src/infrastructure/skill/file-skill-repository";
-import { SkillNotFoundError } from "../../../src/use-cases/ports/skill-catalog";
+import {
+  SkillNotFoundError,
+  SandboxViolationError,
+  FileNotFoundError,
+} from "../../../src/use-cases/ports/skill-catalog";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
 
 function makeStubLogger(): LoggerPort & {
@@ -477,13 +481,163 @@ describe("FileSkillRepository", () => {
     expect(content).toContain(`\`${skillDir}/references/guide.md\``);
   });
 
-  // --- readFile placeholder ---
+  // --- readFile sandbox ---
 
-  it("readFile() throws with clear 'not implemented' error", async () => {
-    const repo = new FileSkillRepository(builtInRoot, null, logger);
+  describe("readFile()", () => {
+    it("reads a file inside builtInRoot and returns its content", async () => {
+      const skillDir = join(builtInRoot, "my-skill");
+      await mkdir(skillDir, { recursive: true });
+      const filePath = join(skillDir, "resource.txt");
+      await writeFile(filePath, "hello from resource");
 
-    await expect(repo.readFile("/any/path")).rejects.toThrow(
-      /not.*implemented/i,
-    );
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+      const content = await repo.readFile(filePath);
+
+      expect(content).toBe("hello from resource");
+    });
+
+    it("reads a file inside customRoot and returns its content", async () => {
+      const skillDir = join(customRoot, "my-skill");
+      await mkdir(skillDir, { recursive: true });
+      const filePath = join(skillDir, "data.txt");
+      await writeFile(filePath, "custom data");
+
+      const repo = new FileSkillRepository(builtInRoot, customRoot, logger);
+      const content = await repo.readFile(filePath);
+
+      expect(content).toBe("custom data");
+    });
+
+    it("non-existent file (ENOENT at realpath) → FileNotFoundError", async () => {
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+      const missingPath = join(builtInRoot, "no-such-file.txt");
+
+      await expect(repo.readFile(missingPath)).rejects.toThrow(
+        FileNotFoundError,
+      );
+    });
+
+    it("absolute path outside both roots → SandboxViolationError", async () => {
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+      const outsidePath = join(tmpDir, "outside.txt");
+      await writeFile(outsidePath, "secret");
+
+      await expect(repo.readFile(outsidePath)).rejects.toThrow(
+        SandboxViolationError,
+      );
+    });
+
+    it("path with .. traversal ending outside roots → SandboxViolationError", async () => {
+      const skillDir = join(builtInRoot, "my-skill");
+      await mkdir(skillDir, { recursive: true });
+      const outsideFile = join(tmpDir, "outside.txt");
+      await writeFile(outsideFile, "secret");
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+      // Traverse up: builtInRoot/my-skill/../../outside.txt resolves to tmpDir/outside.txt
+      const traversalPath = join(skillDir, "..", "..", "outside.txt");
+
+      await expect(repo.readFile(traversalPath)).rejects.toThrow(
+        SandboxViolationError,
+      );
+    });
+
+    it("path with .. that stays inside root → allowed, returns content", async () => {
+      const skillDir = join(builtInRoot, "my-skill");
+      await mkdir(skillDir, { recursive: true });
+      const filePath = join(skillDir, "resource.txt");
+      await writeFile(filePath, "inside content");
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+      // Path: builtInRoot/my-skill/../my-skill/resource.txt → still inside root
+      const redundantPath = join(skillDir, "..", "my-skill", "resource.txt");
+
+      const content = await repo.readFile(redundantPath);
+      expect(content).toBe("inside content");
+    });
+
+    it("symlink inside root pointing OUTSIDE roots → SandboxViolationError", async () => {
+      const skillDir = join(builtInRoot, "my-skill");
+      await mkdir(skillDir, { recursive: true });
+      const outsideFile = join(tmpDir, "secret.txt");
+      await writeFile(outsideFile, "outside secret");
+      // Create symlink inside builtInRoot pointing outside
+      const symlinkPath = join(skillDir, "escape-link.txt");
+      await symlink(outsideFile, symlinkPath);
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      await expect(repo.readFile(symlinkPath)).rejects.toThrow(
+        SandboxViolationError,
+      );
+    });
+
+    it("symlink inside root pointing to another file inside root → allowed", async () => {
+      const skillDir = join(builtInRoot, "my-skill");
+      await mkdir(skillDir, { recursive: true });
+      const targetFile = join(skillDir, "target.txt");
+      await writeFile(targetFile, "target content");
+      const symlinkPath = join(skillDir, "link.txt");
+      await symlink(targetFile, symlinkPath);
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+      const content = await repo.readFile(symlinkPath);
+
+      expect(content).toBe("target content");
+    });
+
+    it("path equal to builtInRoot itself → SandboxViolationError", async () => {
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      await expect(repo.readFile(builtInRoot)).rejects.toThrow(
+        SandboxViolationError,
+      );
+    });
+
+    it("path equal to customRoot itself → SandboxViolationError", async () => {
+      const repo = new FileSkillRepository(builtInRoot, customRoot, logger);
+
+      await expect(repo.readFile(customRoot)).rejects.toThrow(
+        SandboxViolationError,
+      );
+    });
+
+    it("directory target → FileNotFoundError", async () => {
+      const skillDir = join(builtInRoot, "my-skill");
+      await mkdir(skillDir, { recursive: true });
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      await expect(repo.readFile(skillDir)).rejects.toThrow(FileNotFoundError);
+    });
+
+    it("customRoot is null → path in customRoot area → SandboxViolationError", async () => {
+      const skillDir = join(customRoot, "my-skill");
+      await mkdir(skillDir, { recursive: true });
+      const filePath = join(skillDir, "data.txt");
+      await writeFile(filePath, "custom data");
+
+      // null customRoot → only builtInRoot is allowed
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      await expect(repo.readFile(filePath)).rejects.toThrow(
+        SandboxViolationError,
+      );
+    });
+
+    it("trailing-sep: path with root prefix but different root name → SandboxViolationError", async () => {
+      // builtInRoot is e.g. /tmp/shrimp-skill-test-xyz/built-in
+      // Path /tmp/shrimp-skill-test-xyz/built-in-extra/foo must NOT be inside builtInRoot
+      const sibling = join(tmpDir, "built-in-extra");
+      await mkdir(sibling, { recursive: true });
+      const siblingsFile = join(sibling, "foo.txt");
+      await writeFile(siblingsFile, "should be refused");
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      await expect(repo.readFile(siblingsFile)).rejects.toThrow(
+        SandboxViolationError,
+      );
+    });
   });
 });
