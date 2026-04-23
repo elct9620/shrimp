@@ -16,6 +16,7 @@ ENV NODE_ENV=production \
     PORT=3000 \
     SHRIMP_HOME=/var/lib/shrimp
 COPY --from=builder /app/dist ./dist
+COPY skills ./skills
 RUN mkdir -p "$SHRIMP_HOME" && chown -R node:node "$SHRIMP_HOME"
 VOLUME ["/var/lib/shrimp"]
 USER node
