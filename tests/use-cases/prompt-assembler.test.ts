@@ -90,16 +90,7 @@ describe("assembleHeartbeatPrompts", () => {
       expect(systemPrompt).not.toContain("## Error Handling");
     });
 
-    it("does not contain a Tools section (tool definitions are provided via AI SDK tools parameter per SPEC L733)", () => {
-      const { systemPrompt } = assembleHeartbeatPrompts({
-        task: makeTask(),
-        comments: [],
-      });
-
-      expect(systemPrompt).not.toContain("## Tools");
-    });
-
-    it("orders sections from stable to dynamic: base → variant → Skills → User Agents Appendix", () => {
+    it("orders sections from stable to dynamic: base → variant → Skills → Tools → User Agents Appendix", () => {
       const skills = [makeSkillEntry()];
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
@@ -111,12 +102,14 @@ describe("assembleHeartbeatPrompts", () => {
       const principlesIdx = systemPrompt.indexOf("## Operating Principles");
       const objectiveIdx = systemPrompt.indexOf("## Objective");
       const skillsIdx = systemPrompt.indexOf("## Skills");
+      const toolsIdx = systemPrompt.indexOf("## Tools");
       const operatorIdx = systemPrompt.indexOf("Operator note");
 
       expect(principlesIdx).toBeGreaterThan(-1);
       expect(objectiveIdx).toBeGreaterThan(principlesIdx);
       expect(skillsIdx).toBeGreaterThan(objectiveIdx);
-      expect(operatorIdx).toBeGreaterThan(skillsIdx);
+      expect(toolsIdx).toBeGreaterThan(skillsIdx);
+      expect(operatorIdx).toBeGreaterThan(toolsIdx);
     });
 
     it("appends userAgents content to the system prompt when provided", () => {
@@ -173,7 +166,7 @@ describe("assembleHeartbeatPrompts", () => {
         expect(systemPrompt).toContain("## Skills");
       });
 
-      it("renders each skill entry with name, description, and absolute path", () => {
+      it("renders each skill entry with name and description only (no absolute path)", () => {
         const skills = [
           makeSkillEntry({
             name: "deploy",
@@ -190,7 +183,8 @@ describe("assembleHeartbeatPrompts", () => {
 
         expect(systemPrompt).toContain("deploy");
         expect(systemPrompt).toContain("Handles deployment workflows");
-        expect(systemPrompt).toContain("/skills/deploy/SKILL.md");
+        expect(systemPrompt).not.toContain("/skills/deploy/SKILL.md");
+        expect(systemPrompt).not.toContain("Path:");
       });
 
       it("preserves skill entry input order", () => {
@@ -244,13 +238,81 @@ describe("assembleHeartbeatPrompts", () => {
         expect(operatorIdx).toBeGreaterThan(skillsIdx);
       });
 
-      it("omits Skills section when skills param is not provided (no-op for summarize variant)", () => {
+      it("omits Skills section when skills param is not provided", () => {
         const { systemPrompt } = assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
         });
 
         expect(systemPrompt).not.toContain("## Skills");
+      });
+
+      it("emits a Tools section when skills are provided", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills: [makeSkillEntry()],
+        });
+
+        expect(systemPrompt).toContain("## Tools");
+      });
+
+      it("Tools section describes skill(name) and read(path) tools", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills: [makeSkillEntry()],
+        });
+
+        expect(systemPrompt).toContain("skill(name)");
+        expect(systemPrompt).toContain("read(path)");
+      });
+
+      it("Tools section explains progressive-disclosure concept", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills: [makeSkillEntry()],
+        });
+
+        expect(systemPrompt.toLowerCase()).toContain("progressive");
+      });
+
+      it("omits Tools section when skills param is not provided", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+        });
+
+        expect(systemPrompt).not.toContain("## Tools");
+      });
+
+      it("emits Tools section even when the catalog is empty", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills: [],
+        });
+
+        expect(systemPrompt).toContain("## Tools");
+      });
+
+      it("places Tools section after Skills and before User Agents Appendix", () => {
+        const skills = [makeSkillEntry()];
+
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills,
+          userAgents: "Operator note",
+        });
+
+        const skillsIdx = systemPrompt.indexOf("## Skills");
+        const toolsIdx = systemPrompt.indexOf("## Tools");
+        const operatorIdx = systemPrompt.indexOf("Operator note");
+
+        expect(toolsIdx).toBeGreaterThan(skillsIdx);
+        expect(operatorIdx).toBeGreaterThan(toolsIdx);
       });
     });
   });
@@ -438,13 +500,7 @@ describe("assembleChannelSystemPrompt", () => {
     expect(systemPrompt).not.toContain("## Domain Knowledge");
   });
 
-  it("does not contain a Tools section (tool definitions are provided via AI SDK tools parameter per SPEC L733)", () => {
-    const systemPrompt = assembleChannelSystemPrompt({});
-
-    expect(systemPrompt).not.toContain("## Tools");
-  });
-
-  it("orders sections from stable to dynamic: base → variant → Skills → User Agents Appendix", () => {
+  it("orders sections from stable to dynamic: base → variant → Skills → Tools → User Agents Appendix", () => {
     const skills = [makeSkillEntry()];
     const systemPrompt = assembleChannelSystemPrompt({
       skills,
@@ -454,12 +510,14 @@ describe("assembleChannelSystemPrompt", () => {
     const principlesIdx = systemPrompt.indexOf("## Operating Principles");
     const styleIdx = systemPrompt.indexOf("## Conversation Style");
     const skillsIdx = systemPrompt.indexOf("## Skills");
+    const toolsIdx = systemPrompt.indexOf("## Tools");
     const operatorIdx = systemPrompt.indexOf("Operator note");
 
     expect(principlesIdx).toBeGreaterThan(-1);
     expect(styleIdx).toBeGreaterThan(principlesIdx);
     expect(skillsIdx).toBeGreaterThan(styleIdx);
-    expect(operatorIdx).toBeGreaterThan(skillsIdx);
+    expect(toolsIdx).toBeGreaterThan(skillsIdx);
+    expect(operatorIdx).toBeGreaterThan(toolsIdx);
   });
 
   it("appends userAgents content when provided", () => {
@@ -478,7 +536,7 @@ describe("assembleChannelSystemPrompt", () => {
     expect(systemPrompt).toContain("## Skills");
   });
 
-  it("renders skill entries in the channel system prompt", () => {
+  it("renders skill entries with name and description only (no absolute path) in the channel system prompt", () => {
     const skills = [
       makeSkillEntry({
         name: "triage",
@@ -491,7 +549,24 @@ describe("assembleChannelSystemPrompt", () => {
 
     expect(systemPrompt).toContain("triage");
     expect(systemPrompt).toContain("Triage incoming messages");
-    expect(systemPrompt).toContain("/skills/triage/SKILL.md");
+    expect(systemPrompt).not.toContain("/skills/triage/SKILL.md");
+    expect(systemPrompt).not.toContain("Path:");
+  });
+
+  it("emits a Tools section in the channel system prompt when skills are provided", () => {
+    const systemPrompt = assembleChannelSystemPrompt({
+      skills: [makeSkillEntry()],
+    });
+
+    expect(systemPrompt).toContain("## Tools");
+    expect(systemPrompt).toContain("skill(name)");
+    expect(systemPrompt).toContain("read(path)");
+  });
+
+  it("omits Tools section in channel prompt when skills param is not provided", () => {
+    const systemPrompt = assembleChannelSystemPrompt({});
+
+    expect(systemPrompt).not.toContain("## Tools");
   });
 
   it("places Skills section after variant and before User Agents Appendix in channel prompt", () => {

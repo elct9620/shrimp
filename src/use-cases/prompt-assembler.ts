@@ -59,12 +59,21 @@ function buildSkillCatalogSection(
   }
 
   const entries = skills
-    .map(
-      (s) => `- **${s.name}** — ${s.description}\n  Path: ${s.skillFilePath}`,
-    )
+    .map((s) => `- **${s.name}** — ${s.description}`)
     .join("\n");
 
   return `${header}\n\n${entries}`;
+}
+
+function buildToolsSection(): string {
+  return [
+    "## Tools",
+    "",
+    "Skills are loaded progressively — the Skills section above tells you which skills exist; the tools below let you fetch their content on demand.",
+    "",
+    "- `skill(name)`: Load a skill's full instructions. Returns the SKILL.md content with relative paths rewritten to absolute.",
+    "- `read(path)`: Read a resource file referenced from a skill's content. Pass an absolute path obtained from a `skill(name)` return value. Paths outside the skills roots are refused.",
+  ].join("\n");
 }
 
 function buildSystemPrompt(
@@ -79,6 +88,7 @@ function buildSystemPrompt(
 
   if (skills !== undefined) {
     prompt = `${prompt}\n\n${buildSkillCatalogSection(skills)}`;
+    prompt = `${prompt}\n\n${buildToolsSection()}`;
   }
 
   const extra = userAgents?.trim();
