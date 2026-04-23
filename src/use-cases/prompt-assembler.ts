@@ -57,7 +57,7 @@ function buildSkillCatalogSection(
   skills: readonly SkillCatalogEntry[],
 ): string {
   const header =
-    "## Skills\n\nThese are your primary playbooks. For each task, check whether a skill matches — if so, call `skill(name)` to load its full instructions and follow them. Treat each skill as the authoritative procedure for its scope.";
+    "## Skills\n\nThese are your primary playbooks. Scan the list first — when any entry matches the user's request, call `skill(name)` before doing anything else. Treat each skill as the authoritative procedure for its scope.";
 
   if (skills.length === 0) {
     return `${header}\n\n(none)`;
@@ -79,7 +79,7 @@ function buildToolsSection(): string {
     "- `skill(name)`: Load a skill's full instructions. Returns the SKILL.md content with relative resource paths rewritten to absolute.",
     "- `read(path)`: Read a resource file referenced from a skill's content. Pass an absolute path obtained from a `skill(name)` return value. Paths outside the skills roots are refused.",
     "",
-    "Additional tools (function-call definitions provided separately) are available for executing skill steps. When no skill matches the task, you may use those tools directly.",
+    "Additional tools (function-call definitions provided separately) are reached through skills. When a loaded skill instructs you to call a specific tool, call it.",
   ].join("\n");
 }
 

@@ -315,7 +315,7 @@ describe("assembleHeartbeatPrompts", () => {
         expect(systemPrompt).toContain("read(path)");
       });
 
-      it("Tools section positions skill/read as primary loaders with fallback note for direct tool use", () => {
+      it("Tools section positions skill/read as primary loaders — additional tools reached through skills", () => {
         const { systemPrompt } = assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
@@ -325,8 +325,10 @@ describe("assembleHeartbeatPrompts", () => {
         // Primary loaders are described
         expect(systemPrompt).toContain("skill(name)");
         expect(systemPrompt).toContain("read(path)");
-        // Fallback positioning is explicit
-        expect(systemPrompt.toLowerCase()).toContain("no skill matches");
+        // New framing: tools reached through skills
+        expect(systemPrompt.toLowerCase()).toMatch(
+          /reached through skills|instructs you to call/,
+        );
       });
 
       it("omits Tools section when skills param is not provided", () => {
@@ -388,14 +390,72 @@ describe("assembleHeartbeatPrompts", () => {
         expect(systemPrompt.toLowerCase()).toContain("playbook");
       });
 
-      it("Tools section mentions fallback for direct tool use when no skill matches", () => {
+      it("Tools section does NOT contain old escape-hatch phrasing", () => {
         const { systemPrompt } = assembleHeartbeatPrompts({
           task: makeTask(),
           comments: [],
           skills: [makeSkillEntry()],
         });
 
-        expect(systemPrompt.toLowerCase()).toContain("no skill matches");
+        expect(systemPrompt.toLowerCase()).not.toContain(
+          "you may use those tools directly",
+        );
+        expect(systemPrompt.toLowerCase()).not.toContain("no skill matches");
+      });
+
+      it("## Approach section does NOT contain old tool-bypass fallback", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills: [makeSkillEntry()],
+        });
+
+        const approachIdx = systemPrompt.indexOf("## Approach");
+        const workingStyleIdx = systemPrompt.indexOf("## Working Style");
+        const approachSection = systemPrompt.slice(
+          approachIdx,
+          workingStyleIdx,
+        );
+
+        expect(approachSection.toLowerCase()).not.toContain(
+          "reason from the task directly",
+        );
+        expect(approachSection.toLowerCase()).not.toContain("tools directly");
+      });
+
+      it("## Approach section fallback describes asking for clarification when no skill matches", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills: [makeSkillEntry()],
+        });
+
+        const approachIdx = systemPrompt.indexOf("## Approach");
+        const workingStyleIdx = systemPrompt.indexOf("## Working Style");
+        const approachSection = systemPrompt.slice(
+          approachIdx,
+          workingStyleIdx,
+        );
+
+        expect(approachSection.toLowerCase()).toMatch(
+          /state what|ask for clarification/,
+        );
+      });
+
+      it("## Skills header contains 'before doing anything else' ordering directive", () => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills: [makeSkillEntry()],
+        });
+
+        const skillsIdx = systemPrompt.indexOf("## Skills");
+        const toolsIdx = systemPrompt.indexOf("## Tools");
+        const skillsHeader = systemPrompt.slice(skillsIdx, toolsIdx);
+
+        expect(skillsHeader.toLowerCase()).toContain(
+          "before doing anything else",
+        );
       });
     });
   });
