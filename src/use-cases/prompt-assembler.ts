@@ -87,13 +87,15 @@ function buildChannelReplyFormatSection(): string {
   return [
     "## Reply Format",
     "",
-    "Write replies using ordinary sentences, line breaks, and regular punctuation. Show URLs as bare text.",
+    "Reply in plain text. Plain text means running prose: ordinary sentences separated by line breaks and punctuated normally. Show URLs as bare text.",
+    "",
+    "The channel delivers your reply to the user's client as-is, with no Markdown or HTML rendering. Markup symbols show up as literal characters and hurt readability.",
+    "",
+    "Do not use Markdown or any other markup in your replies — including hash signs, asterisks, backticks, hyphen-bullets, blockquotes, or bracket-parenthesis link syntax.",
     "",
     'For example: "Hakodate has three great spots: the morning market, the cable car up Mt. Hakodate at sunset, and the old brick warehouses in Motomachi. Let me know if you want more detail on any of them."',
     "",
     'Another example: "I checked with the search skill. The Hakodate ropeway closes at 10pm from October through April."',
-    "",
-    "Markdown symbols appear as raw characters to the user, so leave them out of your reply.",
     "",
     "When a skill guided your work, put the outcome into your own words for the user.",
   ].join("\n");

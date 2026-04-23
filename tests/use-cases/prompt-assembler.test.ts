@@ -847,20 +847,21 @@ describe("assembleChannelSystemPrompt", () => {
       expect(afterReplyFormat).not.toContain("##"); // no further sections
     });
 
-    it("Reply Format block is plain prose — no literal markdown syntax demonstrations", () => {
+    it("Reply Format block MUST NOT contain raw Markdown characters", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
       const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
       const replyFormatSection = systemPrompt.slice(replyFormatIdx);
 
-      // Must NOT contain literal markdown syntax being demonstrated
+      // Hard constraint: no raw Markdown syntax anywhere in the block
       expect(replyFormatSection).not.toMatch(/\*\*\w/); // **bold**
       expect(replyFormatSection).not.toMatch(/`\w/); // `code`
       expect(replyFormatSection).not.toMatch(/\[text\]\(url\)/); // [text](url)
-      expect(replyFormatSection).not.toMatch(/^- /m); // bullet list markers
+      expect(replyFormatSection).not.toMatch(/^- /m); // hyphen-bullet list markers
+      expect(replyFormatSection).not.toMatch(/^> /m); // blockquote markers
     });
 
-    it("Reply Format block opens with positive action verb, not 'plain text'", () => {
+    it("Reply Format block opens with positive plain-text definition ('Plain text means')", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
       const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
@@ -873,12 +874,11 @@ describe("assembleChannelSystemPrompt", () => {
           ? afterHeader
           : afterHeader.slice(0, nextSectionIdx);
 
-      // Must open with a positive imperative, not "plain text"
-      expect(replyFormatBody.trimStart()).toMatch(/^Write replies/);
-      expect(replyFormatBody.toLowerCase()).not.toContain("plain text");
+      // Para 1: positive definition marker
+      expect(replyFormatBody.toLowerCase()).toContain("plain text means");
     });
 
-    it("Reply Format block contains exactly one Markdown-related sentence ('Markdown symbols' appears once)", () => {
+    it("Reply Format block contains channel display context ('no Markdown or HTML rendering')", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
       const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
@@ -891,12 +891,55 @@ describe("assembleChannelSystemPrompt", () => {
           ? afterHeader
           : afterHeader.slice(0, nextSectionIdx);
 
-      const matches = replyFormatBody.match(/Markdown symbols/g);
-      expect(matches).not.toBeNull();
-      expect(matches!.length).toBe(1);
+      // Para 2: client-side rendering context
+      expect(replyFormatBody).toContain("no Markdown or HTML rendering");
     });
 
-    it("Reply Format block contains both concrete examples ('For example' and 'Another example')", () => {
+    it("Reply Format block contains explicit 'Do not use' prohibition", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      // Para 3: explicit prohibition — this is the designated spot
+      expect(replyFormatBody).toContain("Do not use");
+    });
+
+    it("Reply Format block prohibition names at least three English symbol words", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      const symbolWords = [
+        "hash",
+        "asterisk",
+        "backtick",
+        "hyphen",
+        "blockquote",
+        "bracket",
+      ];
+      const found = symbolWords.filter((word) =>
+        replyFormatBody.toLowerCase().includes(word),
+      );
+      expect(found.length).toBeGreaterThanOrEqual(3);
+    });
+
+    it("Reply Format block contains both concrete examples verbatim", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
       const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
@@ -911,9 +954,15 @@ describe("assembleChannelSystemPrompt", () => {
 
       expect(replyFormatBody).toContain("For example:");
       expect(replyFormatBody).toContain("Another example:");
+      expect(replyFormatBody).toContain(
+        "Hakodate has three great spots: the morning market, the cable car up Mt. Hakodate at sunset, and the old brick warehouses in Motomachi.",
+      );
+      expect(replyFormatBody).toContain(
+        "I checked with the search skill. The Hakodate ropeway closes at 10pm from October through April.",
+      );
     });
 
-    it("Reply Format block contains a concrete example", () => {
+    it("Reply Format block contains skill-content closing clause", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
       const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
@@ -926,43 +975,7 @@ describe("assembleChannelSystemPrompt", () => {
           ? afterHeader
           : afterHeader.slice(0, nextSectionIdx);
 
-      expect(replyFormatBody.toLowerCase()).toMatch(/for example|example:/i);
-    });
-
-    it("Reply Format block uses no negative phrasing (not, do not, don't)", () => {
-      const systemPrompt = assembleChannelSystemPrompt({});
-
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
-      // Extract only the Reply Format block (up to next ## or end)
-      const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
-
-      expect(replyFormatBody).not.toMatch(/\bnot\b/i);
-      expect(replyFormatBody).not.toMatch(/\bdon't\b/i);
-      expect(replyFormatBody).not.toMatch(/\bdo not\b/i);
-    });
-
-    it("Reply Format block opens sentences with positive action verbs", () => {
-      const systemPrompt = assembleChannelSystemPrompt({});
-
-      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
-      const afterHeader = systemPrompt.slice(
-        replyFormatIdx + "## Reply Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
-
-      // Should contain at least one sentence starting with a positive imperative
-      expect(replyFormatBody).toMatch(/\b(Write|Use|Put|Keep|Show|Give)\b/);
+      expect(replyFormatBody).toContain("put the outcome into your own words");
     });
 
     it("Heartbeat system prompt does NOT include Reply Format section", () => {
