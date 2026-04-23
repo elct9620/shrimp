@@ -25,6 +25,7 @@ import { HeartbeatJob } from "./use-cases/heartbeat-job";
 import { NoopChannelGateway } from "./infrastructure/channel/noop-channel-gateway";
 import { TelegramChannel } from "./infrastructure/channel/telegram-channel";
 import { JsonlSessionRepository } from "./infrastructure/session/jsonl-session-repository";
+import { FileSkillRepository } from "./infrastructure/skill/file-skill-repository";
 import { FileUserAgents } from "./infrastructure/prompt/file-user-agents";
 import { ChannelJob } from "./use-cases/channel-job";
 import { StartNewSession } from "./use-cases/start-new-session";
@@ -52,6 +53,19 @@ container.register(TOKENS.BoardRepository, {
       new TodoistApi(env.todoistApiToken),
       env.todoistProjectId,
       logger.child({ module: "TodoistBoardRepository" }),
+    );
+  },
+});
+
+// SkillCatalog — scans Built-in and Custom roots at resolve time
+container.register(TOKENS.SkillCatalog, {
+  useFactory: (c) => {
+    const env = c.resolve<EnvConfig>(TOKENS.EnvConfig);
+    const logger = c.resolve<LoggerPort>(TOKENS.Logger);
+    return new FileSkillRepository(
+      env.skillsBuiltInRoot,
+      env.skillsCustomRoot,
+      logger,
     );
   },
 });
@@ -88,6 +102,7 @@ container.register(TOKENS.HeartbeatJob, {
         .child({ module: "HeartbeatJob" }),
       telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
       userAgents: c.resolve(TOKENS.UserAgents),
+      skillCatalog: c.resolve(TOKENS.SkillCatalog),
     }),
 });
 
@@ -176,6 +191,7 @@ export async function bootstrap(): Promise<void> {
             .child({ module: "ChannelJob" }),
           telemetry: c.resolve<TelemetryPort>(TOKENS.Telemetry),
           userAgents: c.resolve(TOKENS.UserAgents),
+          skillCatalog: c.resolve(TOKENS.SkillCatalog),
           summarize: c.resolve(TOKENS.Summarize),
           compactionThreshold: env.autoCompactTokenThreshold!,
         }),
