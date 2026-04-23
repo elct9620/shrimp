@@ -21,3 +21,6 @@ services:
         - action: sync+restart
           path: ./skills
           target: /app/skills
+        - action: sync+restart
+          path: ./data/shrimp/skills
+          target: /var/lib/shrimp/skills
