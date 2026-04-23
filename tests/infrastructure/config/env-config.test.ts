@@ -1,6 +1,6 @@
 import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EnvConfigError,
@@ -40,6 +40,8 @@ describe("loadEnvConfig", () => {
         telegramBotToken: undefined,
         telegramWebhookSecret: undefined,
         shrimpHome: expect.any(String),
+        skillsBuiltInRoot: expect.any(String),
+        skillsCustomRoot: expect.any(String),
         heartbeatToken: undefined,
         autoCompactTokenThreshold: undefined,
         autoCompactModel: undefined,
@@ -650,6 +652,58 @@ describe("loadEnvConfig", () => {
         ).toThrow(/AUTO_COMPACT_MAX_OUTPUT_TOKENS/);
       },
     );
+  });
+
+  describe("skillsBuiltInRoot", () => {
+    it("should resolve to <cwd>/skills by default", () => {
+      const config = loadEnvConfig(REQUIRED_ENV);
+      expect(config.skillsBuiltInRoot).toBe(join(process.cwd(), "skills"));
+    });
+
+    it("should be an absolute path", () => {
+      const config = loadEnvConfig(REQUIRED_ENV);
+      expect(isAbsolute(config.skillsBuiltInRoot)).toBe(true);
+    });
+  });
+
+  describe("skillsCustomRoot", () => {
+    it("should resolve to <shrimpHome>/skills using default SHRIMP_HOME", () => {
+      const config = loadEnvConfig(REQUIRED_ENV);
+      expect(config.skillsCustomRoot).toBe(
+        join(require("node:os").homedir(), ".shrimp", "skills"),
+      );
+    });
+
+    it("should resolve to <SHRIMP_HOME>/skills when SHRIMP_HOME is set", () => {
+      const customHome = join(tmpdir(), `shrimp-skills-test-${Date.now()}`);
+      const config = loadEnvConfig({
+        ...REQUIRED_ENV,
+        SHRIMP_HOME: customHome,
+      });
+      expect(config.skillsCustomRoot).toBe(join(customHome, "skills"));
+    });
+
+    it("should follow SHRIMP_STATE_DIR legacy fallback for skillsCustomRoot", () => {
+      const legacyHome = join(tmpdir(), `shrimp-legacy-${Date.now()}`);
+      const stderrSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      try {
+        const config = loadEnvConfig({
+          ...REQUIRED_ENV,
+          SHRIMP_STATE_DIR: legacyHome,
+        });
+        expect(config.skillsCustomRoot).toBe(join(legacyHome, "skills"));
+      } finally {
+        stderrSpy.mockRestore();
+      }
+    });
+
+    it("should be an absolute path", () => {
+      const config = loadEnvConfig(REQUIRED_ENV);
+      expect(isAbsolute(config.skillsCustomRoot)).toBe(true);
+    });
   });
 
   describe("SHRIMP_HEARTBEAT_TOKEN", () => {

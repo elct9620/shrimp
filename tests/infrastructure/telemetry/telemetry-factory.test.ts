@@ -49,6 +49,8 @@ const BASE_ENV: EnvConfig = {
   telegramBotToken: undefined,
   telegramWebhookSecret: undefined,
   shrimpHome: "/tmp/.shrimp",
+  skillsBuiltInRoot: "/tmp/skills",
+  skillsCustomRoot: "/tmp/.shrimp/skills",
 };
 
 describe("createTelemetry", () => {

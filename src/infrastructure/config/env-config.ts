@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 export type LogLevel =
   | "trace"
@@ -34,6 +34,16 @@ export type EnvConfig = {
   // channelsEnabled is true, and for the optional User Agents Appendix
   // (AGENTS.md) on every Job regardless of channelsEnabled.
   shrimpHome: string;
+  // Absolute path to the Built-in Skills root packaged with the application
+  // bundle. Resolved from process.cwd() because the Dockerfile sets WORKDIR
+  // /app and ships skills at /app/skills/, while dev runs from the repo root
+  // where skills/ lives at the same level. EnvConfig does NOT check existence
+  // — FileSkillRepository fail-fasts if the directory is absent at startup.
+  skillsBuiltInRoot: string;
+  // Absolute path to the Custom Skills root at SHRIMP_HOME/skills/. Always a
+  // string (never null); FileSkillRepository treats a missing directory as an
+  // empty Custom catalog per SPEC §Skills Layout.
+  skillsCustomRoot: string;
   heartbeatToken?: string;
   // Only present when channelsEnabled is true.
   autoCompactTokenThreshold?: number;
@@ -224,6 +234,8 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     telegramBotToken,
     telegramWebhookSecret,
     shrimpHome,
+    skillsBuiltInRoot: resolve(process.cwd(), "skills"),
+    skillsCustomRoot: join(shrimpHome, "skills"),
     heartbeatToken: env["SHRIMP_HEARTBEAT_TOKEN"] || undefined,
     autoCompactTokenThreshold,
     autoCompactModel,
