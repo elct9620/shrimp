@@ -61,21 +61,4 @@ services:
           the Coolify UI and edit this file under Storages → File Mount.
           Everything in this document is appended to the system prompt
           verbatim on each Job.
-      # Custom Skills directory marker. Seeded on first deploy so the skills/
-      # directory is visible in Coolify UI (Storages → File Mount). This README
-      # is a regular file inside the skills root and is skipped by skill
-      # discovery (only immediate subdirectories with a SKILL.md are loaded).
-      - type: bind
-        source: ./skills-readme.md
-        target: /var/lib/shrimp/skills/README.md
-        content: |
-          # Custom Agent Skills
-
-          Drop skill directories here. Each skill is a directory whose
-          name matches the `name` field in its SKILL.md frontmatter.
-
-          See SPEC.md §Skill Layer for the SKILL.md format.
-
-          This README is informational only — it does not affect skill
-          discovery. Remove it if you like.
     restart: unless-stopped
