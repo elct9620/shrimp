@@ -978,6 +978,118 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatBody).toContain("put the outcome into your own words");
     });
 
+    it("Reply Format block prohibition includes 'numbered lists'", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      expect(replyFormatBody.toLowerCase()).toContain("numbered lists");
+    });
+
+    it("Reply Format block contains multi-item weaving rule ('weave' or 'running sentences')", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      expect(replyFormatBody.toLowerCase()).toMatch(/weave|running sentences/);
+    });
+
+    it("Reply Format block contains three example introductions", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      // Must contain at least two of the three markers; third is new long-form example
+      const markerCount = [
+        "For example:",
+        "Another example:",
+        "For a longer reply",
+      ].filter((marker) => replyFormatBody.includes(marker)).length;
+
+      expect(markerCount).toBeGreaterThanOrEqual(3);
+    });
+
+    it("Reply Format long-form example contains no list structure", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      // Extract content inside the long-form example quote
+      const longerReplyIdx = replyFormatBody.indexOf("For a longer reply");
+      expect(longerReplyIdx).toBeGreaterThan(-1);
+
+      // Find the quoted content (between first " after the marker and closing ")
+      const afterMarker = replyFormatBody.slice(longerReplyIdx);
+      const quoteStart = afterMarker.indexOf('"');
+      const quoteEnd = afterMarker.lastIndexOf('"');
+      expect(quoteStart).toBeGreaterThan(-1);
+      expect(quoteEnd).toBeGreaterThan(quoteStart);
+
+      const exampleContent = afterMarker.slice(quoteStart + 1, quoteEnd);
+
+      // No numbered list items (digits followed by dot and space at start of text segment)
+      expect(exampleContent).not.toMatch(/\d+\.\s/);
+      // No hyphen-bullets
+      expect(exampleContent).not.toMatch(/^- /m);
+      // No asterisk-bullets
+      expect(exampleContent).not.toMatch(/^\* /m);
+      // No section headers
+      expect(exampleContent).not.toMatch(/^### /m);
+    });
+
+    it("Reply Format block is under 220 words", () => {
+      const systemPrompt = assembleChannelSystemPrompt({});
+
+      const replyFormatIdx = systemPrompt.indexOf("## Reply Format");
+      const afterHeader = systemPrompt.slice(
+        replyFormatIdx + "## Reply Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
+
+      const wordCount = replyFormatBody
+        .trim()
+        .split(/\s+/)
+        .filter((w) => w.length > 0).length;
+
+      expect(wordCount).toBeLessThanOrEqual(220);
+    });
+
     it("Heartbeat system prompt does NOT include Reply Format section", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
