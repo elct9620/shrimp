@@ -351,7 +351,7 @@ _Trigger rule:_
 
 _Compaction procedure (ordered):_
 
-1. Take a snapshot of the current Session's full ConversationMessage list as it stands after the just-completed turn's entries have been appended (the current Session JSONL is therefore complete and faithful before any rotation begins).
+1. Take a snapshot of the current Session's full ConversationMessage list from the Job Worker's in-memory post-append state — i.e., the working list that combines the pre-turn history loaded for this Job with the user and assistant entries added during this turn. The snapshot is sourced from memory rather than re-read from the Session JSONL, because JSONL append is Fail-Open and the on-disk file may be missing either the user or the assistant turn (see the JSONL append failure row in the failure handling table below).
 2. Invoke the SummarizePort with that ConversationMessage list; receive a Conversation Summary string.
 3. Generate a new Session UUID.
 4. Create a new Session JSONL file at `<SHRIMP_HOME>/sessions/<new-id>.jsonl` whose first and only entry is a `ConversationMessage` with `role: "system"` carrying the Conversation Summary as its content. (`role: "system"` is the ConversationMessage variant that represents a Conversation Summary; it is the same role field used to carry system-level context in the conversation history.)
