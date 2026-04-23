@@ -66,38 +66,37 @@ describe("assembleHeartbeatPrompts", () => {
       expect(systemPrompt.toLowerCase()).toContain("guess");
     });
 
-    it("includes heartbeat workflow with progress reporting step", () => {
+    it("includes heartbeat objective (goal framing for task execution)", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
         tools: [],
       });
 
-      expect(systemPrompt).toContain("## Workflow");
-      expect(systemPrompt.toLowerCase()).toContain("progress comment");
+      expect(systemPrompt).toContain("## Objective");
     });
 
-    it("includes domain knowledge about board sections", () => {
+    it("does not contain Todoist-specific Domain Knowledge section (moved to todoist skill)", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
         tools: [],
       });
 
-      expect(systemPrompt).toContain("## Domain Knowledge");
-      expect(systemPrompt).toContain("Backlog");
-      expect(systemPrompt).toContain("In Progress");
-      expect(systemPrompt).toContain("Done");
+      expect(systemPrompt).not.toContain("## Domain Knowledge");
+      expect(systemPrompt).not.toContain("Backlog");
+      expect(systemPrompt).not.toContain("In Progress");
     });
 
-    it("includes error handling guidance", () => {
+    it("does not contain Todoist-specific Workflow or Error Handling sections (moved to todoist skill)", () => {
       const { systemPrompt } = assembleHeartbeatPrompts({
         task: makeTask(),
         comments: [],
         tools: [],
       });
 
-      expect(systemPrompt).toContain("## Error Handling");
+      expect(systemPrompt).not.toContain("## Workflow");
+      expect(systemPrompt).not.toContain("## Error Handling");
     });
 
     it("orders sections from stable to dynamic: base → variant → tools", () => {
@@ -109,12 +108,12 @@ describe("assembleHeartbeatPrompts", () => {
       });
 
       const principlesIdx = systemPrompt.indexOf("## Operating Principles");
-      const workflowIdx = systemPrompt.indexOf("## Workflow");
+      const objectiveIdx = systemPrompt.indexOf("## Objective");
       const toolsIdx = systemPrompt.indexOf("## Tools");
 
       expect(principlesIdx).toBeGreaterThan(-1);
-      expect(workflowIdx).toBeGreaterThan(principlesIdx);
-      expect(toolsIdx).toBeGreaterThan(workflowIdx);
+      expect(objectiveIdx).toBeGreaterThan(principlesIdx);
+      expect(toolsIdx).toBeGreaterThan(objectiveIdx);
     });
 
     it("lists each tool name and description in the system prompt", () => {
