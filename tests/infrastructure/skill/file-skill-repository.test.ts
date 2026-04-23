@@ -108,6 +108,48 @@ describe("FileSkillRepository", () => {
     expect(entries[0].description).toBe("Does something useful");
   });
 
+  // --- Optional frontmatter fields are silently ignored ---
+
+  it("optional frontmatter fields (license, allowed-tools, compatibility, metadata) are accepted and not leaked into SkillCatalogEntry", async () => {
+    const skillDir = join(builtInRoot, "my-skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      join(skillDir, "SKILL.md"),
+      [
+        "---",
+        "name: my-skill",
+        "description: Skill with optional fields",
+        "license: MIT",
+        "allowed-tools: read_file,write_file",
+        "compatibility: claude-3-5-sonnet",
+        "metadata:",
+        "  author: tester",
+        "---",
+        "Skill body.",
+      ].join("\n"),
+    );
+
+    const repo = new FileSkillRepository(builtInRoot, null, logger);
+    const entries = repo.list();
+
+    // Skill must be discovered correctly
+    expect(entries).toHaveLength(1);
+    expect(entries[0].name).toBe("my-skill");
+    expect(entries[0].description).toBe("Skill with optional fields");
+    expect(entries[0].skillFilePath).toBe(join(skillDir, "SKILL.md"));
+
+    // No warn must have been emitted for this valid skill
+    expect(logger.warns).toHaveLength(0);
+
+    // SkillCatalogEntry must contain only the three documented fields
+    const entry = entries[0];
+    const keys = Object.keys(entry);
+    expect(keys).toEqual(
+      expect.arrayContaining(["name", "description", "skillFilePath"]),
+    );
+    expect(keys).toHaveLength(3);
+  });
+
   // --- Invalid SKILL.md → warn+skip ---
 
   it("missing name field → warn+skip; other skills still loaded", async () => {
