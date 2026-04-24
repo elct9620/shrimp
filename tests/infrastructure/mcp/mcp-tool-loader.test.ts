@@ -159,18 +159,18 @@ describe("McpToolLoader", () => {
       expect(Object.keys(result.tools)).not.toContain("toolThatFails");
     });
 
-    it("should call the factory with the server name and its definition", async () => {
+    it("should include the tool in the loaded ToolSet when a server exposes it", async () => {
       const client = makeClient([{ name: "tool1", description: "Tool one" }]);
       const factory: McpClientFactory = vi.fn().mockResolvedValue(client);
       const loader = new McpToolLoader(makeFakeLogger(), factory);
       const config = makeConfig("myServer");
 
-      await loader.load(config);
+      const result = await loader.load(config);
 
-      expect(factory).toHaveBeenCalledWith("myServer", {
-        type: "http",
-        url: "https://example.com/myServer",
-      });
+      expect(result.tools).toHaveProperty("tool1");
+      expect(result.descriptions).toEqual([
+        { name: "tool1", description: "Tool one" },
+      ]);
     });
   });
 
