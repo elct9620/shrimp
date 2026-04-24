@@ -323,7 +323,6 @@ describe("TelegramChannel.reply", () => {
 
     it("falls back to exponential backoff when retry_after exceeds the 10s cap", async () => {
       let callCount = 0;
-      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
       server.use(
         http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
           callCount += 1;
@@ -348,19 +347,19 @@ describe("TelegramChannel.reply", () => {
         { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 6 } },
         "hi",
       );
-      await vi.runAllTimersAsync();
+
+      // First attempt fires immediately; verify only one call so far.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(callCount).toBe(1);
+
+      // BACKOFF_MS[0] = 250ms — advancing by 250ms must trigger the retry.
+      // If the uncapped retry_after:30 were used (30 000ms), no retry would
+      // fire here and callCount would remain 1.
+      await vi.advanceTimersByTimeAsync(250);
       await promise;
 
       expect(callCount).toBe(2);
       expect(logger.warn).not.toHaveBeenCalled();
-      // The sleep() call for retry_after:30 must use exponential backoff (250ms),
-      // not the uncapped 30 000ms value.
-      const sleepCalls = setTimeoutSpy.mock.calls.filter(
-        ([, delay]) => typeof delay === "number" && delay > 0,
-      );
-      expect(sleepCalls.every(([, delay]) => (delay as number) <= 500)).toBe(
-        true,
-      );
     });
   });
 
