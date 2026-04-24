@@ -31,4 +31,27 @@ describe("stripTag", () => {
   it("returns empty string when input is exactly the tag", () => {
     expect(stripTag(COMMENT_TAG)).toBe("");
   });
+
+  it("returns whitespace-only string when content after tag is only whitespace", () => {
+    expect(stripTag(`${COMMENT_TAG}   \n\t`)).toBe("   \n\t");
+  });
+
+  it("does not strip tag when tag appears mid-string", () => {
+    const midTag = `hello ${COMMENT_TAG}world`;
+    expect(stripTag(midTag)).toBe(midTag.slice(COMMENT_TAG.length));
+  });
+});
+
+describe("isTagged edge cases", () => {
+  it("returns false for whitespace-only content with no tag", () => {
+    expect(isTagged("   \n\t")).toBe(false);
+  });
+
+  it("returns false when tag appears mid-string (not at start)", () => {
+    expect(isTagged(`hello ${COMMENT_TAG}world`)).toBe(false);
+  });
+
+  it("returns true for tag followed by whitespace-only content", () => {
+    expect(isTagged(`${COMMENT_TAG}   \n\t`)).toBe(true);
+  });
 });
