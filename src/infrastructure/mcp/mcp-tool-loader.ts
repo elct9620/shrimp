@@ -9,6 +9,13 @@ import type { LoggerPort } from "../../use-cases/ports/logger";
 import { TOKENS } from "../container/tokens";
 
 // ---------------------------------------------------------------------------
+// Log event constants
+// ---------------------------------------------------------------------------
+
+export const MCP_CLIENT_CLOSE_FAILED = "mcp client failed to close";
+export const MCP_CLIENT_CLOSED = "mcp close";
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -139,13 +146,13 @@ export class McpToolLoader {
   }
 
   async close(): Promise<void> {
-    this.logger.debug("mcp close", { clientCount: this.clients.length });
+    this.logger.debug(MCP_CLIENT_CLOSED, { clientCount: this.clients.length });
     const results = await Promise.allSettled(
       this.clients.map((c) => c.close()),
     );
     results.forEach((r, i) => {
       if (r.status === "rejected") {
-        this.logger.warn("mcp client failed to close", {
+        this.logger.warn(MCP_CLIENT_CLOSE_FAILED, {
           clientIndex: i,
           error:
             r.reason instanceof Error ? r.reason.message : String(r.reason),

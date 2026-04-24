@@ -3,7 +3,11 @@ import type {
   McpClient,
   McpClientFactory,
 } from "../../../src/infrastructure/mcp/mcp-tool-loader";
-import { McpToolLoader } from "../../../src/infrastructure/mcp/mcp-tool-loader";
+import {
+  McpToolLoader,
+  MCP_CLIENT_CLOSE_FAILED,
+  MCP_CLIENT_CLOSED,
+} from "../../../src/infrastructure/mcp/mcp-tool-loader";
 import type { McpConfig } from "../../../src/infrastructure/config/mcp-config";
 import { jsonSchema, tool } from "ai";
 import { makeFakeLogger } from "../../mocks/fake-logger";
@@ -309,7 +313,7 @@ describe("McpToolLoader", () => {
       await loader.close();
 
       expect(logger.warn).toHaveBeenCalledWith(
-        "mcp client failed to close",
+        MCP_CLIENT_CLOSE_FAILED,
         expect.objectContaining({ error: "close timeout" }),
       );
     });
@@ -325,7 +329,7 @@ describe("McpToolLoader", () => {
       await loader.close();
 
       expect(logger.debug).toHaveBeenCalledWith(
-        "mcp close",
+        MCP_CLIENT_CLOSED,
         expect.objectContaining({ clientCount: 1 }),
       );
     });
