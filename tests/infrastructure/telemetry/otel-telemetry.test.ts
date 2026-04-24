@@ -173,29 +173,26 @@ describe("OtelTelemetry", () => {
   });
 
   it("should swallow sdk shutdown errors and log a warning", async () => {
-    // Use a provider whose shutdown is rigged to reject, supplied via the
-    // tracer override so no NodeSDK stub is needed.
-    const { exporter, tracer } = makeTracerProvider();
+    const { tracer } = makeTracerProvider();
     const logger = makeFakeLogger();
 
-    // Intercept the NodeSDK that OtelTelemetry builds internally: we cannot
-    // replace it, but we CAN test the swallow + warn behaviour by spying on
-    // the NodeSDK.prototype.shutdown method before construction.
-    const { NodeSDK } = await import("@opentelemetry/sdk-node");
-    const shutdownSpy = vi
-      .spyOn(NodeSDK.prototype, "shutdown")
-      .mockRejectedValueOnce(new Error("boom"));
+    const stubSdk: Pick<
+      import("@opentelemetry/sdk-node").NodeSDK,
+      "start" | "shutdown"
+    > = {
+      start: () => undefined,
+      shutdown: () => Promise.reject(new Error("boom")),
+    };
 
-    const telemetry = new OtelTelemetry(makeOptions({ logger, tracer }));
+    const telemetry = new OtelTelemetry(
+      makeOptions({ logger, tracer, sdk: stubSdk }),
+    );
 
     await expect(telemetry.shutdown()).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalledWith(
       "telemetry shutdown failed",
       expect.objectContaining({ error: "boom" }),
     );
-
-    shutdownSpy.mockRestore();
-    exporter.reset();
   });
 
   describe("applyDefaultDeploymentEnvironment", () => {

@@ -27,11 +27,16 @@ export type OtelTelemetryOptions = {
    * TracerProvider that `NodeSDK.start()` just registered.
    */
   tracer?: Tracer;
+  /**
+   * Override the NodeSDK instance. Intended for tests; production callers
+   * leave this unset so a real NodeSDK is constructed with the OTLP exporter.
+   */
+  sdk?: Pick<NodeSDK, "start" | "shutdown">;
 };
 
 export class OtelTelemetry implements TelemetryPort {
   readonly tracer: Tracer;
-  private readonly sdk: NodeSDK;
+  private readonly sdk: Pick<NodeSDK, "start" | "shutdown">;
   private readonly logger: LoggerPort;
 
   constructor(options: OtelTelemetryOptions) {
@@ -47,15 +52,17 @@ export class OtelTelemetry implements TelemetryPort {
     // signal-path appending (e.g. /v1/traces for OTEL_EXPORTER_OTLP_ENDPOINT).
     const exporter = new OTLPTraceExporter();
 
-    this.sdk = new NodeSDK({
-      resource: resourceFromAttributes({
-        [ATTR_SERVICE_NAME]: options.serviceName,
-      }),
-      spanProcessors: [
-        new GenAiBridgeSpanProcessor(),
-        new BatchSpanProcessor(exporter),
-      ],
-    });
+    this.sdk =
+      options.sdk ??
+      new NodeSDK({
+        resource: resourceFromAttributes({
+          [ATTR_SERVICE_NAME]: options.serviceName,
+        }),
+        spanProcessors: [
+          new GenAiBridgeSpanProcessor(),
+          new BatchSpanProcessor(exporter),
+        ],
+      });
 
     this.sdk.start(); // registers global TracerProvider
 
