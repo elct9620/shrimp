@@ -1,4 +1,11 @@
-import { mkdtemp, rm, mkdir, writeFile, symlink } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  mkdir,
+  writeFile,
+  symlink,
+  chmod,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -552,6 +559,154 @@ describe("FileSkillRepository", () => {
 
     expect(content).toContain(`\`${skillDir}/scripts/setup.sh\``);
     expect(content).toContain(`\`${skillDir}/references/guide.md\``);
+  });
+
+  // --- link rewriting — edge cases ---
+
+  describe("link rewriting — edge cases", () => {
+    it("malformed markdown: unclosed bracket `[text without closing paren` — left untouched", async () => {
+      // Arrange: content contains a bracket that is never closed with `](…)`
+      const skillDir = join(builtInRoot, "my-skill");
+      await mkdir(skillDir);
+      await writeFile(
+        join(skillDir, "SKILL.md"),
+        [
+          "---",
+          "name: my-skill",
+          "description: Malformed link test",
+          "---",
+          "See [text without closing paren for details.",
+        ].join("\n"),
+      );
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      // Act
+      const content = await repo.getSkillContent("my-skill");
+
+      // Assert: no regex match → original text preserved verbatim
+      expect(content).toContain("[text without closing paren for details.");
+    });
+
+    it("malformed markdown: `[link](` with no closing paren — left untouched", async () => {
+      // Arrange: the regex `/\(([^)]+)\)/` requires a closing `)` to match;
+      // a line that opens `(` but never closes it produces no match.
+      const skillDir = join(builtInRoot, "my-skill");
+      await mkdir(skillDir);
+      await writeFile(
+        join(skillDir, "SKILL.md"),
+        [
+          "---",
+          "name: my-skill",
+          "description: No closing paren test",
+          "---",
+          "Broken [link]( here.",
+        ].join("\n"),
+      );
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      // Act
+      const content = await repo.getSkillContent("my-skill");
+
+      // Assert: no closing `)` → no regex match → original text preserved verbatim
+      expect(content).toContain("Broken [link]( here.");
+    });
+
+    it("malformed markdown: `[](only-path.md)` with empty link text — path is rewritten", async () => {
+      // Arrange: empty text `[^\]]*` matches zero chars — the regex still matches
+      const skillDir = join(builtInRoot, "my-skill");
+      await mkdir(skillDir);
+      await writeFile(
+        join(skillDir, "SKILL.md"),
+        [
+          "---",
+          "name: my-skill",
+          "description: Empty text link",
+          "---",
+          "See [](docs/overview.md) for details.",
+        ].join("\n"),
+      );
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      // Act
+      const content = await repo.getSkillContent("my-skill");
+
+      // Assert: empty alt text is preserved; target is rewritten to absolute
+      expect(content).toContain(`[](${skillDir}/docs/overview.md)`);
+      expect(content).not.toContain("](docs/overview.md)");
+    });
+
+    it("filename with spaces: `[link](file with space.md)` — spaces pass through and path is rewritten", async () => {
+      // Arrange: `[^)]+` allows spaces — the full `file with space.md` is captured
+      const skillDir = join(builtInRoot, "my-skill");
+      await mkdir(skillDir);
+      await writeFile(
+        join(skillDir, "SKILL.md"),
+        [
+          "---",
+          "name: my-skill",
+          "description: Space in filename",
+          "---",
+          "See [link](file with space.md) here.",
+        ].join("\n"),
+      );
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      // Act
+      const content = await repo.getSkillContent("my-skill");
+
+      // Assert: path with spaces stays inside skillDir → rewritten to absolute (with spaces, no URL-encoding)
+      expect(content).toContain(`[link](${skillDir}/file with space.md)`);
+      expect(content).not.toContain("](file with space.md)");
+    });
+
+    it("EACCES on realpath in readFile() → re-throws generic Error (not FileNotFoundError)", async () => {
+      // Arrange: chmod 000 on the parent directory causes realpath() to throw EACCES.
+      // A locked subdirectory inside builtInRoot triggers the error before the sandbox
+      // check can run.
+      const lockedDir = join(builtInRoot, "locked-dir");
+      await mkdir(lockedDir, { recursive: true });
+      const filePath = join(lockedDir, "secret.txt");
+      await writeFile(filePath, "secret");
+      await chmod(lockedDir, 0o000);
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      try {
+        // Act & Assert: EACCES must propagate as a generic Error, not FileNotFoundError
+        await expect(repo.readFile(filePath)).rejects.toThrow(
+          "Failed to resolve path:",
+        );
+      } finally {
+        await chmod(lockedDir, 0o755);
+      }
+    });
+
+    it("EACCES on stat in readFile() → re-throws generic Error (not FileNotFoundError)", async () => {
+      // Arrange: place a file inside builtInRoot, then chmod 000 on builtInRoot itself
+      // so that realpath (which uses /private/var/… canonical form) succeeds but stat fails.
+      // We chmod the tmpDir wrapper so realpath still resolves via the canonical path
+      // while stat on the non-canonical path triggers EACCES.
+      const skillDir = join(builtInRoot, "my-skill-stat");
+      await mkdir(skillDir, { recursive: true });
+      const filePath = join(skillDir, "data.txt");
+      await writeFile(filePath, "content");
+
+      // Lock the parent so stat cannot access the file
+      await chmod(skillDir, 0o000);
+
+      const repo = new FileSkillRepository(builtInRoot, null, logger);
+
+      try {
+        // Act & Assert: stat EACCES must re-throw as generic Error, not FileNotFoundError
+        await expect(repo.readFile(filePath)).rejects.toThrow();
+      } finally {
+        await chmod(skillDir, 0o755);
+      }
+    });
   });
 
   // --- readFile sandbox ---
