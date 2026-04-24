@@ -47,14 +47,15 @@ function makeBoardRepository(
 
 function makeShrimpAgent(
   result = { reason: "finished" as const, newMessages: [] },
-) {
-  const agent: ShrimpAgent & { capturedInput?: JobInput } = {
-    run: vi.fn().mockImplementation(async (input: JobInput) => {
-      (agent as { capturedInput?: JobInput }).capturedInput = input;
-      return result;
-    }),
+): ShrimpAgent {
+  return {
+    run: vi.fn().mockResolvedValue(result),
   };
-  return agent;
+}
+
+function firstRunInput(agent: ShrimpAgent): JobInput | undefined {
+  const runFn = agent.run as unknown as { mock: { calls: unknown[][] } };
+  return runFn.mock.calls[0]?.[0] as JobInput | undefined;
 }
 
 function makeToolProviderFactory(): ToolProviderFactory {
@@ -126,9 +127,10 @@ describe("HeartbeatJob.run", () => {
     await job.run(DEFAULT_INPUT);
 
     expect(agent.run).toHaveBeenCalledTimes(1);
-    expect(agent.capturedInput?.history).toEqual([]);
-    expect(agent.capturedInput?.userPrompt).toContain("ip-1");
-    expect(agent.capturedInput?.userPrompt).toContain("prior note");
+    const input = firstRunInput(agent);
+    expect(input?.history).toEqual([]);
+    expect(input?.userPrompt).toContain("ip-1");
+    expect(input?.userPrompt).toContain("prior note");
     expect(logger.info).toHaveBeenCalledWith(
       CYCLE_FINISHED,
       expect.objectContaining({ taskId: "ip-1", reason: "finished" }),
@@ -147,8 +149,9 @@ describe("HeartbeatJob.run", () => {
 
     expect(board.moveTask).toHaveBeenCalledWith("bl-1", Section.InProgress);
     expect(agent.run).toHaveBeenCalledTimes(1);
-    expect(agent.capturedInput?.userPrompt).toContain("Section: In Progress");
-    expect(agent.capturedInput?.userPrompt).not.toContain("Section: Backlog");
+    const input = firstRunInput(agent);
+    expect(input?.userPrompt).toContain("Section: In Progress");
+    expect(input?.userPrompt).not.toContain("Section: Backlog");
   });
 
   it("no actionable tasks: ends immediately without invoking agent", async () => {
