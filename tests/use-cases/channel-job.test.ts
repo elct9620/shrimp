@@ -242,12 +242,18 @@ describe("ChannelJob.run", () => {
     const ref = makeRef();
     const gateway = makeChannelGateway();
 
-    const order: string[] = [];
+    // Recording collaborator: capture whether indicateProcessing was already
+    // called at the moment the agent is invoked (observable state, not call
+    // sequence). This detects semantic drift — if indicateProcessing is moved
+    // after the agent call, processingIndicatedWhenAgentRan becomes false.
+    let processingIndicatedWhenAgentRan: boolean | undefined;
+    let indicateProcessingCalled = false;
+
     gateway.indicateProcessing = vi.fn().mockImplementation(async () => {
-      order.push("indicate");
+      indicateProcessingCalled = true;
     });
     agent.run = vi.fn().mockImplementation(async () => {
-      order.push("agent");
+      processingIndicatedWhenAgentRan = indicateProcessingCalled;
       return { reason: "finished" as const, newMessages: [] };
     });
 
@@ -262,7 +268,7 @@ describe("ChannelJob.run", () => {
     await j.run({ message: "Hi", ref, telemetry: DEFAULT_TELEMETRY });
 
     expect(gateway.indicateProcessing).toHaveBeenCalledWith(ref);
-    expect(order).toEqual(["indicate", "agent"]);
+    expect(processingIndicatedWhenAgentRan).toBe(true);
   });
 
   it("delivers the agent's assistant reply directly via ChannelGateway", async () => {
@@ -286,13 +292,25 @@ describe("ChannelJob.run", () => {
     sessionRepo.getCurrent = vi.fn().mockResolvedValue(session);
     const ref = makeRef();
     const gateway = makeChannelGateway();
-    const order: string[] = [];
+
+    // Recording collaborator: each side-effect stamps its own monotonic counter
+    // value so we can assert the relative order via observable state rather than
+    // spy call-sequence tracking.  A future change that makes reply fire-and-
+    // forget (or moves it after append) will make replyStamp > appendStamp and
+    // the assertion below will fail.
+    let counter = 0;
+    let replyStamp = -1;
+    let assistantAppendStamp = -1;
 
     gateway.reply = vi.fn().mockImplementation(async () => {
-      order.push("reply");
+      replyStamp = ++counter;
     });
+    // Intercept only the assistant-append call (the second append; the first is
+    // the user-message pre-agent append).  We track the stamp of every call and
+    // compare the last one against replyStamp.
+    const appendStamps: number[] = [];
     sessionRepo.append = vi.fn().mockImplementation(async () => {
-      order.push("append");
+      appendStamps.push(++counter);
     });
     agent.run = vi.fn().mockResolvedValue({
       reason: "finished" as const,
@@ -308,10 +326,14 @@ describe("ChannelJob.run", () => {
     );
     await j.run({ message: "Hey", ref, telemetry: DEFAULT_TELEMETRY });
 
-    // order[0] = user-msg append (before agent), order[1] = reply, order[2] = assistant-msg append
-    expect(order[1]).toBe("reply");
-    expect(order[2]).toBe("append");
-    expect(order.indexOf("reply")).toBeLessThan(order.indexOf("append", 1));
+    // appendStamps[0] = user-msg append (before agent), appendStamps[1] = assistant-msg append
+    assistantAppendStamp = appendStamps[1]!;
+
+    // Observable state assertion: reply must have been delivered (stamp set)
+    // before the assistant messages were persisted to the Session.
+    expect(replyStamp).toBeGreaterThan(0);
+    expect(assistantAppendStamp).toBeGreaterThan(0);
+    expect(replyStamp).toBeLessThan(assistantAppendStamp);
   });
 
   it("user msg is appended before agent invocation so transcript is preserved on agent failure", async () => {
