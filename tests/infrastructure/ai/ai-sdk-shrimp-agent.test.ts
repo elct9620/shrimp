@@ -3,84 +3,27 @@ import type { FinishReason } from "ai";
 import { tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { SpanStatusCode, type Tracer } from "@opentelemetry/api";
 import { AiSdkShrimpAgent } from "../../../src/infrastructure/ai/ai-sdk-shrimp-agent";
 import type { JobInput } from "../../../src/use-cases/ports/shrimp-agent";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 import { NoopTelemetry } from "../../../src/infrastructure/telemetry/noop-telemetry";
-import { SpanStatusCode, type Tracer } from "@opentelemetry/api";
 
-type RecordedSpan = {
-  name: string;
-  attributes: Record<string, unknown>;
-  ended: boolean;
-  status?: { code: number; message?: string };
-  exceptions: unknown[];
-};
-
-function makeRecordingTracer(): { tracer: Tracer; spans: RecordedSpan[] } {
-  const spans: RecordedSpan[] = [];
-  const tracer = {
-    startActiveSpan(name: string, ...args: unknown[]): unknown {
-      const fn = args[args.length - 1] as (span: unknown) => unknown;
-      const record: RecordedSpan = {
-        name,
-        attributes: {},
-        ended: false,
-        exceptions: [],
-      };
-      spans.push(record);
-      const span = {
-        setAttribute(key: string, value: unknown) {
-          record.attributes[key] = value;
-          return span;
-        },
-        setAttributes(attrs: Record<string, unknown>) {
-          Object.assign(record.attributes, attrs);
-          return span;
-        },
-        setStatus(status: { code: number; message?: string }) {
-          record.status = status;
-          return span;
-        },
-        recordException(exception: unknown) {
-          record.exceptions.push(exception);
-          return span;
-        },
-        updateName(newName: string) {
-          record.name = newName;
-          return span;
-        },
-        end() {
-          record.ended = true;
-        },
-        isRecording() {
-          return true;
-        },
-        spanContext() {
-          return {
-            traceId: "0".repeat(32),
-            spanId: "0".repeat(16),
-            traceFlags: 0,
-          };
-        },
-        addEvent() {
-          return span;
-        },
-        addLink() {
-          return span;
-        },
-        addLinks() {
-          return span;
-        },
-      };
-      return fn(span);
-    },
-    startSpan() {
-      throw new Error("startSpan not implemented in recording tracer");
-    },
-  } as unknown as Tracer;
-  return { tracer, spans };
+function makeInMemoryTracer(): {
+  tracer: Tracer;
+  exporter: InMemorySpanExporter;
+} {
+  const exporter = new InMemorySpanExporter();
+  const provider = new BasicTracerProvider({
+    spanProcessors: [new SimpleSpanProcessor(exporter)],
+  });
+  return { tracer: provider.getTracer("test"), exporter };
 }
 
 function makeModel(finishReason: FinishReason = "stop") {
@@ -419,7 +362,7 @@ describe("AiSdkShrimpAgent.run", () => {
       // Observable effect: the outer span is named "invoke_agent shrimp.job" and
       // gen_ai.agent.name is "shrimp.job" — both derive from functionId="shrimp.job"
       // in experimental_telemetry being active (isEnabled:true).
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), {
         tracer,
@@ -429,6 +372,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
+      const spans = exporter.getFinishedSpans();
       expect(spans.length).toBeGreaterThan(0);
       const agentSpan = spans.find((s) => s.name === "invoke_agent shrimp.job");
       expect(agentSpan).toBeDefined();
@@ -438,7 +382,7 @@ describe("AiSdkShrimpAgent.run", () => {
     it("should forward recordInputs:false and recordOutputs:false to experimental_telemetry", async () => {
       // Observable effect: when recordInputs/recordOutputs are false, the span must
       // not carry gen_ai.input.messages or gen_ai.output.messages.
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), {
         tracer,
@@ -448,6 +392,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
+      const spans = exporter.getFinishedSpans();
       const agentSpan = spans.find((s) => s.name === "invoke_agent shrimp.job");
       expect(agentSpan).toBeDefined();
       expect(agentSpan!.attributes).not.toHaveProperty("gen_ai.input.messages");
@@ -457,9 +402,9 @@ describe("AiSdkShrimpAgent.run", () => {
     });
 
     it("should forward the exact tracer instance supplied by the caller", async () => {
-      // Observable effect: supplying a recording tracer means its startActiveSpan
-      // fires and spans are captured — proving that exact tracer was used.
-      const { tracer, spans } = makeRecordingTracer();
+      // Observable effect: supplying an in-memory tracer means its spans are
+      // captured in the exporter — proving that exact tracer was used.
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), {
         tracer,
@@ -469,29 +414,33 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      expect(spans.length).toBeGreaterThan(0);
+      expect(exporter.getFinishedSpans().length).toBeGreaterThan(0);
     });
   });
 
   describe("gen_ai semantic conventions", () => {
-    function findShrimpAgentSpan(spans: RecordedSpan[]) {
+    function findShrimpAgentSpan(
+      spans: ReturnType<InMemorySpanExporter["getFinishedSpans"]>,
+    ) {
       return spans.find(
         (s) => s.name === "invoke_agent shrimp.job" || s.name === "shrimp.job",
       );
     }
 
     it("should rename outer span to 'invoke_agent shrimp.job' per semconv", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
 
       await agent.run(baseInput);
 
-      expect(spans[0].name).toBe("invoke_agent shrimp.job");
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
+      expect(span).toBeDefined();
+      expect(span!.name).toBe("invoke_agent shrimp.job");
     });
 
     it("should record exception, set ERROR status, end the span, and rethrow when generate throws", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const boom = new Error("upstream provider exploded");
       const model = new MockLanguageModelV3({
         doGenerate: async () => {
@@ -508,37 +457,46 @@ describe("AiSdkShrimpAgent.run", () => {
         "upstream provider exploded",
       );
 
+      const spans = exporter.getFinishedSpans();
       const span = findShrimpAgentSpan(spans);
       expect(span).toBeDefined();
-      expect(span!.ended).toBe(true);
+      // span being in getFinishedSpans() proves it was ended (even after error)
       expect(span!.status?.code).toBe(SpanStatusCode.ERROR);
-      expect(span!.exceptions).toContain(boom);
+      // OTel recordException stores exception as a span event named "exception"
+      // with attribute "exception.message" matching the error message.
+      expect(
+        span!.events.some(
+          (e) =>
+            e.name === "exception" &&
+            e.attributes?.["exception.message"] === boom.message,
+        ),
+      ).toBe(true);
     });
 
     it("should set gen_ai.operation.name to invoke_agent on success", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes["gen_ai.operation.name"]).toBe("invoke_agent");
     });
 
     it("should set gen_ai.agent.name to shrimp.job on success", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes["gen_ai.agent.name"]).toBe("shrimp.job");
     });
 
     it("should set gen_ai.provider.name to the configured providerName on success", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), {
         tracer,
@@ -547,52 +505,52 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes["gen_ai.provider.name"]).toBe("my-provider");
     });
 
     it("should set gen_ai.conversation.id to the sessionId for a ChannelJob (sessionId present)", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
 
       await agent.run({ ...baseInput, sessionId: "sess-abc" });
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes["gen_ai.conversation.id"]).toBe("sess-abc");
     });
 
     it("should NOT set gen_ai.conversation.id for a HeartbeatJob (sessionId absent)", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
 
       // baseInput has no sessionId — simulates a HeartbeatJob
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes).not.toHaveProperty("gen_ai.conversation.id");
     });
 
     it("should always set shrimp.job.id to the jobId from JobInput", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes["shrimp.job.id"]).toBe(baseInput.jobId);
     });
 
     it("should set gen_ai.agent.id to a non-empty UUID-format string", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       const agentId = span!.attributes["gen_ai.agent.id"];
       expect(typeof agentId).toBe("string");
       expect(agentId as string).toMatch(
@@ -601,20 +559,20 @@ describe("AiSdkShrimpAgent.run", () => {
     });
 
     it("should set gen_ai.agent.version to a non-empty semver string", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), { tracer });
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       const version = span!.attributes["gen_ai.agent.version"];
       expect(typeof version).toBe("string");
       expect(version as string).toMatch(/^\d+\.\d+\.\d+/);
     });
 
     it("should set gen_ai.agent.id and gen_ai.agent.version regardless of recordInputs/recordOutputs", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), {
         tracer,
@@ -624,13 +582,13 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes["gen_ai.agent.id"]).toBeDefined();
       expect(span!.attributes["gen_ai.agent.version"]).toBeDefined();
     });
 
     it("should set error.type to the error constructor name when generate throws", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const boom = new Error("upstream provider exploded");
       const model = new MockLanguageModelV3({
         doGenerate: async () => {
@@ -641,12 +599,12 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await expect(agent.run(baseInput)).rejects.toThrow();
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes["error.type"]).toBe("Error");
     });
 
     it("should set gen_ai.provider.name even when generate throws", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = new MockLanguageModelV3({
         doGenerate: async () => {
           throw new Error("boom");
@@ -659,12 +617,12 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await expect(agent.run(baseInput)).rejects.toThrow();
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes["gen_ai.provider.name"]).toBe("my-provider");
     });
 
     it("should set gen_ai.input.messages to system+user shape when recordInputs=true", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), {
         tracer,
@@ -673,7 +631,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       const raw = span!.attributes["gen_ai.input.messages"];
       expect(typeof raw).toBe("string");
       const parsed = JSON.parse(raw as string);
@@ -690,7 +648,7 @@ describe("AiSdkShrimpAgent.run", () => {
     });
 
     it("should set gen_ai.output.messages to assistant text shape when recordOutputs=true", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), {
         tracer,
@@ -699,7 +657,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       const raw = span!.attributes["gen_ai.output.messages"];
       expect(typeof raw).toBe("string");
       const parsed = JSON.parse(raw as string);
@@ -709,7 +667,7 @@ describe("AiSdkShrimpAgent.run", () => {
     });
 
     it("should include reasoning part in gen_ai.output.messages when model emits reasoning", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const reasoningModel = new MockLanguageModelV3({
         doGenerate: async () => ({
           content: [
@@ -736,7 +694,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       const parsed = JSON.parse(
         span!.attributes["gen_ai.output.messages"] as string,
       );
@@ -752,7 +710,7 @@ describe("AiSdkShrimpAgent.run", () => {
     });
 
     it("should omit gen_ai.input.messages when recordInputs=false but still set output messages", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), {
         tracer,
@@ -762,13 +720,13 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes).not.toHaveProperty("gen_ai.input.messages");
       expect(span!.attributes).toHaveProperty("gen_ai.output.messages");
     });
 
     it("should omit gen_ai.output.messages when recordOutputs=false but still set input messages", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = makeModel("stop");
       const agent = makeAgent(model, makeFakeLogger(), {
         tracer,
@@ -778,13 +736,13 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes).toHaveProperty("gen_ai.input.messages");
       expect(span!.attributes).not.toHaveProperty("gen_ai.output.messages");
     });
 
     it("should set gen_ai.input.messages but not gen_ai.output.messages when generate throws", async () => {
-      const { tracer, spans } = makeRecordingTracer();
+      const { tracer, exporter } = makeInMemoryTracer();
       const model = new MockLanguageModelV3({
         doGenerate: async () => {
           throw new Error("provider exploded");
@@ -798,7 +756,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await expect(agent.run(baseInput)).rejects.toThrow("provider exploded");
 
-      const span = findShrimpAgentSpan(spans);
+      const span = findShrimpAgentSpan(exporter.getFinishedSpans());
       expect(span!.attributes).toHaveProperty("gen_ai.input.messages");
       expect(span!.attributes).not.toHaveProperty("gen_ai.output.messages");
     });
