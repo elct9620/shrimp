@@ -942,3 +942,74 @@ describe("Auto Compact (integration)", () => {
     expect(parsed.content).toBe(SUMMARY_TEXT);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Integration: user-message persistence when the agent throws
+// ---------------------------------------------------------------------------
+// Verifies the semantic contract: even when ShrimpAgent.run rejects, the
+// incoming user message MUST already be written to the JSONL on disk before
+// the agent is invoked.  A mock-based test cannot catch a future regression
+// where append becomes best-effort / swallowed; this integration test reads
+// back from the real JsonlSessionRepository and would fail in that scenario.
+// ---------------------------------------------------------------------------
+
+describe("Agent-error persistence (integration)", () => {
+  let tmpDir: string;
+  let realRepo: JsonlSessionRepository;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "shrimp-agent-error-"));
+    realRepo = new JsonlSessionRepository({
+      stateDir: tmpDir,
+      logger: makeFakeLogger(),
+    });
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("persists the user message to disk even when the agent throws", async () => {
+    // --- Arrange ---
+
+    // Seed an existing session with prior history so the session already exists.
+    const seeded = await realRepo.createNew();
+    await realRepo.append(seeded.id, [
+      { role: "user", content: "Earlier" },
+      { role: "assistant", content: "Earlier reply" },
+    ]);
+
+    const throwingAgent: ShrimpAgent = {
+      run: vi.fn().mockRejectedValue(new Error("agent exploded")),
+    };
+
+    const job = new ChannelJob({
+      sessionRepository: realRepo,
+      channelGateway: makeChannelGateway(),
+      shrimpAgent: throwingAgent,
+      toolProviderFactory: makeToolProviderFactory(),
+      maxSteps: 10,
+      logger: makeFakeLogger(),
+      telemetry: new NoopTelemetry(),
+    });
+
+    // --- Act ---
+
+    await expect(
+      job.run({
+        message: "New user msg",
+        ref: makeRef(),
+        telemetry: DEFAULT_TELEMETRY,
+      }),
+    ).rejects.toThrow("agent exploded");
+
+    // --- Assert ---
+
+    // Re-read from disk through the real repo — not from any in-memory state.
+    const after = await realRepo.getCurrent();
+    expect(after).not.toBeNull();
+    expect(after!.messages).toContainEqual(
+      expect.objectContaining({ role: "user", content: "New user msg" }),
+    );
+  });
+});
