@@ -10,9 +10,20 @@ export type TelemetryBundle = {
   tracer: Tracer;
 };
 
+export type OtelTelemetryBuilder = (
+  ...args: ConstructorParameters<typeof OtelTelemetry>
+) => TelemetryPort & { tracer: Tracer };
+
+export type TelemetryFactoryOptions = {
+  createOtel?: OtelTelemetryBuilder;
+};
+
 export function createTelemetry(
   env: EnvConfig,
   logger: LoggerPort,
+  {
+    createOtel = (...args) => new OtelTelemetry(...args),
+  }: TelemetryFactoryOptions = {},
 ): TelemetryBundle {
   if (!env.telemetryEnabled) {
     const noop = new NoopTelemetry();
@@ -23,7 +34,7 @@ export function createTelemetry(
   // OTEL_EXPORTER_OTLP_* env vars are pass-through to the OTel SDK (SPEC §Telemetry);
   // the adapter does not forward them so the SDK reads process.env natively and
   // applies spec-compliant signal-path appending.
-  const otel = new OtelTelemetry({
+  const otel = createOtel({
     serviceName: env.otelServiceName!,
     logger,
   });

@@ -1,33 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { TelemetryPort } from "../../../src/use-cases/ports/telemetry";
 import type { EnvConfig } from "../../../src/infrastructure/config/env-config";
+import type { Tracer } from "@opentelemetry/api";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 import { NoopTelemetry } from "../../../src/infrastructure/telemetry/noop-telemetry";
-
-// Captured spy so we can assert on constructor calls.
-const MockOtelTelemetry = vi.fn(function (this: Record<string, unknown>) {
-  this.tracer = {};
-  this.runInSpan = vi
-    .fn()
-    .mockImplementation(
-      async (
-        _name: string,
-        fn: () => Promise<unknown>,
-        _attributes?: Record<string, string | number | boolean>,
-      ) => fn(),
-    );
-  this.shutdown = vi.fn().mockResolvedValue(undefined);
-});
-
-vi.mock("../../../src/infrastructure/telemetry/otel-telemetry", () => ({
-  OtelTelemetry: MockOtelTelemetry,
-}));
-
-// Import after mock so the mocked version is used
-const { createTelemetry } =
-  await import("../../../src/infrastructure/telemetry/telemetry-factory");
-const { OtelTelemetry } =
-  await import("../../../src/infrastructure/telemetry/otel-telemetry");
+import { createTelemetry } from "../../../src/infrastructure/telemetry/telemetry-factory";
 
 const BASE_ENV: EnvConfig = {
   openAiBaseUrl: "https://api.openai.com/v1",
@@ -53,11 +30,15 @@ const BASE_ENV: EnvConfig = {
   skillsCustomRoot: "/tmp/.shrimp/skills",
 };
 
-describe("createTelemetry", () => {
-  beforeEach(() => {
-    vi.mocked(OtelTelemetry).mockClear();
-  });
+function makeStubOtelTelemetry(): TelemetryPort & { tracer: Tracer } {
+  return {
+    tracer: {} as Tracer,
+    runInSpan: vi.fn(async (_name, fn) => fn()),
+    shutdown: vi.fn().mockResolvedValue(undefined),
+  };
+}
 
+describe("createTelemetry", () => {
   it("returns a NoopTelemetry instance when telemetryEnabled is false", () => {
     const logger = makeFakeLogger();
     const env: EnvConfig = { ...BASE_ENV, telemetryEnabled: false };
@@ -68,8 +49,10 @@ describe("createTelemetry", () => {
     expect(tracer).toBeDefined();
   });
 
-  it("returns an OtelTelemetry instance when telemetryEnabled is true and required fields are present", () => {
+  it("routes to the injected OtelTelemetry builder when telemetryEnabled is true", () => {
     const logger = makeFakeLogger();
+    const stub = makeStubOtelTelemetry();
+    const createOtel = vi.fn(() => stub);
     const env: EnvConfig = {
       ...BASE_ENV,
       telemetryEnabled: true,
@@ -77,14 +60,17 @@ describe("createTelemetry", () => {
       otelExporterOtlpEndpoint: "http://otel:4318",
     };
 
-    const { telemetry, tracer } = createTelemetry(env, logger);
+    const { telemetry, tracer } = createTelemetry(env, logger, { createOtel });
 
-    expect(telemetry).toBeInstanceOf(OtelTelemetry);
-    expect(tracer).toBeDefined();
+    expect(createOtel).toHaveBeenCalledOnce();
+    expect(telemetry).toBe(stub);
+    expect(tracer).toBe(stub.tracer);
   });
 
-  it("passes correct OtelTelemetryOptions to OtelTelemetry constructor", () => {
+  it("passes serviceName and logger to the OtelTelemetry builder", () => {
     const logger = makeFakeLogger();
+    const stub = makeStubOtelTelemetry();
+    const createOtel = vi.fn(() => stub);
     const env: EnvConfig = {
       ...BASE_ENV,
       telemetryEnabled: true,
@@ -95,12 +81,11 @@ describe("createTelemetry", () => {
       telemetryRecordOutputs: false,
     };
 
-    createTelemetry(env, logger);
+    createTelemetry(env, logger, { createOtel });
 
     // OTEL_EXPORTER_OTLP_* env vars are pass-through to the OTel SDK
     // (SPEC §Telemetry); they are intentionally NOT forwarded into the adapter.
-    expect(OtelTelemetry).toHaveBeenCalledOnce();
-    expect(OtelTelemetry).toHaveBeenCalledWith({
+    expect(createOtel).toHaveBeenCalledWith({
       serviceName: "shrimp-service",
       logger,
     });
@@ -110,7 +95,6 @@ describe("createTelemetry", () => {
     const logger = makeFakeLogger();
     const env: EnvConfig = { ...BASE_ENV, telemetryEnabled: false };
 
-    // TypeScript compile-time assertion: TelemetryPort is satisfied
     const t: TelemetryPort = createTelemetry(env, logger).telemetry;
 
     expect(t).toBeDefined();
