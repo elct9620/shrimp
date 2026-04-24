@@ -39,6 +39,26 @@ const makeComment = (
 });
 
 /**
+ * Returns the content of a `## Heading` section: from the line after the heading
+ * to (but not including) the next `## ` heading line, or end-of-string.
+ * Trailing whitespace is trimmed. Throws if the heading is not found.
+ */
+function extractSection(prompt: string, heading: string): string {
+  const lines = prompt.split("\n");
+  const headingLine = `## ${heading}`;
+  const startIdx = lines.findIndex((line) => line === headingLine);
+  if (startIdx === -1) {
+    throw new Error(`Section "${heading}" not found in prompt`);
+  }
+  const bodyLines: string[] = [];
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    if (lines[i].startsWith("## ")) break;
+    bodyLines.push(lines[i]);
+  }
+  return bodyLines.join("\n").trimEnd();
+}
+
+/**
  * Returns the given headings sorted by their first occurrence in the prompt.
  * Headings not found in the prompt are sorted to the end.
  */
@@ -114,9 +134,7 @@ describe("assembleHeartbeatPrompts", () => {
         comments: [],
       });
 
-      const approachIdx = systemPrompt.indexOf("## Approach");
-      const workingStyleIdx = systemPrompt.indexOf("## Working Style");
-      const approachSection = systemPrompt.slice(approachIdx, workingStyleIdx);
+      const approachSection = extractSection(systemPrompt, "Approach");
 
       expect(approachSection.toLowerCase()).toContain("skill");
     });
@@ -127,12 +145,7 @@ describe("assembleHeartbeatPrompts", () => {
         comments: [],
       });
 
-      const workingStyleIdx = systemPrompt.indexOf("## Working Style");
-      const nextSection = systemPrompt.indexOf("\n## ", workingStyleIdx + 1);
-      const workingStyleSection =
-        nextSection === -1
-          ? systemPrompt.slice(workingStyleIdx)
-          : systemPrompt.slice(workingStyleIdx, nextSection);
+      const workingStyleSection = extractSection(systemPrompt, "Working Style");
 
       expect(workingStyleSection.toLowerCase()).toContain("guess");
     });
@@ -440,8 +453,7 @@ describe("assembleHeartbeatPrompts", () => {
           skills: [makeSkillEntry()],
         });
 
-        const approachIdx = systemPrompt.indexOf("## Approach");
-        const approachSection = systemPrompt.slice(approachIdx);
+        const approachSection = extractSection(systemPrompt, "Approach");
         expect(approachSection.toLowerCase()).toContain("skill");
       });
 
@@ -475,12 +487,7 @@ describe("assembleHeartbeatPrompts", () => {
           skills: [makeSkillEntry()],
         });
 
-        const approachIdx = systemPrompt.indexOf("## Approach");
-        const workingStyleIdx = systemPrompt.indexOf("## Working Style");
-        const approachSection = systemPrompt.slice(
-          approachIdx,
-          workingStyleIdx,
-        );
+        const approachSection = extractSection(systemPrompt, "Approach");
 
         expect(approachSection.toLowerCase()).not.toContain(
           "reason from the task directly",
@@ -495,12 +502,7 @@ describe("assembleHeartbeatPrompts", () => {
           skills: [makeSkillEntry()],
         });
 
-        const approachIdx = systemPrompt.indexOf("## Approach");
-        const workingStyleIdx = systemPrompt.indexOf("## Working Style");
-        const approachSection = systemPrompt.slice(
-          approachIdx,
-          workingStyleIdx,
-        );
+        const approachSection = extractSection(systemPrompt, "Approach");
 
         expect(approachSection.toLowerCase()).toMatch(
           /state what|ask for clarification/,
@@ -514,9 +516,7 @@ describe("assembleHeartbeatPrompts", () => {
           skills: [makeSkillEntry()],
         });
 
-        const skillsIdx = systemPrompt.indexOf("## Skills");
-        const toolsIdx = systemPrompt.indexOf("## Tools");
-        const skillsHeader = systemPrompt.slice(skillsIdx, toolsIdx);
+        const skillsHeader = extractSection(systemPrompt, "Skills");
 
         expect(skillsHeader.toLowerCase()).toContain(
           "before doing anything else",
@@ -703,12 +703,7 @@ describe("assembleChannelSystemPrompt", () => {
   it("Channel ## Objective does not contain output-format language (plain, text, markdown, format)", () => {
     const systemPrompt = assembleChannelSystemPrompt({});
 
-    const objectiveIdx = systemPrompt.indexOf("## Objective");
-    const conversationStyleIdx = systemPrompt.indexOf("## Conversation Style");
-    const objectiveSection = systemPrompt.slice(
-      objectiveIdx,
-      conversationStyleIdx,
-    );
+    const objectiveSection = extractSection(systemPrompt, "Objective");
 
     expect(objectiveSection.toLowerCase()).not.toContain("plain text");
     expect(objectiveSection.toLowerCase()).not.toContain("plain");
@@ -920,17 +915,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block MUST NOT contain raw Markdown characters", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      // Slice the body after the "## Output Format" header line so the `##` in the
-      // header itself does not confuse pattern checks targeting the body content.
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       // Hard constraint: the body that the channel delivers to users must itself
       // be free of the markup characters it instructs the model not to use.
@@ -945,15 +930,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block opens with positive plain-text definition ('Plain text means')", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       // Para 1: positive definition marker
       expect(replyFormatBody.toLowerCase()).toContain("plain text means");
@@ -962,15 +939,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block contains channel display context ('no Markdown or HTML rendering')", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       // Para 2: client-side rendering context
       expect(replyFormatBody).toContain("no Markdown or HTML rendering");
@@ -979,15 +948,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block contains explicit 'Do not use' prohibition", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       // Para 3: explicit prohibition — this is the designated spot
       expect(replyFormatBody).toContain("Do not use");
@@ -996,15 +957,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block prohibition names every forbidden symbol by its English word", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       // The prohibition paragraph must name every symbol class by its English word so
       // that small models without rendering context understand exactly what to avoid.
@@ -1019,15 +972,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block contains both concrete examples verbatim", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       expect(replyFormatBody).toContain("For example:");
       expect(replyFormatBody).toContain("Another example:");
@@ -1042,15 +987,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block contains skill-content closing clause", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       expect(replyFormatBody).toContain("put the outcome into your own words");
     });
@@ -1058,15 +995,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block prohibition includes 'numbered lists'", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       expect(replyFormatBody.toLowerCase()).toContain("numbered lists");
     });
@@ -1074,15 +1003,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block contains multi-item weaving rule ('weave' or 'running sentences')", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       expect(replyFormatBody.toLowerCase()).toMatch(/weave|running sentences/);
     });
@@ -1090,15 +1011,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block contains three example introductions", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       // Must contain at least two of the three markers; third is new long-form example
       const markerCount = [
@@ -1113,15 +1026,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format long-form example contains no list structure", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       // Extract content inside the long-form example quote
       const longerReplyIdx = replyFormatBody.indexOf("For a longer reply");
@@ -1149,15 +1054,7 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block is under 220 words", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const afterHeader = systemPrompt.slice(
-        outputFormatIdx + "## Output Format".length,
-      );
-      const nextSectionIdx = afterHeader.indexOf("\n##");
-      const replyFormatBody =
-        nextSectionIdx === -1
-          ? afterHeader
-          : afterHeader.slice(0, nextSectionIdx);
+      const replyFormatBody = extractSection(systemPrompt, "Output Format");
 
       const wordCount = replyFormatBody
         .trim()
