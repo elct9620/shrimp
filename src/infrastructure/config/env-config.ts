@@ -59,9 +59,13 @@ const DEFAULT_AUTO_COMPACT_MAX_OUTPUT_TOKENS = 2048;
 const DEFAULT_AUTO_COMPACT_TOKEN_THRESHOLD = 100000;
 
 export class EnvConfigError extends Error {
-  constructor(message: string) {
+  /** The environment variable keys that caused the error (missing or invalid). */
+  readonly fields: readonly string[];
+
+  constructor(message: string, fields: readonly string[] = []) {
     super(message);
     this.name = "EnvConfigError";
+    this.fields = fields;
   }
 }
 
@@ -114,6 +118,7 @@ function parseLogLevel(value: string | undefined): LogLevel {
     return value as LogLevel;
   throw new EnvConfigError(
     `Invalid LOG_LEVEL: "${value}". Valid values are: ${VALID_LOG_LEVELS.join(", ")}`,
+    ["LOG_LEVEL"],
   );
 }
 
@@ -133,6 +138,7 @@ function parseOptionalPositiveInt(
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new EnvConfigError(
       `Invalid ${key}: "${value}". Must be a positive integer (>= 1).`,
+      [key],
     );
   }
   return parsed;
@@ -155,6 +161,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
   if (missing.length > 0) {
     throw new EnvConfigError(
       `Missing required environment variables: ${missing.join(", ")}`,
+      missing,
     );
   }
 
@@ -165,6 +172,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     if (missingTelemetry.length > 0) {
       throw new EnvConfigError(
         `Missing required environment variables: ${missingTelemetry.join(", ")}`,
+        missingTelemetry,
       );
     }
   }
@@ -183,6 +191,7 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
     if (missingChannels.length > 0) {
       throw new EnvConfigError(
         `Missing required environment variables: ${missingChannels.join(", ")}`,
+        missingChannels,
       );
     }
 

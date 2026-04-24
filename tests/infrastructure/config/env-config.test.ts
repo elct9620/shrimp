@@ -7,6 +7,28 @@ import {
   loadEnvConfig,
 } from "../../../src/infrastructure/config/env-config";
 
+/**
+ * Assert that calling `fn` throws an EnvConfigError whose `fields` array
+ * includes all of the specified `expectedFields`. This checks which
+ * configuration keys failed validation, not the error message wording.
+ */
+function expectEnvConfigFields(
+  fn: () => unknown,
+  expectedFields: string[],
+): void {
+  let error: unknown;
+  try {
+    fn();
+  } catch (e) {
+    error = e;
+  }
+  expect(error).toBeInstanceOf(EnvConfigError);
+  const err = error as EnvConfigError;
+  for (const field of expectedFields) {
+    expect(err.fields).toContain(field);
+  }
+}
+
 const REQUIRED_ENV = {
   OPENAI_BASE_URL: "https://api.openai.com/v1",
   OPENAI_API_KEY: "sk-test-key",
@@ -55,28 +77,24 @@ describe("loadEnvConfig", () => {
       "TODOIST_API_TOKEN",
       "TODOIST_PROJECT_ID",
     ] as const)(
-      "should throw EnvConfigError mentioning %s when it is missing",
+      "should throw EnvConfigError for %s when it is missing",
       (key) => {
         const { [key]: _, ...env } = REQUIRED_ENV;
-        expect(() => loadEnvConfig(env)).toThrow(EnvConfigError);
-        expect(() => loadEnvConfig(env)).toThrow(key);
+        expectEnvConfigFields(() => loadEnvConfig(env), [key]);
       },
     );
 
-    it("should throw ONE EnvConfigError listing all missing required variables", () => {
-      let error: EnvConfigError | undefined;
-      try {
-        loadEnvConfig({});
-      } catch (e) {
-        if (e instanceof EnvConfigError) error = e;
-      }
-
-      expect(error).toBeDefined();
-      expect(error!.message).toContain("OPENAI_BASE_URL");
-      expect(error!.message).toContain("OPENAI_API_KEY");
-      expect(error!.message).toContain("AI_MODEL");
-      expect(error!.message).toContain("TODOIST_API_TOKEN");
-      expect(error!.message).toContain("TODOIST_PROJECT_ID");
+    it("should throw ONE EnvConfigError covering all missing required variables", () => {
+      expectEnvConfigFields(
+        () => loadEnvConfig({}),
+        [
+          "OPENAI_BASE_URL",
+          "OPENAI_API_KEY",
+          "AI_MODEL",
+          "TODOIST_API_TOKEN",
+          "TODOIST_PROJECT_ID",
+        ],
+      );
     });
   });
 
@@ -226,50 +244,35 @@ describe("loadEnvConfig", () => {
       expect(config.otelExporterOtlpEndpoint).toBe("http://otel:4318");
     });
 
-    it("should throw EnvConfigError mentioning OTEL_SERVICE_NAME when TELEMETRY_ENABLED=true and OTEL_SERVICE_NAME is missing", () => {
-      expect(() =>
-        loadEnvConfig({
-          ...REQUIRED_ENV,
-          TELEMETRY_ENABLED: "true",
-          OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
-        }),
-      ).toThrow(EnvConfigError);
-      expect(() =>
-        loadEnvConfig({
-          ...REQUIRED_ENV,
-          TELEMETRY_ENABLED: "true",
-          OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
-        }),
-      ).toThrow("OTEL_SERVICE_NAME");
+    it("should throw EnvConfigError for OTEL_SERVICE_NAME when TELEMETRY_ENABLED=true and OTEL_SERVICE_NAME is missing", () => {
+      expectEnvConfigFields(
+        () =>
+          loadEnvConfig({
+            ...REQUIRED_ENV,
+            TELEMETRY_ENABLED: "true",
+            OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
+          }),
+        ["OTEL_SERVICE_NAME"],
+      );
     });
 
-    it("should throw EnvConfigError mentioning OTEL_EXPORTER_OTLP_ENDPOINT when TELEMETRY_ENABLED=true and OTEL_EXPORTER_OTLP_ENDPOINT is missing", () => {
-      expect(() =>
-        loadEnvConfig({
-          ...REQUIRED_ENV,
-          TELEMETRY_ENABLED: "true",
-          OTEL_SERVICE_NAME: "my-service",
-        }),
-      ).toThrow(EnvConfigError);
-      expect(() =>
-        loadEnvConfig({
-          ...REQUIRED_ENV,
-          TELEMETRY_ENABLED: "true",
-          OTEL_SERVICE_NAME: "my-service",
-        }),
-      ).toThrow("OTEL_EXPORTER_OTLP_ENDPOINT");
+    it("should throw EnvConfigError for OTEL_EXPORTER_OTLP_ENDPOINT when TELEMETRY_ENABLED=true and OTEL_EXPORTER_OTLP_ENDPOINT is missing", () => {
+      expectEnvConfigFields(
+        () =>
+          loadEnvConfig({
+            ...REQUIRED_ENV,
+            TELEMETRY_ENABLED: "true",
+            OTEL_SERVICE_NAME: "my-service",
+          }),
+        ["OTEL_EXPORTER_OTLP_ENDPOINT"],
+      );
     });
 
-    it("should throw EnvConfigError listing both OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT when TELEMETRY_ENABLED=true and both are missing", () => {
-      let error: EnvConfigError | undefined;
-      try {
-        loadEnvConfig({ ...REQUIRED_ENV, TELEMETRY_ENABLED: "true" });
-      } catch (e) {
-        if (e instanceof EnvConfigError) error = e;
-      }
-      expect(error).toBeDefined();
-      expect(error!.message).toContain("OTEL_SERVICE_NAME");
-      expect(error!.message).toContain("OTEL_EXPORTER_OTLP_ENDPOINT");
+    it("should throw EnvConfigError covering both OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT when TELEMETRY_ENABLED=true and both are missing", () => {
+      expectEnvConfigFields(
+        () => loadEnvConfig({ ...REQUIRED_ENV, TELEMETRY_ENABLED: "true" }),
+        ["OTEL_SERVICE_NAME", "OTEL_EXPORTER_OTLP_ENDPOINT"],
+      );
     });
 
     it("should expose OTEL_EXPORTER_OTLP_HEADERS as-is without parsing when set", () => {
@@ -328,12 +331,10 @@ describe("loadEnvConfig", () => {
     });
 
     it("should throw EnvConfigError for an invalid log level", () => {
-      expect(() =>
-        loadEnvConfig({ ...REQUIRED_ENV, LOG_LEVEL: "verbose" }),
-      ).toThrow(EnvConfigError);
-      expect(() =>
-        loadEnvConfig({ ...REQUIRED_ENV, LOG_LEVEL: "verbose" }),
-      ).toThrow("verbose");
+      expectEnvConfigFields(
+        () => loadEnvConfig({ ...REQUIRED_ENV, LOG_LEVEL: "verbose" }),
+        ["LOG_LEVEL"],
+      );
     });
   });
 
@@ -388,46 +389,34 @@ describe("loadEnvConfig", () => {
       expect(existsSync(testStateDir)).toBe(true);
     });
 
-    it("should throw EnvConfigError mentioning TELEGRAM_BOT_TOKEN when CHANNELS_ENABLED=true and TELEGRAM_BOT_TOKEN is missing", () => {
+    it("should throw EnvConfigError for TELEGRAM_BOT_TOKEN when CHANNELS_ENABLED=true and TELEGRAM_BOT_TOKEN is missing", () => {
       testStateDir = join(tmpdir(), `shrimp-test-${Date.now()}`);
 
-      expect(() =>
-        loadEnvConfig({
-          ...REQUIRED_ENV,
-          CHANNELS_ENABLED: "true",
-          TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-          SHRIMP_HOME: testStateDir,
-        }),
-      ).toThrow(EnvConfigError);
-      expect(() =>
-        loadEnvConfig({
-          ...REQUIRED_ENV,
-          CHANNELS_ENABLED: "true",
-          TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-          SHRIMP_HOME: testStateDir,
-        }),
-      ).toThrow("TELEGRAM_BOT_TOKEN");
+      expectEnvConfigFields(
+        () =>
+          loadEnvConfig({
+            ...REQUIRED_ENV,
+            CHANNELS_ENABLED: "true",
+            TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
+            SHRIMP_HOME: testStateDir,
+          }),
+        ["TELEGRAM_BOT_TOKEN"],
+      );
     });
 
-    it("should throw EnvConfigError mentioning TELEGRAM_WEBHOOK_SECRET when CHANNELS_ENABLED=true and TELEGRAM_WEBHOOK_SECRET is missing", () => {
+    it("should throw EnvConfigError for TELEGRAM_WEBHOOK_SECRET when CHANNELS_ENABLED=true and TELEGRAM_WEBHOOK_SECRET is missing", () => {
       testStateDir = join(tmpdir(), `shrimp-test-${Date.now()}`);
 
-      expect(() =>
-        loadEnvConfig({
-          ...REQUIRED_ENV,
-          CHANNELS_ENABLED: "true",
-          TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
-          SHRIMP_HOME: testStateDir,
-        }),
-      ).toThrow(EnvConfigError);
-      expect(() =>
-        loadEnvConfig({
-          ...REQUIRED_ENV,
-          CHANNELS_ENABLED: "true",
-          TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
-          SHRIMP_HOME: testStateDir,
-        }),
-      ).toThrow("TELEGRAM_WEBHOOK_SECRET");
+      expectEnvConfigFields(
+        () =>
+          loadEnvConfig({
+            ...REQUIRED_ENV,
+            CHANNELS_ENABLED: "true",
+            TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
+            SHRIMP_HOME: testStateDir,
+          }),
+        ["TELEGRAM_WEBHOOK_SECRET"],
+      );
     });
 
     it("should accept the deprecated SHRIMP_STATE_DIR as a fallback for SHRIMP_HOME", () => {
