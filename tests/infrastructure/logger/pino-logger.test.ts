@@ -1,22 +1,41 @@
-import { describe, expect, it, vi } from "vitest";
-import type { Logger } from "pino";
+import { describe, expect, it } from "vitest";
+import pino, { type Logger } from "pino";
 import {
   PinoLogger,
   createPinoLogger,
 } from "../../../src/infrastructure/logger/pino-logger";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
 
-function makeFakePino(childResult?: unknown): Logger {
+type CaptureResult = {
+  pinoInstance: Logger;
+  logger: PinoLogger;
+  lines: () => Record<string, unknown>[];
+};
+
+function makePinoCapture(level = "trace"): CaptureResult {
+  const chunks: string[] = [];
+  const destination = {
+    write: (msg: string) => {
+      chunks.push(msg);
+    },
+  };
+  const pinoInstance = pino({ level }, destination);
+  const logger = new PinoLogger(pinoInstance);
   return {
-    trace: vi.fn(),
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    fatal: vi.fn(),
-    child: vi.fn(() => childResult),
-  } as unknown as Logger;
+    pinoInstance,
+    logger,
+    lines: () => chunks.map((c) => JSON.parse(c) as Record<string, unknown>),
+  };
 }
+
+const LEVEL_CODES: Record<string, number> = {
+  trace: 10,
+  debug: 20,
+  info: 30,
+  warn: 40,
+  error: 50,
+  fatal: 60,
+};
 
 describe("PinoLogger", () => {
   describe("delegation without context", () => {
@@ -30,13 +49,17 @@ describe("PinoLogger", () => {
     ] as const)(
       "should forward message to pino.%s without wrapping when context is absent",
       (method) => {
-        const fake = makeFakePino();
-        const logger = new PinoLogger(fake);
+        const { logger, lines } = makePinoCapture();
 
         logger[method]("hello");
 
-        expect(fake[method]).toHaveBeenCalledOnce();
-        expect(fake[method]).toHaveBeenCalledWith("hello");
+        const parsed = lines();
+        expect(parsed).toHaveLength(1);
+        expect(parsed[0]).toMatchObject({
+          level: LEVEL_CODES[method],
+          msg: "hello",
+        });
+        expect(parsed[0]).not.toHaveProperty("context");
       },
     );
   });
@@ -52,40 +75,43 @@ describe("PinoLogger", () => {
     ] as const)(
       "should swap argument order so pino.%s receives (context, message)",
       (method) => {
-        const fake = makeFakePino();
-        const logger = new PinoLogger(fake);
+        const { logger, lines } = makePinoCapture();
         const ctx = { requestId: "abc" };
 
         logger[method]("hello", ctx);
 
-        expect(fake[method]).toHaveBeenCalledOnce();
-        expect(fake[method]).toHaveBeenCalledWith(ctx, "hello");
+        const parsed = lines();
+        expect(parsed).toHaveLength(1);
+        expect(parsed[0]).toMatchObject({
+          level: LEVEL_CODES[method],
+          msg: "hello",
+          requestId: "abc",
+        });
       },
     );
   });
 
   describe("child()", () => {
     it("should call pino.child(bindings) and wrap the result in a new PinoLogger", () => {
-      const childFake = makeFakePino();
-      const fake = makeFakePino(childFake);
-
-      const logger = new PinoLogger(fake);
+      const { logger, lines } = makePinoCapture();
       const bindings = { module: "test" };
       const child = logger.child(bindings);
 
-      expect(fake.child).toHaveBeenCalledWith(bindings);
       expect(child).not.toBe(logger);
       expect(child).toBeInstanceOf(PinoLogger);
 
       child.info("from child");
-      expect(childFake.info).toHaveBeenCalledWith("from child");
+      const parsed = lines();
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0]).toMatchObject({
+        level: 30,
+        msg: "from child",
+        module: "test",
+      });
     });
 
     it("should return a value that satisfies the LoggerPort interface", () => {
-      const childFake = makeFakePino();
-      const fake = makeFakePino(childFake);
-
-      const logger = new PinoLogger(fake);
+      const { logger } = makePinoCapture();
       const child: LoggerPort = logger.child({ module: "test" });
 
       expect(child).toBeDefined();
