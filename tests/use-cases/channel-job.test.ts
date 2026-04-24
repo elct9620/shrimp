@@ -3,6 +3,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import type { Tracer } from "@opentelemetry/api";
 import { ChannelJob, CYCLE_FINISHED } from "../../src/use-cases/channel-job";
 import type {
   SessionRepository,
@@ -21,6 +27,7 @@ import type { ToolProviderFactory } from "../../src/use-cases/ports/tool-provide
 import type { LoggerPort } from "../../src/use-cases/ports/logger";
 import type { ChannelGateway } from "../../src/use-cases/ports/channel-gateway";
 import { NoopTelemetry } from "../../src/infrastructure/telemetry/noop-telemetry";
+import { OtelTelemetry } from "../../src/infrastructure/telemetry/otel-telemetry";
 import type { TelemetryPort } from "../../src/use-cases/ports/telemetry";
 import { makeFakeLogger } from "../mocks/fake-logger";
 import { makeSpyTelemetry } from "../mocks/spy-telemetry";
@@ -107,6 +114,23 @@ function makeSummarizePort(summary = "Summarized history"): SummarizePort & {
   return {
     summarize: vi.fn().mockResolvedValue(summary),
   };
+}
+
+function makeInMemoryTelemetry(): {
+  telemetry: TelemetryPort;
+  exporter: InMemorySpanExporter;
+} {
+  const exporter = new InMemorySpanExporter();
+  const provider = new BasicTracerProvider({
+    spanProcessors: [new SimpleSpanProcessor(exporter)],
+  });
+  const tracer: Tracer = provider.getTracer("channel-job-test");
+  const telemetry = new OtelTelemetry({
+    serviceName: "shrimp-test",
+    logger: makeFakeLogger(),
+    tracer,
+  });
+  return { telemetry, exporter };
 }
 
 function makeJob(
@@ -360,9 +384,18 @@ describe("ChannelJob.run", () => {
   });
 
   it("forwards the caller-provided span name and attributes to the telemetry port", async () => {
-    const spy = makeSpyTelemetry();
-    const j = makeJob(sessionRepo, agent, logger, undefined, undefined, spy);
+    // Arrange
+    const { telemetry, exporter } = makeInMemoryTelemetry();
+    const j = makeJob(
+      sessionRepo,
+      agent,
+      logger,
+      undefined,
+      undefined,
+      telemetry,
+    );
 
+    // Act
     await j.run({
       message: "Hi",
       ref: makeRef(),
@@ -377,14 +410,14 @@ describe("ChannelJob.run", () => {
       },
     });
 
-    expect(spy.calls).toHaveLength(1);
-    expect(spy.calls[0]!.name).toBe("POST /channels/telegram");
-    expect(spy.calls[0]!.attributes).toEqual({
-      "http.request.method": "POST",
-      "http.route": "/channels/telegram",
-      "telegram.chat.id": 42,
-      "user_agent.original": "TelegramBot",
-    });
+    // Assert — inspect finished spans from the real OTel exporter
+    const spans = exporter.getFinishedSpans();
+    const span = spans.find((s) => s.name === "POST /channels/telegram");
+    expect(span).toBeDefined();
+    expect(span!.attributes["http.request.method"]).toBe("POST");
+    expect(span!.attributes["http.route"]).toBe("/channels/telegram");
+    expect(span!.attributes["telegram.chat.id"]).toBe(42);
+    expect(span!.attributes["user_agent.original"]).toBe("TelegramBot");
   });
 
   it("wraps the Job in a span even when the agent propagates an error", async () => {
