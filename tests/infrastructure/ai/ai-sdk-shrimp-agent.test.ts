@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type {
-  FinishReason,
-  TelemetrySettings,
-  ToolLoopAgentSettings,
-} from "ai";
+import type { FinishReason } from "ai";
 import { tool } from "ai";
 import { MockLanguageModelV3 } from "ai/test";
 import { z } from "zod";
@@ -419,30 +415,13 @@ describe("AiSdkShrimpAgent.run", () => {
   });
 
   describe("experimental_telemetry forwarding", () => {
-    function makeInspectableAgent(captured: TelemetrySettings[]) {
-      return class InspectableAgent extends AiSdkShrimpAgent {
-        override buildToolLoopAgentOptions(
-          input: JobInput,
-        ): ToolLoopAgentSettings {
-          const opts = super.buildToolLoopAgentOptions(input);
-          if (opts.experimental_telemetry) {
-            captured.push(opts.experimental_telemetry);
-          }
-          return opts;
-        }
-      };
-    }
-
     it("should forward experimental_telemetry with isEnabled:true and functionId to ToolLoopAgent", async () => {
-      const capturedTelemetry: TelemetrySettings[] = [];
+      // Observable effect: the outer span is named "invoke_agent shrimp.job" and
+      // gen_ai.agent.name is "shrimp.job" — both derive from functionId="shrimp.job"
+      // in experimental_telemetry being active (isEnabled:true).
+      const { tracer, spans } = makeRecordingTracer();
       const model = makeModel("stop");
-      const tracer = new NoopTelemetry().tracer;
-
-      const InspectableAgent = makeInspectableAgent(capturedTelemetry);
-      const agent = new InspectableAgent({
-        model,
-        logger: makeFakeLogger(),
-        providerName: "test-provider",
+      const agent = makeAgent(model, makeFakeLogger(), {
         tracer,
         recordInputs: true,
         recordOutputs: true,
@@ -450,55 +429,47 @@ describe("AiSdkShrimpAgent.run", () => {
 
       await agent.run(baseInput);
 
-      expect(capturedTelemetry).toHaveLength(1);
-      const et = capturedTelemetry[0];
-      expect(et.isEnabled).toBe(true);
-      expect(et.functionId).toBe("shrimp.job");
-      expect(et.recordInputs).toBe(true);
-      expect(et.recordOutputs).toBe(true);
-      expect(et.tracer).toBe(tracer);
+      expect(spans.length).toBeGreaterThan(0);
+      const agentSpan = spans.find((s) => s.name === "invoke_agent shrimp.job");
+      expect(agentSpan).toBeDefined();
+      expect(agentSpan!.attributes["gen_ai.agent.name"]).toBe("shrimp.job");
     });
 
     it("should forward recordInputs:false and recordOutputs:false to experimental_telemetry", async () => {
-      const capturedTelemetry: TelemetrySettings[] = [];
+      // Observable effect: when recordInputs/recordOutputs are false, the span must
+      // not carry gen_ai.input.messages or gen_ai.output.messages.
+      const { tracer, spans } = makeRecordingTracer();
       const model = makeModel("stop");
-
-      const InspectableAgent = makeInspectableAgent(capturedTelemetry);
-      const agent = new InspectableAgent({
-        model,
-        logger: makeFakeLogger(),
-        providerName: "test-provider",
-        tracer: new NoopTelemetry().tracer,
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
         recordInputs: false,
         recordOutputs: false,
       });
 
       await agent.run(baseInput);
 
-      const et = capturedTelemetry[0];
-      expect(et.recordInputs).toBe(false);
-      expect(et.recordOutputs).toBe(false);
+      const agentSpan = spans.find((s) => s.name === "invoke_agent shrimp.job");
+      expect(agentSpan).toBeDefined();
+      expect(agentSpan!.attributes).not.toHaveProperty("gen_ai.input.messages");
+      expect(agentSpan!.attributes).not.toHaveProperty(
+        "gen_ai.output.messages",
+      );
     });
 
     it("should forward the exact tracer instance supplied by the caller", async () => {
-      const capturedTelemetry: TelemetrySettings[] = [];
-      const sentinelTracer = new NoopTelemetry().tracer;
+      // Observable effect: supplying a recording tracer means its startActiveSpan
+      // fires and spans are captured — proving that exact tracer was used.
+      const { tracer, spans } = makeRecordingTracer();
       const model = makeModel("stop");
-
-      const InspectableAgent = makeInspectableAgent(capturedTelemetry);
-      const agent = new InspectableAgent({
-        model,
-        logger: makeFakeLogger(),
-        providerName: "test-provider",
-        tracer: sentinelTracer,
+      const agent = makeAgent(model, makeFakeLogger(), {
+        tracer,
         recordInputs: true,
         recordOutputs: true,
       });
 
       await agent.run(baseInput);
 
-      const et = capturedTelemetry[0];
-      expect(et.tracer).toBe(sentinelTracer);
+      expect(spans.length).toBeGreaterThan(0);
     });
   });
 
