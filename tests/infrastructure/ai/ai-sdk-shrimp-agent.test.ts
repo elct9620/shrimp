@@ -45,6 +45,57 @@ function makeModel(finishReason: FinishReason = "stop") {
   });
 }
 
+type StepUsage = {
+  inputTokens: {
+    total: number;
+    noCache: number;
+    cacheRead: undefined;
+    cacheWrite: undefined;
+  };
+  outputTokens: { total: number; text: number; reasoning: undefined };
+};
+
+type StepConfig = {
+  content: Array<
+    | { type: "text"; text: string }
+    | { type: "tool-call"; toolCallId: string; toolName: string; input: string }
+  >;
+  finishReason: FinishReason;
+  usage?: StepUsage;
+};
+
+const DEFAULT_USAGE: StepUsage = {
+  inputTokens: {
+    total: 0,
+    noCache: 0,
+    cacheRead: undefined,
+    cacheWrite: undefined,
+  },
+  outputTokens: { total: 0, text: 0, reasoning: undefined },
+};
+
+/**
+ * Builds a MockLanguageModelV3 that plays through `steps` in order.
+ * Each call to `doGenerate` advances to the next step; the last step is
+ * repeated if the model is called more times than there are steps.
+ * Per-step `usage` is optional — defaults to all-zero counts.
+ */
+function makeMultiStepModel(steps: StepConfig[]) {
+  let callCount = 0;
+  return new MockLanguageModelV3({
+    doGenerate: async () => {
+      const step = steps[Math.min(callCount, steps.length - 1)];
+      callCount++;
+      return {
+        content: step.content,
+        finishReason: { unified: step.finishReason, raw: undefined },
+        usage: step.usage ?? DEFAULT_USAGE,
+        warnings: [],
+      };
+    },
+  });
+}
+
 function makeAgent(
   model: MockLanguageModelV3,
   logger: LoggerPort,
@@ -295,50 +346,24 @@ describe("AiSdkShrimpAgent.run", () => {
     // must NOT be relayed as replies — only the final aggregated `result.text`
     // (what OTel records as gen_ai.output.messages) is delivered.
     it("returns no newMessages when only intermediate steps had text", async () => {
-      let callCount = 0;
-      const multiStepModel = new MockLanguageModelV3({
-        doGenerate: async () => {
-          callCount++;
-          if (callCount === 1) {
-            return {
-              content: [
-                { type: "text" as const, text: "Let me check that for you." },
-                {
-                  type: "tool-call" as const,
-                  toolCallId: "call-1",
-                  toolName: "ping",
-                  input: "{}",
-                },
-              ],
-              finishReason: { unified: "tool-calls" as const, raw: undefined },
-              usage: {
-                inputTokens: {
-                  total: 0,
-                  noCache: 0,
-                  cacheRead: undefined,
-                  cacheWrite: undefined,
-                },
-                outputTokens: { total: 0, text: 0, reasoning: undefined },
-              },
-              warnings: [],
-            };
-          }
-          return {
-            content: [{ type: "text" as const, text: "" }],
-            finishReason: { unified: "stop" as const, raw: undefined },
-            usage: {
-              inputTokens: {
-                total: 0,
-                noCache: 0,
-                cacheRead: undefined,
-                cacheWrite: undefined,
-              },
-              outputTokens: { total: 0, text: 0, reasoning: undefined },
+      const multiStepModel = makeMultiStepModel([
+        {
+          content: [
+            { type: "text", text: "Let me check that for you." },
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "ping",
+              input: "{}",
             },
-            warnings: [],
-          };
+          ],
+          finishReason: "tool-calls",
         },
-      });
+        {
+          content: [{ type: "text", text: "" }],
+          finishReason: "stop",
+        },
+      ]);
 
       const pingTool = tool({
         description: "ping",
