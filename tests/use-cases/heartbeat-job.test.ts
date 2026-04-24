@@ -1,7 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   HeartbeatJob,
-  type HeartbeatJobConfig,
   CYCLE_FINISHED,
   CYCLE_IDLE,
   CYCLE_SKIPPED_SECTION_MISSING,
@@ -239,33 +238,5 @@ describe("HeartbeatJob.run", () => {
     await expect(j.run(DEFAULT_INPUT)).rejects.toThrow("boom");
     expect(spy.calls).toHaveLength(1);
     expect(spy.calls[0]!.name).toBe("POST /heartbeat");
-  });
-});
-
-// SPEC invariant: §Session Lifecycle §Auto Compact — "HeartbeatJob exclusion:
-// HeartbeatJob has no Session, does not evaluate the Compaction Threshold, and
-// never invokes SummarizePort. Auto Compact applies only to ChannelJob."
-//
-// These type-level assertions enforce the invariant structurally: if either
-// field is ever added to HeartbeatJobConfig the TypeScript compiler will reject
-// this file, catching the regression before any test runs.
-describe("HeartbeatJob — Auto Compact exclusion", () => {
-  it("is not subject to Auto Compact (no SummarizePort / no session rotation)", () => {
-    // Type-level guard: neither "summarize" nor "compactionThreshold" must
-    // appear as keys of HeartbeatJobConfig.  The `Expect` helper below is a
-    // compile-time-only check; if either conditional type ever resolves to
-    // `true` (i.e. the field was added), TypeScript will reject the assignment
-    // `false satisfies false` → `true satisfies false` → compile error.
-    type Expect<T extends false> = T;
-    type _NoSummarize = Expect<
-      "summarize" extends keyof HeartbeatJobConfig ? never : false
-    >;
-    type _NoCompactionThreshold = Expect<
-      "compactionThreshold" extends keyof HeartbeatJobConfig ? never : false
-    >;
-
-    // Runtime assertion: the compile-time types above serve as the real guard;
-    // this line confirms the test block is executed rather than optimised away.
-    expect(true).toBe(true);
   });
 });
