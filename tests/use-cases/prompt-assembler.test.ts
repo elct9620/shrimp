@@ -38,6 +38,39 @@ const makeComment = (
   author,
 });
 
+/**
+ * Markdown syntax patterns that must NOT appear in the Output Format section body.
+ * Small-model voice renderers (e.g. Telegram) display these as literal characters,
+ * hurting readability — so the prompt explicitly forbids them and the section itself
+ * must be free of them.
+ *
+ * Each entry pairs a pattern with a label for readable failure output.
+ */
+const MARKDOWN_SYNTAX_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
+  { label: "bold (**word)", pattern: /\*\*/ },
+  { label: "italic (*word*)", pattern: /\*\w/ },
+  { label: "inline code (`word)", pattern: /`\w/ },
+  { label: "hyphen-bullet list (^- )", pattern: /^- /m },
+  { label: "blockquote (^> )", pattern: /^> /m },
+  { label: "numbered list (^1. )", pattern: /^\d+\. /m },
+  { label: "link syntax ([text](url))", pattern: /\[.+\]\(https?:\/\//m },
+];
+
+/**
+ * English names for forbidden symbol classes that the Output Format prohibition
+ * paragraph must mention by name, so that small models understand which characters
+ * to avoid even when they cannot render the characters themselves.
+ * Every word in this list maps to an explicit term in buildOutputFormatSection().
+ */
+const FORBIDDEN_SYMBOL_WORDS = [
+  "hash",
+  "asterisk",
+  "backtick",
+  "hyphen",
+  "blockquote",
+  "bracket",
+] as const;
+
 describe("assembleHeartbeatPrompts", () => {
   describe("system prompt", () => {
     it("opens with goal-oriented language, not role-based framing", () => {
@@ -848,15 +881,26 @@ describe("assembleChannelSystemPrompt", () => {
     it("Output Format block MUST NOT contain raw Markdown characters", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
+      // Slice the body after the "## Output Format" header line so the `##` in the
+      // header itself does not confuse pattern checks targeting the body content.
       const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const replyFormatSection = systemPrompt.slice(outputFormatIdx);
+      const afterHeader = systemPrompt.slice(
+        outputFormatIdx + "## Output Format".length,
+      );
+      const nextSectionIdx = afterHeader.indexOf("\n##");
+      const replyFormatBody =
+        nextSectionIdx === -1
+          ? afterHeader
+          : afterHeader.slice(0, nextSectionIdx);
 
-      // Hard constraint: no raw Markdown syntax anywhere in the block
-      expect(replyFormatSection).not.toMatch(/\*\*\w/); // **bold**
-      expect(replyFormatSection).not.toMatch(/`\w/); // `code`
-      expect(replyFormatSection).not.toMatch(/\[text\]\(url\)/); // [text](url)
-      expect(replyFormatSection).not.toMatch(/^- /m); // hyphen-bullet list markers
-      expect(replyFormatSection).not.toMatch(/^> /m); // blockquote markers
+      // Hard constraint: the body that the channel delivers to users must itself
+      // be free of the markup characters it instructs the model not to use.
+      for (const { label, pattern } of MARKDOWN_SYNTAX_PATTERNS) {
+        expect(
+          replyFormatBody,
+          `Output Format body must not contain ${label}`,
+        ).not.toMatch(pattern);
+      }
     });
 
     it("Output Format block opens with positive plain-text definition ('Plain text means')", () => {
@@ -910,7 +954,7 @@ describe("assembleChannelSystemPrompt", () => {
       expect(replyFormatBody).toContain("Do not use");
     });
 
-    it("Output Format block prohibition names at least three English symbol words", () => {
+    it("Output Format block prohibition names every forbidden symbol by its English word", () => {
       const systemPrompt = assembleChannelSystemPrompt({});
 
       const outputFormatIdx = systemPrompt.indexOf("## Output Format");
@@ -923,18 +967,14 @@ describe("assembleChannelSystemPrompt", () => {
           ? afterHeader
           : afterHeader.slice(0, nextSectionIdx);
 
-      const symbolWords = [
-        "hash",
-        "asterisk",
-        "backtick",
-        "hyphen",
-        "blockquote",
-        "bracket",
-      ];
-      const found = symbolWords.filter((word) =>
-        replyFormatBody.toLowerCase().includes(word),
-      );
-      expect(found.length).toBeGreaterThanOrEqual(3);
+      // The prohibition paragraph must name every symbol class by its English word so
+      // that small models without rendering context understand exactly what to avoid.
+      for (const word of FORBIDDEN_SYMBOL_WORDS) {
+        expect(
+          replyFormatBody.toLowerCase(),
+          `Output Format prohibition must name "${word}"`,
+        ).toContain(word);
+      }
     });
 
     it("Output Format block contains both concrete examples verbatim", () => {
