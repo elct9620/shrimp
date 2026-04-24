@@ -133,6 +133,16 @@ function makeInMemoryTelemetry(): {
   return { telemetry, exporter };
 }
 
+/**
+ * Asserts that `prompt` contains a top-level `## <heading>` section.
+ * Using a regex rather than a bare toContain keeps the structural expectation
+ * clear (exact heading at line start) and makes future harmonisation with a
+ * shared extractSection helper trivial.
+ */
+function assertSectionPresent(prompt: string, heading: string): void {
+  expect(prompt).toMatch(new RegExp(`^## ${heading}$`, "m"));
+}
+
 function makeJob(
   sessionRepo: SessionRepository,
   shrimpAgent: ShrimpAgent,
@@ -256,9 +266,9 @@ describe("ChannelJob.run", () => {
     });
 
     const systemPrompt = agent.capturedInput?.systemPrompt ?? "";
-    expect(systemPrompt).toContain("## Approach");
-    expect(systemPrompt).toContain("## Conversation Style");
-    expect(systemPrompt).not.toContain("## Tools");
+    assertSectionPresent(systemPrompt, "Approach");
+    assertSectionPresent(systemPrompt, "Conversation Style");
+    expect(systemPrompt).not.toMatch(/^## Tools$/m);
     expect(systemPrompt).not.toMatch(/^You are/);
   });
 
