@@ -53,13 +53,6 @@ function makeBoard(state: BoardState = {}): BoardRepository {
   };
 }
 
-// Resolve all microtasks so fire-and-forget pre-check + enqueue finish.
-async function flushAsync(): Promise<void> {
-  for (let i = 0; i < 10; i++) {
-    await Promise.resolve();
-  }
-}
-
 describe("POST /heartbeat", () => {
   it("returns 202 immediately and enqueues when pre-check passes", async () => {
     const jobQueue = makeJobQueue();
@@ -68,11 +61,15 @@ describe("POST /heartbeat", () => {
       backlog: [makeTask("b1")],
       inProgress: [],
     });
+    let preCheckChain: Promise<void> | undefined;
     const app = createHeartbeatRoute({
       jobQueue,
       heartbeatJob,
       board,
       logger: makeFakeLogger(),
+      onPreCheckSettled: (p) => {
+        preCheckChain = p;
+      },
     });
 
     const res = await app.request("/heartbeat", { method: "POST" });
@@ -80,7 +77,7 @@ describe("POST /heartbeat", () => {
     expect(res.status).toBe(202);
     expect(await res.json()).toEqual({ status: "accepted" });
 
-    await flushAsync();
+    await preCheckChain;
     expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
   });
 
@@ -88,17 +85,21 @@ describe("POST /heartbeat", () => {
     const jobQueue = makeJobQueue();
     const board = makeBoard({ backlog: [], inProgress: [] });
     const logger = makeFakeLogger();
+    let preCheckChain: Promise<void> | undefined;
     const app = createHeartbeatRoute({
       jobQueue,
       heartbeatJob: makeHeartbeatJob(),
       board,
       logger,
+      onPreCheckSettled: (p) => {
+        preCheckChain = p;
+      },
     });
 
     const res = await app.request("/heartbeat", { method: "POST" });
     expect(res.status).toBe(202);
 
-    await flushAsync();
+    await preCheckChain;
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith(
       "heartbeat pre-check skipped",
@@ -113,17 +114,21 @@ describe("POST /heartbeat", () => {
       inProgress: [makeTask("i1"), makeTask("i2")],
     });
     const logger = makeFakeLogger();
+    let preCheckChain: Promise<void> | undefined;
     const app = createHeartbeatRoute({
       jobQueue,
       heartbeatJob: makeHeartbeatJob(),
       board,
       logger,
+      onPreCheckSettled: (p) => {
+        preCheckChain = p;
+      },
     });
 
     const res = await app.request("/heartbeat", { method: "POST" });
     expect(res.status).toBe(202);
 
-    await flushAsync();
+    await preCheckChain;
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith(
       "heartbeat pre-check skipped",
@@ -137,17 +142,21 @@ describe("POST /heartbeat", () => {
       backlog: [makeTask("b1")],
       inProgress: [makeTask("i1")],
     });
+    let preCheckChain: Promise<void> | undefined;
     const app = createHeartbeatRoute({
       jobQueue,
       heartbeatJob: makeHeartbeatJob(),
       board,
       logger: makeFakeLogger(),
+      onPreCheckSettled: (p) => {
+        preCheckChain = p;
+      },
     });
 
     const res = await app.request("/heartbeat", { method: "POST" });
     expect(res.status).toBe(202);
 
-    await flushAsync();
+    await preCheckChain;
     expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
   });
 
@@ -155,17 +164,21 @@ describe("POST /heartbeat", () => {
     const jobQueue = makeJobQueue();
     const board = makeBoard({ error: new Error("todoist down") });
     const logger = makeFakeLogger();
+    let preCheckChain: Promise<void> | undefined;
     const app = createHeartbeatRoute({
       jobQueue,
       heartbeatJob: makeHeartbeatJob(),
       board,
       logger,
+      onPreCheckSettled: (p) => {
+        preCheckChain = p;
+      },
     });
 
     const res = await app.request("/heartbeat", { method: "POST" });
     expect(res.status).toBe(202);
 
-    await flushAsync();
+    await preCheckChain;
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith(
       "heartbeat pre-check skipped",
@@ -181,11 +194,15 @@ describe("POST /heartbeat", () => {
       }),
     };
     const heartbeatJob = makeHeartbeatJob();
+    let preCheckChain: Promise<void> | undefined;
     const app = createHeartbeatRoute({
       jobQueue,
       heartbeatJob,
       board: makeBoard(),
       logger: makeFakeLogger(),
+      onPreCheckSettled: (p) => {
+        preCheckChain = p;
+      },
     });
 
     await app.request("/heartbeat", {
@@ -193,7 +210,7 @@ describe("POST /heartbeat", () => {
       headers: { "User-Agent": "curl/8.0" },
     });
 
-    await flushAsync();
+    await preCheckChain;
     expect(capturedJob).toBeDefined();
     await capturedJob!();
     expect(heartbeatJob.run).toHaveBeenCalledTimes(1);
@@ -283,7 +300,6 @@ describe("POST /heartbeat", () => {
       const res = await app.request("/heartbeat", { method: "POST" });
 
       expect(res.status).toBe(401);
-      await flushAsync();
       expect(board.getTasks).not.toHaveBeenCalled();
       expect(jobQueue.enqueue).not.toHaveBeenCalled();
       expect(logger.warn).toHaveBeenCalledWith("heartbeat rejected");
@@ -306,7 +322,6 @@ describe("POST /heartbeat", () => {
       });
 
       expect(res.status).toBe(401);
-      await flushAsync();
       expect(board.getTasks).not.toHaveBeenCalled();
       expect(jobQueue.enqueue).not.toHaveBeenCalled();
     });
@@ -330,12 +345,16 @@ describe("POST /heartbeat", () => {
 
     it("returns 202 and enqueues when Bearer value matches the configured token", async () => {
       const jobQueue = makeJobQueue();
+      let preCheckChain: Promise<void> | undefined;
       const app = createHeartbeatRoute({
         jobQueue,
         heartbeatJob: makeHeartbeatJob(),
         board: makeBoard(),
         logger: makeFakeLogger(),
         heartbeatToken: "s3cret",
+        onPreCheckSettled: (p) => {
+          preCheckChain = p;
+        },
       });
 
       const res = await app.request("/heartbeat", {
@@ -344,7 +363,7 @@ describe("POST /heartbeat", () => {
       });
 
       expect(res.status).toBe(202);
-      await flushAsync();
+      await preCheckChain;
       expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
     });
 
@@ -382,15 +401,19 @@ describe("POST /heartbeat", () => {
 
     it('logs info "heartbeat enqueued" when pre-check passes', async () => {
       const logger = makeFakeLogger();
+      let preCheckChain: Promise<void> | undefined;
       const app = createHeartbeatRoute({
         jobQueue: makeJobQueue(),
         heartbeatJob: makeHeartbeatJob(),
         board: makeBoard(),
         logger,
+        onPreCheckSettled: (p) => {
+          preCheckChain = p;
+        },
       });
 
       await app.request("/heartbeat", { method: "POST" });
-      await flushAsync();
+      await preCheckChain;
 
       expect(logger.info).toHaveBeenCalledWith("heartbeat enqueued");
     });

@@ -57,6 +57,8 @@ export function createHeartbeatRoute(deps: {
   board: BoardRepository;
   logger: LoggerPort;
   heartbeatToken?: string;
+  /** Test seam: invoked with the fire-and-forget pre-check promise so tests can await completion. Production leaves this undefined. */
+  onPreCheckSettled?: (p: Promise<void>) => void;
 }): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
@@ -74,7 +76,7 @@ export function createHeartbeatRoute(deps: {
 
     // Fire-and-forget: pre-check + enqueue run after the 202 is returned.
     // Errors never propagate to the HTTP boundary (Fail-Open).
-    void decideHeartbeatEnqueue(deps.board, deps.logger)
+    const chain = decideHeartbeatEnqueue(deps.board, deps.logger)
       .then((decision) => {
         if (!decision.enqueue) {
           deps.logger.info("heartbeat pre-check skipped", {
@@ -96,6 +98,8 @@ export function createHeartbeatRoute(deps: {
           error: err instanceof Error ? err.message : String(err),
         });
       });
+    void chain;
+    deps.onPreCheckSettled?.(chain);
 
     return c.json({ status: "accepted" }, 202);
   });
