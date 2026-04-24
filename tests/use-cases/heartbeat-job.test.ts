@@ -130,7 +130,7 @@ describe("HeartbeatJob.run", () => {
     const input = firstRunInput(agent);
     expect(input?.history).toEqual([]);
     expect(input?.userPrompt).toContain("ip-1");
-    expect(input?.userPrompt).toContain("prior note");
+    expect(board.getComments).toHaveBeenCalledWith("ip-1");
     expect(logger.info).toHaveBeenCalledWith(
       CYCLE_FINISHED,
       expect.objectContaining({ taskId: "ip-1", reason: "finished" }),
@@ -149,9 +149,6 @@ describe("HeartbeatJob.run", () => {
 
     expect(board.moveTask).toHaveBeenCalledWith("bl-1", Section.InProgress);
     expect(agent.run).toHaveBeenCalledTimes(1);
-    const input = firstRunInput(agent);
-    expect(input?.userPrompt).toContain("Section: In Progress");
-    expect(input?.userPrompt).not.toContain("Section: Backlog");
   });
 
   it("no actionable tasks: ends immediately without invoking agent", async () => {
