@@ -9,6 +9,7 @@ import {
 } from "../../../../src/adapters/http/routes/heartbeat";
 import type { JobQueue } from "../../../../src/use-cases/ports/job-queue";
 import type { BoardRepository } from "../../../../src/use-cases/ports/board-repository";
+import { Priority } from "../../../../src/entities/priority";
 import { Section } from "../../../../src/entities/section";
 import type { Task } from "../../../../src/entities/task";
 import { makeFakeLogger } from "../../../mocks/fake-logger";
@@ -29,10 +30,10 @@ function makeHeartbeatJob(runImpl?: () => Promise<void>): HeartbeatJobRunner {
 function makeTask(id: string): Task {
   return {
     id,
-    content: `task ${id}`,
-    priority: 1,
-    sectionId: "s",
-  } as unknown as Task;
+    title: `task ${id}`,
+    priority: Priority.p2,
+    section: Section.Backlog,
+  };
 }
 
 type BoardState = {
