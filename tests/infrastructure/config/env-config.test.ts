@@ -244,36 +244,36 @@ describe("loadEnvConfig", () => {
       expect(config.otelExporterOtlpEndpoint).toBe("http://otel:4318");
     });
 
-    it("should throw EnvConfigError for OTEL_SERVICE_NAME when TELEMETRY_ENABLED=true and OTEL_SERVICE_NAME is missing", () => {
-      expectEnvConfigFields(
-        () =>
-          loadEnvConfig({
-            ...REQUIRED_ENV,
-            TELEMETRY_ENABLED: "true",
-            OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318",
-          }),
-        ["OTEL_SERVICE_NAME"],
-      );
-    });
-
-    it("should throw EnvConfigError for OTEL_EXPORTER_OTLP_ENDPOINT when TELEMETRY_ENABLED=true and OTEL_EXPORTER_OTLP_ENDPOINT is missing", () => {
-      expectEnvConfigFields(
-        () =>
-          loadEnvConfig({
-            ...REQUIRED_ENV,
-            TELEMETRY_ENABLED: "true",
-            OTEL_SERVICE_NAME: "my-service",
-          }),
-        ["OTEL_EXPORTER_OTLP_ENDPOINT"],
-      );
-    });
-
-    it("should throw EnvConfigError covering both OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT when TELEMETRY_ENABLED=true and both are missing", () => {
-      expectEnvConfigFields(
-        () => loadEnvConfig({ ...REQUIRED_ENV, TELEMETRY_ENABLED: "true" }),
-        ["OTEL_SERVICE_NAME", "OTEL_EXPORTER_OTLP_ENDPOINT"],
-      );
-    });
+    it.each([
+      {
+        name: "OTEL_SERVICE_NAME missing",
+        extraEnv: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel:4318" },
+        expectedFields: ["OTEL_SERVICE_NAME"],
+      },
+      {
+        name: "OTEL_EXPORTER_OTLP_ENDPOINT missing",
+        extraEnv: { OTEL_SERVICE_NAME: "my-service" },
+        expectedFields: ["OTEL_EXPORTER_OTLP_ENDPOINT"],
+      },
+      {
+        name: "both OTEL_SERVICE_NAME and OTEL_EXPORTER_OTLP_ENDPOINT missing",
+        extraEnv: {},
+        expectedFields: ["OTEL_SERVICE_NAME", "OTEL_EXPORTER_OTLP_ENDPOINT"],
+      },
+    ])(
+      "should throw EnvConfigError when TELEMETRY_ENABLED=true and $name",
+      ({ extraEnv, expectedFields }) => {
+        expectEnvConfigFields(
+          () =>
+            loadEnvConfig({
+              ...REQUIRED_ENV,
+              TELEMETRY_ENABLED: "true",
+              ...extraEnv,
+            }),
+          expectedFields,
+        );
+      },
+    );
 
     it("should expose OTEL_EXPORTER_OTLP_HEADERS as-is without parsing when set", () => {
       const headers = "Authorization=Bearer token123,X-Custom=value";
@@ -389,35 +389,34 @@ describe("loadEnvConfig", () => {
       expect(existsSync(testStateDir)).toBe(true);
     });
 
-    it("should throw EnvConfigError for TELEGRAM_BOT_TOKEN when CHANNELS_ENABLED=true and TELEGRAM_BOT_TOKEN is missing", () => {
-      testStateDir = join(tmpdir(), `shrimp-test-${Date.now()}`);
+    it.each([
+      {
+        name: "TELEGRAM_BOT_TOKEN missing",
+        extraEnv: { TELEGRAM_WEBHOOK_SECRET: "webhook-secret" },
+        expectedFields: ["TELEGRAM_BOT_TOKEN"],
+      },
+      {
+        name: "TELEGRAM_WEBHOOK_SECRET missing",
+        extraEnv: { TELEGRAM_BOT_TOKEN: "bot123:TOKEN" },
+        expectedFields: ["TELEGRAM_WEBHOOK_SECRET"],
+      },
+    ])(
+      "should throw EnvConfigError when CHANNELS_ENABLED=true and $name",
+      ({ extraEnv, expectedFields }) => {
+        testStateDir = join(tmpdir(), `shrimp-test-${Date.now()}`);
 
-      expectEnvConfigFields(
-        () =>
-          loadEnvConfig({
-            ...REQUIRED_ENV,
-            CHANNELS_ENABLED: "true",
-            TELEGRAM_WEBHOOK_SECRET: "webhook-secret",
-            SHRIMP_HOME: testStateDir,
-          }),
-        ["TELEGRAM_BOT_TOKEN"],
-      );
-    });
-
-    it("should throw EnvConfigError for TELEGRAM_WEBHOOK_SECRET when CHANNELS_ENABLED=true and TELEGRAM_WEBHOOK_SECRET is missing", () => {
-      testStateDir = join(tmpdir(), `shrimp-test-${Date.now()}`);
-
-      expectEnvConfigFields(
-        () =>
-          loadEnvConfig({
-            ...REQUIRED_ENV,
-            CHANNELS_ENABLED: "true",
-            TELEGRAM_BOT_TOKEN: "bot123:TOKEN",
-            SHRIMP_HOME: testStateDir,
-          }),
-        ["TELEGRAM_WEBHOOK_SECRET"],
-      );
-    });
+        expectEnvConfigFields(
+          () =>
+            loadEnvConfig({
+              ...REQUIRED_ENV,
+              CHANNELS_ENABLED: "true",
+              SHRIMP_HOME: testStateDir,
+              ...extraEnv,
+            }),
+          expectedFields,
+        );
+      },
+    );
 
     it("should accept the deprecated SHRIMP_STATE_DIR as a fallback for SHRIMP_HOME", () => {
       testStateDir = join(tmpdir(), `shrimp-test-legacy-${Date.now()}`);
