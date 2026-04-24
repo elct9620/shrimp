@@ -46,8 +46,7 @@ describe("assembleHeartbeatPrompts", () => {
         comments: [],
       });
 
-      expect(systemPrompt).not.toMatch(/^You are/);
-      expect(systemPrompt).not.toMatch(/\nYou are /);
+      expect(systemPrompt).toMatch(/^Help /);
     });
 
     it("includes ## Approach and ## Working Style sections (replaced Operating Principles)", () => {
@@ -617,8 +616,7 @@ describe("assembleChannelSystemPrompt", () => {
   it("opens with goal-oriented language, not role-based framing", () => {
     const systemPrompt = assembleChannelSystemPrompt({});
 
-    expect(systemPrompt).not.toMatch(/^You are/);
-    expect(systemPrompt).not.toMatch(/\nYou are /);
+    expect(systemPrompt).toMatch(/^Help /);
   });
 
   it("includes ## Approach and ## Working Style sections (replaced Operating Principles)", () => {
