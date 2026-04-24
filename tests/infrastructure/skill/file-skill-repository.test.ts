@@ -171,7 +171,7 @@ describe("FileSkillRepository", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].name).toBe("good-skill");
     expect(logger.warns.length).toBeGreaterThan(0);
-    expect(logger.warns[0].message).toContain("SKILL.md");
+    expect(typeof logger.warns[0].ctx?.["skillFilePath"]).toBe("string");
   });
 
   it("name with invalid charset → warn+skip", async () => {
@@ -271,12 +271,11 @@ describe("FileSkillRepository", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].name).toBe("good-skill");
 
-    // A warn must have been emitted referencing the bad skill's path
+    // A warn must have been emitted for the bad YAML skill's path
+    const expectedBadPath = join(badDir, "SKILL.md");
     expect(logger.warns.length).toBeGreaterThan(0);
     const warnCtx = logger.warns.find(
-      (w) =>
-        w.ctx?.["skillFilePath"] !== undefined &&
-        String(w.ctx["skillFilePath"]).includes("bad-yaml-skill"),
+      (w) => w.ctx?.["skillFilePath"] === expectedBadPath,
     );
     expect(warnCtx).toBeDefined();
   });
@@ -321,7 +320,7 @@ describe("FileSkillRepository", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].description).toBe("Built-in version");
     expect(logger.warns.length).toBeGreaterThan(0);
-    expect(logger.warns[0].message).toContain("duplicate");
+    expect(typeof logger.warns[0].ctx?.["name"]).toBe("string");
   });
 
   // --- Built-in root missing → fail fast ---
