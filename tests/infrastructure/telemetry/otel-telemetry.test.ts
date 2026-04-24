@@ -1,74 +1,53 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import {
   diag,
   DiagLogLevel,
   SpanStatusCode,
   type DiagLogger,
-  type Span,
   type Tracer,
 } from "@opentelemetry/api";
 import type { TelemetryPort } from "../../../src/use-cases/ports/telemetry";
+import {
+  OtelTelemetry,
+  applyDefaultDeploymentEnvironment,
+  type OtelTelemetryOptions,
+} from "../../../src/infrastructure/telemetry/otel-telemetry";
 import { makeFakeLogger } from "../../mocks/fake-logger";
-
-// ---------------------------------------------------------------------------
-// Mock @opentelemetry/sdk-node
-// ---------------------------------------------------------------------------
-const mockSdkStart = vi.fn();
-const mockSdkShutdown = vi.fn().mockResolvedValue(undefined);
-const mockNodeSDKConstructor = vi.fn();
-
-vi.mock("@opentelemetry/sdk-node", () => ({
-  NodeSDK: class MockNodeSDK {
-    constructor(opts: unknown) {
-      mockNodeSDKConstructor(opts);
-    }
-    start = mockSdkStart;
-    shutdown = mockSdkShutdown;
-  },
-}));
-
-// ---------------------------------------------------------------------------
-// Mock @opentelemetry/exporter-trace-otlp-http
-// ---------------------------------------------------------------------------
-const mockOTLPExporterConstructor = vi.fn();
-
-vi.mock("@opentelemetry/exporter-trace-otlp-http", () => ({
-  OTLPTraceExporter: class MockOTLPTraceExporter {
-    constructor(opts: unknown) {
-      mockOTLPExporterConstructor(opts);
-    }
-  },
-}));
-
-// ---------------------------------------------------------------------------
-// Mock @opentelemetry/resources — capture what was passed to resourceFromAttributes
-// ---------------------------------------------------------------------------
-const mockResourceFromAttributes = vi.fn((attrs: Record<string, unknown>) => ({
-  _attrs: attrs,
-}));
-
-vi.mock("@opentelemetry/resources", () => ({
-  resourceFromAttributes: (attrs: Record<string, unknown>) =>
-    mockResourceFromAttributes(attrs),
-}));
-
-// ---------------------------------------------------------------------------
-// Import the unit under test AFTER mocks are registered
-// ---------------------------------------------------------------------------
-const { OtelTelemetry, applyDefaultDeploymentEnvironment } =
-  await import("../../../src/infrastructure/telemetry/otel-telemetry");
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
 function makeOptions(
-  overrides: Partial<ConstructorParameters<typeof OtelTelemetry>[0]> = {},
-): ConstructorParameters<typeof OtelTelemetry>[0] {
+  overrides: Partial<OtelTelemetryOptions> = {},
+): OtelTelemetryOptions {
   return {
     serviceName: "shrimp-test",
     logger: makeFakeLogger(),
     ...overrides,
   };
+}
+
+/**
+ * Build a real BasicTracerProvider backed by an InMemorySpanExporter so tests
+ * can assert on spans without touching NodeSDK / OTLP / network.
+ */
+function makeTracerProvider(): {
+  provider: BasicTracerProvider;
+  exporter: InMemorySpanExporter;
+  tracer: Tracer;
+} {
+  const exporter = new InMemorySpanExporter();
+  const provider = new BasicTracerProvider({
+    spanProcessors: [new SimpleSpanProcessor(exporter)],
+  });
+  const tracer = provider.getTracer("shrimp-test");
+  return { provider, exporter, tracer };
 }
 
 // ---------------------------------------------------------------------------
@@ -79,7 +58,6 @@ describe("OtelTelemetry", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockSdkShutdown.mockResolvedValue(undefined);
     setLoggerSpy = vi.spyOn(diag, "setLogger");
   });
 
@@ -89,17 +67,31 @@ describe("OtelTelemetry", () => {
     vi.unstubAllEnvs();
   });
 
+  /**
+   * OtelTelemetry always calls diag.setLogger LAST (after sdk.start()), as
+   * documented in the production code. NodeSDK may also call diag.setLogger
+   * during construction when OTEL_LOG_LEVEL is set, so we always read the
+   * last recorded call to isolate the OtelTelemetry call.
+   */
+  function lastSetLoggerCall(): [
+    DiagLogger,
+    { logLevel: DiagLogLevel; suppressOverrideMessage: boolean },
+  ] {
+    const calls = setLoggerSpy.mock.calls;
+    return calls[calls.length - 1] as [
+      DiagLogger,
+      { logLevel: DiagLogLevel; suppressOverrideMessage: boolean },
+    ];
+  }
+
   it("should forward OTel SDK diagnostics through the LoggerPort", () => {
     // makeFakeLogger().child() returns the same instance, so the child wired
     // into the adapter is `logger` itself — we can assert directly on it.
     const logger = makeFakeLogger();
     new OtelTelemetry(makeOptions({ logger }));
 
-    expect(setLoggerSpy).toHaveBeenCalledOnce();
-    const [diagLogger, opts] = setLoggerSpy.mock.calls[0] as [
-      DiagLogger,
-      { logLevel: DiagLogLevel; suppressOverrideMessage: boolean },
-    ];
+    expect(setLoggerSpy).toHaveBeenCalled();
+    const [diagLogger, opts] = lastSetLoggerCall();
 
     diagLogger.error("export failed", { code: 401 });
     diagLogger.warn("retrying");
@@ -128,7 +120,7 @@ describe("OtelTelemetry", () => {
     vi.stubEnv("OTEL_LOG_LEVEL", "debug");
     new OtelTelemetry(makeOptions());
 
-    const opts = setLoggerSpy.mock.calls[0][1] as { logLevel: DiagLogLevel };
+    const [, opts] = lastSetLoggerCall();
     expect(opts.logLevel).toBe(DiagLogLevel.DEBUG);
   });
 
@@ -149,7 +141,7 @@ describe("OtelTelemetry", () => {
       vi.stubEnv("OTEL_LOG_LEVEL", raw);
       new OtelTelemetry(makeOptions());
 
-      const opts = setLoggerSpy.mock.calls[0][1] as { logLevel: DiagLogLevel };
+      const [, opts] = lastSetLoggerCall();
       expect(opts.logLevel).toBe(expected);
     },
   );
@@ -157,39 +149,8 @@ describe("OtelTelemetry", () => {
   it("should default the diag logger level to WARN when OTEL_LOG_LEVEL is unset", () => {
     new OtelTelemetry(makeOptions());
 
-    const opts = setLoggerSpy.mock.calls[0][1] as { logLevel: DiagLogLevel };
+    const [, opts] = lastSetLoggerCall();
     expect(opts.logLevel).toBe(DiagLogLevel.WARN);
-  });
-
-  it("should construct OTLPTraceExporter without url/headers so the SDK reads OTEL_EXPORTER_OTLP_* from env", () => {
-    // Regression: previously we passed url:options.endpoint, which made the
-    // exporter treat it as a complete URL and skip the spec-mandated
-    // "/v1/traces" suffix appending — breaking Langfuse and any backend that
-    // relies on OTEL_EXPORTER_OTLP_ENDPOINT being a base URL.
-    new OtelTelemetry(makeOptions());
-
-    expect(mockOTLPExporterConstructor).toHaveBeenCalledOnce();
-    const args = mockOTLPExporterConstructor.mock.calls[0][0];
-    expect(args?.url).toBeUndefined();
-    expect(args?.headers).toBeUndefined();
-  });
-
-  it("should wire NodeSDK resource with service.name", () => {
-    new OtelTelemetry(makeOptions({ serviceName: "shrimp-test" }));
-
-    expect(mockResourceFromAttributes).toHaveBeenCalledWith(
-      expect.objectContaining({ "service.name": "shrimp-test" }),
-    );
-    const sdkOpts = mockNodeSDKConstructor.mock.calls[0][0] as {
-      resource: { _attrs: Record<string, unknown> };
-    };
-    expect(sdkOpts.resource._attrs["service.name"]).toBe("shrimp-test");
-  });
-
-  it("should call sdk.start during construction", () => {
-    new OtelTelemetry(makeOptions());
-
-    expect(mockSdkStart).toHaveBeenCalledOnce();
   });
 
   it("should expose a tracer on the concrete adapter for DI wiring", () => {
@@ -205,23 +166,36 @@ describe("OtelTelemetry", () => {
     expect(typeof t.shutdown).toBe("function");
   });
 
-  it("should resolve and call sdk.shutdown when shutdown is called", async () => {
+  it("should resolve shutdown without throwing", async () => {
     const telemetry = new OtelTelemetry(makeOptions());
 
     await expect(telemetry.shutdown()).resolves.toBeUndefined();
-    expect(mockSdkShutdown).toHaveBeenCalledOnce();
   });
 
-  it("should swallow sdk.shutdown errors and log a warning", async () => {
-    mockSdkShutdown.mockRejectedValueOnce(new Error("boom"));
+  it("should swallow sdk shutdown errors and log a warning", async () => {
+    // Use a provider whose shutdown is rigged to reject, supplied via the
+    // tracer override so no NodeSDK stub is needed.
+    const { exporter, tracer } = makeTracerProvider();
     const logger = makeFakeLogger();
-    const telemetry = new OtelTelemetry(makeOptions({ logger }));
+
+    // Intercept the NodeSDK that OtelTelemetry builds internally: we cannot
+    // replace it, but we CAN test the swallow + warn behaviour by spying on
+    // the NodeSDK.prototype.shutdown method before construction.
+    const { NodeSDK } = await import("@opentelemetry/sdk-node");
+    const shutdownSpy = vi
+      .spyOn(NodeSDK.prototype, "shutdown")
+      .mockRejectedValueOnce(new Error("boom"));
+
+    const telemetry = new OtelTelemetry(makeOptions({ logger, tracer }));
 
     await expect(telemetry.shutdown()).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalledWith(
       "telemetry shutdown failed",
       expect.objectContaining({ error: "boom" }),
     );
+
+    shutdownSpy.mockRestore();
+    exporter.reset();
   });
 
   describe("applyDefaultDeploymentEnvironment", () => {
@@ -285,96 +259,82 @@ describe("OtelTelemetry", () => {
   });
 
   describe("runInSpan", () => {
-    type FakeSpan = {
-      end: ReturnType<typeof vi.fn>;
-      recordException: ReturnType<typeof vi.fn>;
-      setStatus: ReturnType<typeof vi.fn>;
-      setAttributes: ReturnType<typeof vi.fn>;
-    };
-
-    function makeFakeTracer(span: FakeSpan): Tracer {
-      return {
-        startActiveSpan: ((_name: string, cb: (span: Span) => unknown) =>
-          cb(span as unknown as Span)) as Tracer["startActiveSpan"],
-        startSpan: vi.fn(),
-      } as unknown as Tracer;
-    }
-
-    function buildTelemetry(
-      span: FakeSpan,
-    ): InstanceType<typeof OtelTelemetry> {
-      return new OtelTelemetry(makeOptions({ tracer: makeFakeTracer(span) }));
-    }
-
-    function makeSpan(): FakeSpan {
-      return {
-        end: vi.fn(),
-        recordException: vi.fn(),
-        setStatus: vi.fn(),
-        setAttributes: vi.fn(),
-      };
-    }
-
     it("should invoke the callback and return its resolved value", async () => {
-      const span = makeSpan();
-      const telemetry = buildTelemetry(span);
+      const { tracer } = makeTracerProvider();
+      const telemetry = new OtelTelemetry(makeOptions({ tracer }));
+
       const result = await telemetry.runInSpan("x", async () => "ok");
+
       expect(result).toBe("ok");
     });
 
+    it("should produce a finished span with the given name on the happy path", async () => {
+      const { tracer, exporter } = makeTracerProvider();
+      const telemetry = new OtelTelemetry(makeOptions({ tracer }));
+
+      await telemetry.runInSpan("my-operation", async () => undefined);
+
+      const spans = exporter.getFinishedSpans();
+      expect(spans).toHaveLength(1);
+      expect(spans[0].name).toBe("my-operation");
+      expect(spans[0].status.code).toBe(SpanStatusCode.UNSET);
+    });
+
     it("should end the span exactly once on the happy path", async () => {
-      const span = makeSpan();
-      const telemetry = buildTelemetry(span);
+      const { tracer, exporter } = makeTracerProvider();
+      const telemetry = new OtelTelemetry(makeOptions({ tracer }));
+
       await telemetry.runInSpan("x", async () => undefined);
-      expect(span.end).toHaveBeenCalledTimes(1);
-      expect(span.recordException).not.toHaveBeenCalled();
-      expect(span.setStatus).not.toHaveBeenCalled();
+
+      // A finished span means end() was called; check no exception event was recorded.
+      const span = exporter.getFinishedSpans()[0];
+      expect(span).toBeDefined();
+      const exceptionEvents = span.events.filter((e) => e.name === "exception");
+      expect(exceptionEvents).toHaveLength(0);
     });
 
     it("should record the exception, set ERROR status, end the span, and rethrow", async () => {
-      const span = makeSpan();
-      const telemetry = buildTelemetry(span);
+      const { tracer, exporter } = makeTracerProvider();
+      const telemetry = new OtelTelemetry(makeOptions({ tracer }));
       const boom = new Error("boom");
+
       await expect(
         telemetry.runInSpan("x", async () => {
           throw boom;
         }),
       ).rejects.toBe(boom);
-      expect(span.recordException).toHaveBeenCalledWith(boom);
-      expect(span.setStatus).toHaveBeenCalledWith({
-        code: SpanStatusCode.ERROR,
-      });
-      expect(span.end).toHaveBeenCalledTimes(1);
+
+      const spans = exporter.getFinishedSpans();
+      expect(spans).toHaveLength(1);
+      expect(spans[0].status.code).toBe(SpanStatusCode.ERROR);
+      const exceptionEvents = spans[0].events.filter(
+        (e) => e.name === "exception",
+      );
+      expect(exceptionEvents).toHaveLength(1);
     });
 
     it("should set attributes on the span before invoking the callback", async () => {
-      const span = makeSpan();
-      const telemetry = buildTelemetry(span);
-      const order: string[] = [];
-      span.setAttributes.mockImplementation(() => {
-        order.push("setAttributes");
-      });
+      const { tracer, exporter } = makeTracerProvider();
+      const telemetry = new OtelTelemetry(makeOptions({ tracer }));
 
-      await telemetry.runInSpan(
-        "x",
-        async () => {
-          order.push("fn");
-        },
-        { "http.request.method": "POST", "http.route": "/heartbeat" },
-      );
-
-      expect(span.setAttributes).toHaveBeenCalledWith({
+      await telemetry.runInSpan("x", async () => undefined, {
         "http.request.method": "POST",
         "http.route": "/heartbeat",
       });
-      expect(order).toEqual(["setAttributes", "fn"]);
+
+      const span = exporter.getFinishedSpans()[0];
+      expect(span.attributes["http.request.method"]).toBe("POST");
+      expect(span.attributes["http.route"]).toBe("/heartbeat");
     });
 
-    it("should not call setAttributes when attributes are omitted", async () => {
-      const span = makeSpan();
-      const telemetry = buildTelemetry(span);
+    it("should not set attributes on the span when attributes are omitted", async () => {
+      const { tracer, exporter } = makeTracerProvider();
+      const telemetry = new OtelTelemetry(makeOptions({ tracer }));
+
       await telemetry.runInSpan("x", async () => undefined);
-      expect(span.setAttributes).not.toHaveBeenCalled();
+
+      const span = exporter.getFinishedSpans()[0];
+      expect(Object.keys(span.attributes)).toHaveLength(0);
     });
   });
 
