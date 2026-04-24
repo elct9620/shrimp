@@ -6,6 +6,9 @@ import type { ChannelJob } from "../../../../use-cases/channel-job";
 import type { StartNewSession } from "../../../../use-cases/start-new-session";
 import type { ChannelGateway } from "../../../../use-cases/ports/channel-gateway";
 import type { LoggerPort } from "../../../../use-cases/ports/logger";
+
+export type ChannelJobRunner = Pick<ChannelJob, "run">;
+export type SessionStarter = Pick<StartNewSession, "execute">;
 import type { ConversationRef } from "../../../../entities/conversation-ref";
 import { TELEGRAM_CHANNEL_NAME } from "../../../../infrastructure/channel/telegram-channel";
 import { collectHttpSpanAttributes } from "../../telemetry-attributes";
@@ -25,7 +28,7 @@ async function handleSlashCommand(
   name: string | undefined,
   ref: ConversationRef,
   deps: {
-    startNewSession: StartNewSession;
+    startNewSession: SessionStarter;
     channelGateway: ChannelGateway;
     logger: LoggerPort;
   },
@@ -50,8 +53,8 @@ async function handleSlashCommand(
 
 export function createTelegramRoute(deps: {
   jobQueue: JobQueue;
-  channelJob: ChannelJob;
-  startNewSession: StartNewSession;
+  channelJob: ChannelJobRunner;
+  startNewSession: SessionStarter;
   channelGateway: ChannelGateway;
   webhookSecret: string;
   logger: LoggerPort;

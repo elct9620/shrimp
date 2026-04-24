@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createHeartbeatRoute } from "../../../../src/adapters/http/routes/heartbeat";
+import {
+  createHeartbeatRoute,
+  type HeartbeatJobRunner,
+} from "../../../../src/adapters/http/routes/heartbeat";
 import type { JobQueue } from "../../../../src/use-cases/ports/job-queue";
-import type { HeartbeatJob } from "../../../../src/use-cases/heartbeat-job";
 import type { BoardRepository } from "../../../../src/use-cases/ports/board-repository";
 import { Section } from "../../../../src/entities/section";
 import type { Task } from "../../../../src/entities/task";
@@ -13,11 +15,11 @@ function makeJobQueue(): JobQueue {
   };
 }
 
-function makeHeartbeatJob(runImpl?: () => Promise<void>): HeartbeatJob {
+function makeHeartbeatJob(runImpl?: () => Promise<void>): HeartbeatJobRunner {
   const impl = runImpl ?? (() => Promise.resolve());
   return {
     run: vi.fn().mockImplementation(impl),
-  } as unknown as HeartbeatJob;
+  };
 }
 
 function makeTask(id: string): Task {

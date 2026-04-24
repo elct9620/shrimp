@@ -4,6 +4,8 @@ import type { JobQueue } from "../../../use-cases/ports/job-queue";
 import type { HeartbeatJob } from "../../../use-cases/heartbeat-job";
 import type { BoardRepository } from "../../../use-cases/ports/board-repository";
 import type { LoggerPort } from "../../../use-cases/ports/logger";
+
+export type HeartbeatJobRunner = Pick<HeartbeatJob, "run">;
 import { Section } from "../../../entities/section";
 import { collectHttpSpanAttributes } from "../telemetry-attributes";
 import { timingSafeEqualStr } from "../timing-safe-compare";
@@ -51,7 +53,7 @@ async function decideHeartbeatEnqueue(
 
 export function createHeartbeatRoute(deps: {
   jobQueue: JobQueue;
-  heartbeatJob: HeartbeatJob;
+  heartbeatJob: HeartbeatJobRunner;
   board: BoardRepository;
   logger: LoggerPort;
   heartbeatToken?: string;

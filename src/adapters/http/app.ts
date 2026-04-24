@@ -4,26 +4,30 @@ import { pinoHttp } from "pino-http";
 import type { Logger } from "pino";
 import type { AppEnv } from "./context-variables";
 import type { JobQueue } from "../../use-cases/ports/job-queue";
-import type { HeartbeatJob } from "../../use-cases/heartbeat-job";
 import type { BoardRepository } from "../../use-cases/ports/board-repository";
 import type { LoggerPort } from "../../use-cases/ports/logger";
-import type { ChannelJob } from "../../use-cases/channel-job";
-import type { StartNewSession } from "../../use-cases/start-new-session";
 import type { ChannelGateway } from "../../use-cases/ports/channel-gateway";
 import { createHealthRoute } from "./routes/health";
-import { createHeartbeatRoute } from "./routes/heartbeat";
-import { createTelegramRoute } from "./routes/channels/telegram";
+import {
+  createHeartbeatRoute,
+  type HeartbeatJobRunner,
+} from "./routes/heartbeat";
+import {
+  createTelegramRoute,
+  type ChannelJobRunner,
+  type SessionStarter,
+} from "./routes/channels/telegram";
 
 export type CreateAppDeps = {
   pinoInstance: Logger;
   jobQueue: JobQueue;
-  heartbeatJob: HeartbeatJob;
+  heartbeatJob: HeartbeatJobRunner;
   board: BoardRepository;
   logger: LoggerPort;
   heartbeatToken?: string;
   channels?: {
-    channelJob: ChannelJob;
-    startNewSession: StartNewSession;
+    channelJob: ChannelJobRunner;
+    startNewSession: SessionStarter;
     channelGateway: ChannelGateway;
     webhookSecret: string;
   };

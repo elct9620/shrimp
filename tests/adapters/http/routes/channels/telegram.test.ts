@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { createTelegramRoute } from "../../../../../src/adapters/http/routes/channels/telegram";
+import {
+  createTelegramRoute,
+  type ChannelJobRunner,
+  type SessionStarter,
+} from "../../../../../src/adapters/http/routes/channels/telegram";
 import type { JobQueue } from "../../../../../src/use-cases/ports/job-queue";
-import type { ChannelJob } from "../../../../../src/use-cases/channel-job";
-import type { StartNewSession } from "../../../../../src/use-cases/start-new-session";
 import type { ChannelGateway } from "../../../../../src/use-cases/ports/channel-gateway";
 import { makeFakeLogger } from "../../../../mocks/fake-logger";
 
@@ -14,14 +16,14 @@ function makeJobQueue(): JobQueue {
   };
 }
 
-function makeChannelJob(): ChannelJob {
-  return { run: vi.fn().mockResolvedValue(undefined) } as unknown as ChannelJob;
+function makeChannelJob(): ChannelJobRunner {
+  return { run: vi.fn().mockResolvedValue(undefined) };
 }
 
-function makeStartNewSession(): StartNewSession {
+function makeStartNewSession(): SessionStarter {
   return {
     execute: vi.fn().mockResolvedValue({ id: "session-1", messages: [] }),
-  } as unknown as StartNewSession;
+  };
 }
 
 function makeChannelGateway(): ChannelGateway {
@@ -33,8 +35,8 @@ function makeChannelGateway(): ChannelGateway {
 
 function makeApp(overrides?: {
   jobQueue?: JobQueue;
-  channelJob?: ChannelJob;
-  startNewSession?: StartNewSession;
+  channelJob?: ChannelJobRunner;
+  startNewSession?: SessionStarter;
   channelGateway?: ChannelGateway;
   webhookSecret?: string;
 }) {

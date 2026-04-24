@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../../../src/adapters/http/app";
+import type {
+  HeartbeatJobRunner,
+  // CreateAppDeps re-exports the narrow types, so import from app
+} from "../../../src/adapters/http/routes/heartbeat";
+import type {
+  ChannelJobRunner,
+  SessionStarter,
+} from "../../../src/adapters/http/routes/channels/telegram";
 import type { JobQueue } from "../../../src/use-cases/ports/job-queue";
-import type { HeartbeatJob } from "../../../src/use-cases/heartbeat-job";
 import type { BoardRepository } from "../../../src/use-cases/ports/board-repository";
-import type { ChannelJob } from "../../../src/use-cases/channel-job";
-import type { StartNewSession } from "../../../src/use-cases/start-new-session";
 import type { ChannelGateway } from "../../../src/use-cases/ports/channel-gateway";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 import pino from "pino";
@@ -15,9 +20,9 @@ function makeBaseDeps() {
   const jobQueue: JobQueue = {
     enqueue: vi.fn(),
   };
-  const heartbeatJob: HeartbeatJob = {
+  const heartbeatJob: HeartbeatJobRunner = {
     run: vi.fn().mockResolvedValue(undefined),
-  } as unknown as HeartbeatJob;
+  };
   const board: BoardRepository = {
     validateSections: vi.fn().mockResolvedValue(undefined),
     getTasks: vi.fn().mockResolvedValue([]),
@@ -35,12 +40,12 @@ function makeBaseDeps() {
 }
 
 function makeChannelDeps() {
-  const channelJob: ChannelJob = {
+  const channelJob: ChannelJobRunner = {
     run: vi.fn().mockResolvedValue(undefined),
-  } as unknown as ChannelJob;
-  const startNewSession: StartNewSession = {
+  };
+  const startNewSession: SessionStarter = {
     execute: vi.fn().mockResolvedValue({ id: "s1", messages: [] }),
-  } as unknown as StartNewSession;
+  };
   const channelGateway: ChannelGateway = {
     reply: vi.fn().mockResolvedValue(undefined),
     indicateProcessing: vi.fn().mockResolvedValue(undefined),
