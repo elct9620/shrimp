@@ -39,6 +39,21 @@ const makeComment = (
 });
 
 /**
+ * Returns the given headings sorted by their first occurrence in the prompt.
+ * Headings not found in the prompt are sorted to the end.
+ */
+function sectionOrder(prompt: string, headings: string[]): string[] {
+  return [...headings].sort((a, b) => {
+    const ai = prompt.indexOf(a);
+    const bi = prompt.indexOf(b);
+    if (ai === -1 && bi === -1) return 0;
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+}
+
+/**
  * Markdown syntax patterns that must NOT appear in the Output Format section body.
  * Small-model voice renderers (e.g. Telegram) display these as literal characters,
  * hurting readability — so the prompt explicitly forbids them and the section itself
@@ -152,27 +167,45 @@ describe("assembleHeartbeatPrompts", () => {
       expect(systemPrompt).not.toContain("## Error Handling");
     });
 
-    it("orders sections from stable to dynamic: base → variant → Skills → Tools → User Agents Appendix", () => {
-      const skills = [makeSkillEntry()];
-      const { systemPrompt } = assembleHeartbeatPrompts({
-        task: makeTask(),
-        comments: [],
-        skills,
+    it.each([
+      {
+        name: "with skills and userAgents",
+        skills: [makeSkillEntry()],
         userAgents: "Operator note",
-      });
+        expectedOrder: [
+          "## Approach",
+          "## Objective",
+          "## Skills",
+          "## Tools",
+          "Operator note",
+        ],
+      },
+      {
+        name: "with skills only (no userAgents)",
+        skills: [makeSkillEntry()],
+        userAgents: undefined,
+        expectedOrder: ["## Approach", "## Objective", "## Skills", "## Tools"],
+      },
+      {
+        name: "with no skills and no userAgents",
+        skills: undefined,
+        userAgents: undefined,
+        expectedOrder: ["## Approach", "## Objective"],
+      },
+    ])(
+      "orders sections from stable to dynamic: base → variant → Skills → Tools → User Agents Appendix ($name)",
+      ({ skills, userAgents, expectedOrder }) => {
+        const { systemPrompt } = assembleHeartbeatPrompts({
+          task: makeTask(),
+          comments: [],
+          skills,
+          userAgents,
+        });
 
-      const approachIdx = systemPrompt.indexOf("## Approach");
-      const objectiveIdx = systemPrompt.indexOf("## Objective");
-      const skillsIdx = systemPrompt.indexOf("## Skills");
-      const toolsIdx = systemPrompt.indexOf("## Tools");
-      const operatorIdx = systemPrompt.indexOf("Operator note");
-
-      expect(approachIdx).toBeGreaterThan(-1);
-      expect(objectiveIdx).toBeGreaterThan(approachIdx);
-      expect(skillsIdx).toBeGreaterThan(objectiveIdx);
-      expect(toolsIdx).toBeGreaterThan(skillsIdx);
-      expect(operatorIdx).toBeGreaterThan(toolsIdx);
-    });
+        const actualOrder = sectionOrder(systemPrompt, expectedOrder);
+        expect(actualOrder).toEqual(expectedOrder);
+      },
+    );
 
     it("AGENTS.md (User Agents Appendix) is the final block — nothing follows it", () => {
       const skills = [makeSkillEntry()];
@@ -309,12 +342,12 @@ describe("assembleHeartbeatPrompts", () => {
           userAgents: "Operator note",
         });
 
-        const objectiveIdx = systemPrompt.indexOf("## Objective");
-        const skillsIdx = systemPrompt.indexOf("## Skills");
-        const operatorIdx = systemPrompt.indexOf("Operator note");
-
-        expect(skillsIdx).toBeGreaterThan(objectiveIdx);
-        expect(operatorIdx).toBeGreaterThan(skillsIdx);
+        const order = sectionOrder(systemPrompt, [
+          "## Objective",
+          "## Skills",
+          "Operator note",
+        ]);
+        expect(order).toEqual(["## Objective", "## Skills", "Operator note"]);
       });
 
       it("omits Skills section when skills param is not provided", () => {
@@ -392,12 +425,12 @@ describe("assembleHeartbeatPrompts", () => {
           userAgents: "Operator note",
         });
 
-        const skillsIdx = systemPrompt.indexOf("## Skills");
-        const toolsIdx = systemPrompt.indexOf("## Tools");
-        const operatorIdx = systemPrompt.indexOf("Operator note");
-
-        expect(toolsIdx).toBeGreaterThan(skillsIdx);
-        expect(operatorIdx).toBeGreaterThan(toolsIdx);
+        const order = sectionOrder(systemPrompt, [
+          "## Skills",
+          "## Tools",
+          "Operator note",
+        ]);
+        expect(order).toEqual(["## Skills", "## Tools", "Operator note"]);
       });
 
       it("## Approach section has skill-first directive", () => {
@@ -690,43 +723,51 @@ describe("assembleChannelSystemPrompt", () => {
     expect(systemPrompt).not.toContain("## Domain Knowledge");
   });
 
-  it("includes Output Format section between Tools and User Agents Appendix", () => {
-    const skills = [makeSkillEntry()];
-    const systemPrompt = assembleChannelSystemPrompt({
-      skills,
+  it.each([
+    {
+      name: "with skills and userAgents",
+      skills: [makeSkillEntry()],
       userAgents: "Operator note",
-    });
+      expectedOrder: [
+        "## Approach",
+        "## Conversation Style",
+        "## Skills",
+        "## Tools",
+        "## Output Format",
+        "Operator note",
+      ],
+    },
+    {
+      name: "with skills only (no userAgents)",
+      skills: [makeSkillEntry()],
+      userAgents: undefined,
+      expectedOrder: [
+        "## Approach",
+        "## Conversation Style",
+        "## Skills",
+        "## Tools",
+        "## Output Format",
+      ],
+    },
+    {
+      name: "with no skills and no userAgents",
+      skills: undefined,
+      userAgents: undefined,
+      expectedOrder: [
+        "## Approach",
+        "## Conversation Style",
+        "## Output Format",
+      ],
+    },
+  ])(
+    "orders sections: base → variant → Skills → Tools → Output Format → User Agents Appendix ($name)",
+    ({ skills, userAgents, expectedOrder }) => {
+      const systemPrompt = assembleChannelSystemPrompt({ skills, userAgents });
 
-    const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-    const toolsIdx = systemPrompt.indexOf("## Tools");
-    const operatorIdx = systemPrompt.indexOf("Operator note");
-
-    expect(outputFormatIdx).toBeGreaterThan(-1);
-    expect(outputFormatIdx).toBeGreaterThan(toolsIdx);
-    expect(operatorIdx).toBeGreaterThan(outputFormatIdx);
-  });
-
-  it("orders sections: base → variant → Skills → Tools → Output Format → User Agents Appendix", () => {
-    const skills = [makeSkillEntry()];
-    const systemPrompt = assembleChannelSystemPrompt({
-      skills,
-      userAgents: "Operator note",
-    });
-
-    const approachIdx = systemPrompt.indexOf("## Approach");
-    const styleIdx = systemPrompt.indexOf("## Conversation Style");
-    const skillsIdx = systemPrompt.indexOf("## Skills");
-    const toolsIdx = systemPrompt.indexOf("## Tools");
-    const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-    const operatorIdx = systemPrompt.indexOf("Operator note");
-
-    expect(approachIdx).toBeGreaterThan(-1);
-    expect(styleIdx).toBeGreaterThan(approachIdx);
-    expect(skillsIdx).toBeGreaterThan(styleIdx);
-    expect(toolsIdx).toBeGreaterThan(skillsIdx);
-    expect(outputFormatIdx).toBeGreaterThan(toolsIdx);
-    expect(operatorIdx).toBeGreaterThan(outputFormatIdx);
-  });
+      const actualOrder = sectionOrder(systemPrompt, expectedOrder);
+      expect(actualOrder).toEqual(expectedOrder);
+    },
+  );
 
   it("AGENTS.md (User Agents Appendix) is the final block — nothing follows it", () => {
     const skills = [makeSkillEntry()];
@@ -796,12 +837,16 @@ describe("assembleChannelSystemPrompt", () => {
       userAgents: "Operator channel note",
     });
 
-    const styleIdx = systemPrompt.indexOf("## Conversation Style");
-    const skillsIdx = systemPrompt.indexOf("## Skills");
-    const operatorIdx = systemPrompt.indexOf("Operator channel note");
-
-    expect(skillsIdx).toBeGreaterThan(styleIdx);
-    expect(operatorIdx).toBeGreaterThan(skillsIdx);
+    const order = sectionOrder(systemPrompt, [
+      "## Conversation Style",
+      "## Skills",
+      "Operator channel note",
+    ]);
+    expect(order).toEqual([
+      "## Conversation Style",
+      "## Skills",
+      "Operator channel note",
+    ]);
   });
 
   it("shares the same base section as the heartbeat variant", () => {
@@ -826,42 +871,36 @@ describe("assembleChannelSystemPrompt", () => {
       expect(systemPrompt).toContain("## Output Format");
     });
 
-    it("Output Format section sits AFTER Tools section", () => {
-      const systemPrompt = assembleChannelSystemPrompt({
+    it.each([
+      {
+        name: "sits after Skills and Tools (skills provided)",
         skills: [makeSkillEntry()],
-      });
-
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const toolsIdx = systemPrompt.indexOf("## Tools");
-
-      expect(outputFormatIdx).toBeGreaterThan(-1);
-      expect(outputFormatIdx).toBeGreaterThan(toolsIdx);
-    });
-
-    it("Output Format section sits AFTER Skills section", () => {
-      const systemPrompt = assembleChannelSystemPrompt({
-        skills: [makeSkillEntry()],
-      });
-
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const skillsIdx = systemPrompt.indexOf("## Skills");
-
-      expect(outputFormatIdx).toBeGreaterThan(-1);
-      expect(outputFormatIdx).toBeGreaterThan(skillsIdx);
-    });
-
-    it("Output Format section comes BEFORE User Agents Appendix", () => {
-      const systemPrompt = assembleChannelSystemPrompt({
+        userAgents: undefined,
+        expectedOrder: ["## Skills", "## Tools", "## Output Format"],
+      },
+      {
+        name: "comes before User Agents Appendix (skills and userAgents provided)",
         skills: [makeSkillEntry()],
         userAgents: "Operator note",
-      });
+        expectedOrder: [
+          "## Skills",
+          "## Tools",
+          "## Output Format",
+          "Operator note",
+        ],
+      },
+    ])(
+      "Output Format section position: $name",
+      ({ skills, userAgents, expectedOrder }) => {
+        const systemPrompt = assembleChannelSystemPrompt({
+          skills,
+          userAgents,
+        });
 
-      const outputFormatIdx = systemPrompt.indexOf("## Output Format");
-      const operatorIdx = systemPrompt.indexOf("Operator note");
-
-      expect(outputFormatIdx).toBeGreaterThan(-1);
-      expect(operatorIdx).toBeGreaterThan(outputFormatIdx);
-    });
+        const actualOrder = sectionOrder(systemPrompt, expectedOrder);
+        expect(actualOrder).toEqual(expectedOrder);
+      },
+    );
 
     it("Output Format is present (as last non-empty block) when userAgents is absent", () => {
       const systemPrompt = assembleChannelSystemPrompt({
@@ -1166,11 +1205,8 @@ describe("assembleSummarizeSystemPrompt", () => {
   it("orders sections from stable to dynamic: base → variant", () => {
     const systemPrompt = assembleSummarizeSystemPrompt();
 
-    const approachIdx = systemPrompt.indexOf("## Approach");
-    const objectiveIdx = systemPrompt.indexOf("## Objective");
-
-    expect(approachIdx).toBeGreaterThan(-1);
-    expect(objectiveIdx).toBeGreaterThan(approachIdx);
+    const expectedOrder = ["## Approach", "## Objective"];
+    expect(sectionOrder(systemPrompt, expectedOrder)).toEqual(expectedOrder);
   });
 
   it("shares the same base section as the channel variant", () => {
