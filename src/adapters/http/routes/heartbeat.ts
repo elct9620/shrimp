@@ -12,6 +12,11 @@ import { timingSafeEqualStr } from "../timing-safe-compare";
 
 const BEARER_PREFIX = "Bearer ";
 
+export const HEARTBEAT_RECEIVED = "heartbeat received";
+export const HEARTBEAT_ENQUEUED = "heartbeat enqueued";
+export const HEARTBEAT_REJECTED = "heartbeat rejected";
+export const HEARTBEAT_PRE_CHECK_SKIPPED = "heartbeat pre-check skipped";
+
 function extractBearerToken(header: string | undefined): string | undefined {
   if (!header) return undefined;
   if (!header.startsWith(BEARER_PREFIX)) return undefined;
@@ -66,12 +71,12 @@ export function createHeartbeatRoute(deps: {
     if (deps.heartbeatToken) {
       const provided = extractBearerToken(c.req.header("authorization"));
       if (!provided || !timingSafeEqualStr(provided, deps.heartbeatToken)) {
-        deps.logger.warn("heartbeat rejected");
+        deps.logger.warn(HEARTBEAT_REJECTED);
         return c.body(null, 401);
       }
     }
 
-    deps.logger.info("heartbeat received");
+    deps.logger.info(HEARTBEAT_RECEIVED);
     const attributes = collectHttpSpanAttributes(c, "/heartbeat");
 
     // Fire-and-forget: pre-check + enqueue run after the 202 is returned.
@@ -79,7 +84,7 @@ export function createHeartbeatRoute(deps: {
     const chain = decideHeartbeatEnqueue(deps.board, deps.logger)
       .then((decision) => {
         if (!decision.enqueue) {
-          deps.logger.info("heartbeat pre-check skipped", {
+          deps.logger.info(HEARTBEAT_PRE_CHECK_SKIPPED, {
             reason: decision.reason,
           });
           return;
@@ -89,7 +94,7 @@ export function createHeartbeatRoute(deps: {
             telemetry: { spanName: "POST /heartbeat", attributes },
           }),
         );
-        deps.logger.info("heartbeat enqueued");
+        deps.logger.info(HEARTBEAT_ENQUEUED);
       })
       .catch((err) => {
         // Defense-in-depth: decideHeartbeatEnqueue already catches; this

@@ -2,6 +2,9 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   HeartbeatJob,
   type HeartbeatJobConfig,
+  CYCLE_FINISHED,
+  CYCLE_IDLE,
+  CYCLE_SKIPPED_SECTION_MISSING,
 } from "../../src/use-cases/heartbeat-job";
 import { BoardSectionMissingError } from "../../src/use-cases/ports/board-repository";
 import type { BoardRepository } from "../../src/use-cases/ports/board-repository";
@@ -128,7 +131,7 @@ describe("HeartbeatJob.run", () => {
     expect(agent.capturedInput?.userPrompt).toContain("ip-1");
     expect(agent.capturedInput?.userPrompt).toContain("prior note");
     expect(logger.info).toHaveBeenCalledWith(
-      "cycle finished",
+      CYCLE_FINISHED,
       expect.objectContaining({ taskId: "ip-1", reason: "finished" }),
     );
   });
@@ -157,7 +160,7 @@ describe("HeartbeatJob.run", () => {
     expect(agent.run).not.toHaveBeenCalled();
     expect(board.moveTask).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith(
-      "cycle idle",
+      CYCLE_IDLE,
       expect.objectContaining({ reason: "no tasks available" }),
     );
   });
@@ -171,7 +174,7 @@ describe("HeartbeatJob.run", () => {
 
     expect(agent.run).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(
-      "cycle skipped — board section missing",
+      CYCLE_SKIPPED_SECTION_MISSING,
       expect.objectContaining({
         missingSection: expect.stringContaining("Done"),
       }),
@@ -192,7 +195,7 @@ describe("HeartbeatJob.run", () => {
     await expect(job.run(DEFAULT_INPUT)).resolves.toBeUndefined();
 
     expect(logger.info).toHaveBeenCalledWith(
-      "cycle finished",
+      CYCLE_FINISHED,
       expect.objectContaining({ reason: "maxStepsReached" }),
     );
   });

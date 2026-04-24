@@ -15,6 +15,8 @@ import {
 } from "./ports/session-repository";
 import { assembleChannelSystemPrompt } from "./prompt-assembler";
 
+export const CYCLE_FINISHED = "cycle finished";
+
 export type ChannelJobConfig = {
   sessionRepository: SessionRepository;
   channelGateway: ChannelGateway;
@@ -196,7 +198,7 @@ export class ChannelJob {
           }
         }
 
-        this.logger.info("cycle finished", {
+        this.logger.info(CYCLE_FINISHED, {
           sessionId: session.id,
           reason: result.reason,
         });

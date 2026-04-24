@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
-import { ChannelJob } from "../../src/use-cases/channel-job";
+import { ChannelJob, CYCLE_FINISHED } from "../../src/use-cases/channel-job";
 import type {
   SessionRepository,
   Session,
@@ -180,7 +180,7 @@ describe("ChannelJob.run", () => {
     ]);
 
     expect(logger.info).toHaveBeenCalledWith(
-      "cycle finished",
+      CYCLE_FINISHED,
       expect.objectContaining({ sessionId: "session-new", reason: "finished" }),
     );
   });

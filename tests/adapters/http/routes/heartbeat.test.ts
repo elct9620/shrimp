@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createHeartbeatRoute,
   type HeartbeatJobRunner,
+  HEARTBEAT_RECEIVED,
+  HEARTBEAT_ENQUEUED,
+  HEARTBEAT_REJECTED,
+  HEARTBEAT_PRE_CHECK_SKIPPED,
 } from "../../../../src/adapters/http/routes/heartbeat";
 import type { JobQueue } from "../../../../src/use-cases/ports/job-queue";
 import type { BoardRepository } from "../../../../src/use-cases/ports/board-repository";
@@ -102,7 +106,7 @@ describe("POST /heartbeat", () => {
     await preCheckChain;
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith(
-      "heartbeat pre-check skipped",
+      HEARTBEAT_PRE_CHECK_SKIPPED,
       expect.objectContaining({ reason: "backlog empty" }),
     );
   });
@@ -131,7 +135,7 @@ describe("POST /heartbeat", () => {
     await preCheckChain;
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith(
-      "heartbeat pre-check skipped",
+      HEARTBEAT_PRE_CHECK_SKIPPED,
       expect.objectContaining({ reason: "in progress saturated (n>1)" }),
     );
   });
@@ -181,7 +185,7 @@ describe("POST /heartbeat", () => {
     await preCheckChain;
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(logger.info).toHaveBeenCalledWith(
-      "heartbeat pre-check skipped",
+      HEARTBEAT_PRE_CHECK_SKIPPED,
       expect.objectContaining({ reason: "board query failed" }),
     );
   });
@@ -302,7 +306,7 @@ describe("POST /heartbeat", () => {
       expect(res.status).toBe(401);
       expect(board.getTasks).not.toHaveBeenCalled();
       expect(jobQueue.enqueue).not.toHaveBeenCalled();
-      expect(logger.warn).toHaveBeenCalledWith("heartbeat rejected");
+      expect(logger.warn).toHaveBeenCalledWith(HEARTBEAT_REJECTED);
     });
 
     it("returns 401 when token is configured and Bearer value does not match", async () => {
@@ -396,7 +400,7 @@ describe("POST /heartbeat", () => {
       });
 
       await app.request("/heartbeat", { method: "POST" });
-      expect(logger.info).toHaveBeenCalledWith("heartbeat received");
+      expect(logger.info).toHaveBeenCalledWith(HEARTBEAT_RECEIVED);
     });
 
     it('logs info "heartbeat enqueued" when pre-check passes', async () => {
@@ -415,7 +419,7 @@ describe("POST /heartbeat", () => {
       await app.request("/heartbeat", { method: "POST" });
       await preCheckChain;
 
-      expect(logger.info).toHaveBeenCalledWith("heartbeat enqueued");
+      expect(logger.info).toHaveBeenCalledWith(HEARTBEAT_ENQUEUED);
     });
   });
 });

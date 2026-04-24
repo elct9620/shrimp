@@ -11,6 +11,11 @@ import type { SpanAttributes, TelemetryPort } from "./ports/telemetry";
 import type { UserAgentsPort } from "./ports/user-agents";
 import type { SkillCatalog } from "./ports/skill-catalog";
 
+export const CYCLE_FINISHED = "cycle finished";
+export const CYCLE_IDLE = "cycle idle";
+export const CYCLE_SKIPPED_SECTION_MISSING =
+  "cycle skipped — board section missing";
+
 export type HeartbeatJobConfig = {
   board: BoardRepository;
   shrimpAgent: ShrimpAgent;
@@ -72,7 +77,7 @@ export class HeartbeatJob {
           backlogTasks = await this.board.getTasks(Section.Backlog);
         } catch (error) {
           if (error instanceof BoardSectionMissingError) {
-            this.logger.warn("cycle skipped — board section missing", {
+            this.logger.warn(CYCLE_SKIPPED_SECTION_MISSING, {
               missingSection: error.message,
             });
             return;
@@ -82,7 +87,7 @@ export class HeartbeatJob {
 
         const task = selectTask(inProgressTasks, backlogTasks);
         if (task === null) {
-          this.logger.info("cycle idle", {
+          this.logger.info(CYCLE_IDLE, {
             reason: "no tasks available",
             inProgressCount: inProgressTasks.length,
             backlogCount: backlogTasks.length,
@@ -125,7 +130,7 @@ export class HeartbeatJob {
           history: [],
         });
 
-        this.logger.info("cycle finished", {
+        this.logger.info(CYCLE_FINISHED, {
           taskId: task.id,
           reason: result.reason,
         });
