@@ -269,6 +269,63 @@ describe("assembleHeartbeatPrompts", () => {
       expect(withEmpty).toBe(base);
     });
 
+    it("trims leading and trailing whitespace from non-empty userAgents before appending", () => {
+      const trimmedValue = "MCP tool X";
+      const { systemPrompt } = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        userAgents: `  ${trimmedValue}\n`,
+      });
+
+      // The trimmed form appears in the prompt
+      expect(systemPrompt).toContain(trimmedValue);
+      // Leading spaces and trailing newline are stripped
+      expect(systemPrompt).not.toMatch(/  MCP tool X/);
+      expect(systemPrompt.endsWith(trimmedValue)).toBe(true);
+    });
+
+    it("passes through embedded quotes and newlines verbatim (no escaping or crash)", () => {
+      const userAgents = 'Say "hello"\nnext line';
+      const { systemPrompt } = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        userAgents,
+      });
+
+      // Both parts of the multi-line value appear in the prompt
+      expect(systemPrompt).toContain('Say "hello"');
+      expect(systemPrompt).toContain("next line");
+    });
+
+    it("passes through markdown-like fragments verbatim — they do not break surrounding prompt structure", () => {
+      const userAgents = "Use **bold** or `code` or [link](http://example.com)";
+      const { systemPrompt } = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        userAgents,
+      });
+
+      // The markdown fragments appear unchanged — source does no escaping
+      expect(systemPrompt).toContain(userAgents);
+      // The base sections still exist — surrounding structure is intact
+      expect(systemPrompt).toContain("## Approach");
+      expect(systemPrompt).toContain("## Working Style");
+    });
+
+    it("handles extremely long userAgents input without crashing and includes full content", () => {
+      const longValue = "A".repeat(10_000);
+      const { systemPrompt } = assembleHeartbeatPrompts({
+        task: makeTask(),
+        comments: [],
+        userAgents: longValue,
+      });
+
+      // No length cap — full content appears verbatim
+      expect(systemPrompt).toContain(longValue);
+      // Base structure still intact after appending a large block
+      expect(systemPrompt).toContain("## Approach");
+    });
+
     it("produces the same output for the same input (pure function)", () => {
       const input = {
         task: makeTask(),
