@@ -127,6 +127,29 @@ describe("loadEnvConfig", () => {
       });
       expect(config.aiReasoningEffort).toBe("low");
     });
+
+    // The current source does no enum validation on AI_REASONING_EFFORT — it is
+    // a raw string pass-through (env["AI_REASONING_EFFORT"] || undefined).
+    // The following tests assert current contract: arbitrary non-empty strings
+    // are accepted as-is. If enum enforcement is added in future, these should
+    // become rejection tests.
+    it.each(["medium", "HIGH", "123"])(
+      'should pass through "%s" without throwing (no enum validation in source)',
+      (value) => {
+        const config = loadEnvConfig({
+          ...REQUIRED_ENV,
+          AI_REASONING_EFFORT: value,
+        });
+        expect(config.aiReasoningEffort).toBe(value);
+      },
+    );
+
+    // TODO: AI_REASONING_EFFORT has no schema enforcement. If the source is
+    // updated to validate against an enum (e.g. "low"|"medium"|"high"), add
+    // rejection tests for values like "", "HIGH", "123", and unknown strings.
+    it.todo(
+      "should reject AI_REASONING_EFFORT values not in the allowed enum (enforcement not yet implemented in source)",
+    );
   });
 
   describe("AI_MAX_STEPS", () => {
@@ -562,6 +585,23 @@ describe("loadEnvConfig", () => {
       },
     );
 
+    it.each(["abc", "-1", "0"])(
+      'should report AUTO_COMPACT_TOKEN_THRESHOLD in EnvConfigError fields when value is "%s"',
+      (value) => {
+        testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+        expectEnvConfigFields(
+          () =>
+            loadEnvConfig({
+              ...CHANNELS_ON_ENV,
+              SHRIMP_HOME: testStateDir,
+              AUTO_COMPACT_TOKEN_THRESHOLD: value,
+            }),
+          ["AUTO_COMPACT_TOKEN_THRESHOLD"],
+        );
+      },
+    );
+
     it("should expose AUTO_COMPACT_MODEL when set", () => {
       testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
 
@@ -640,6 +680,37 @@ describe("loadEnvConfig", () => {
         ).toThrow(/AUTO_COMPACT_MAX_OUTPUT_TOKENS/);
       },
     );
+
+    it.each(["abc", "-1", "0"])(
+      'should report AUTO_COMPACT_MAX_OUTPUT_TOKENS in EnvConfigError fields when value is "%s"',
+      (value) => {
+        testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+        expectEnvConfigFields(
+          () =>
+            loadEnvConfig({
+              ...CHANNELS_ON_ENV,
+              SHRIMP_HOME: testStateDir,
+              AUTO_COMPACT_TOKEN_THRESHOLD: "100000",
+              AUTO_COMPACT_MAX_OUTPUT_TOKENS: value,
+            }),
+          ["AUTO_COMPACT_MAX_OUTPUT_TOKENS"],
+        );
+      },
+    );
+
+    it("should default AUTO_COMPACT_MAX_OUTPUT_TOKENS to 2048 when set to empty string", () => {
+      testStateDir = join(tmpdir(), `shrimp-test-ac-${Date.now()}`);
+
+      const config = loadEnvConfig({
+        ...CHANNELS_ON_ENV,
+        SHRIMP_HOME: testStateDir,
+        AUTO_COMPACT_TOKEN_THRESHOLD: "100000",
+        AUTO_COMPACT_MAX_OUTPUT_TOKENS: "",
+      });
+
+      expect(config.autoCompactMaxOutputTokens).toBe(2048);
+    });
   });
 
   describe("skillsBuiltInRoot", () => {
