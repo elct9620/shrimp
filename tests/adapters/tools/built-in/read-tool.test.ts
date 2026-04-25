@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   createReadTool,
   READ_TOOL_NAME,
@@ -32,9 +32,14 @@ describe("createReadTool", () => {
   });
 
   describe("inputSchema", () => {
-    it("should accept a valid path string", () => {
-      const schema = createReadTool(makeFakeSkillCatalog(), makeFakeLogger())
+    let schema: ParseableSchema;
+
+    beforeEach(() => {
+      schema = createReadTool(makeFakeSkillCatalog(), makeFakeLogger())
         .inputSchema as unknown as ParseableSchema;
+    });
+
+    it("should accept a valid path string", () => {
       expect(
         schema.safeParse({ path: "/var/lib/shrimp/skills/my-skill/file.md" })
           .success,
@@ -42,14 +47,10 @@ describe("createReadTool", () => {
     });
 
     it("should reject missing path", () => {
-      const schema = createReadTool(makeFakeSkillCatalog(), makeFakeLogger())
-        .inputSchema as unknown as ParseableSchema;
       expect(schema.safeParse({}).success).toBe(false);
     });
 
     it("should reject non-string path", () => {
-      const schema = createReadTool(makeFakeSkillCatalog(), makeFakeLogger())
-        .inputSchema as unknown as ParseableSchema;
       expect(schema.safeParse({ path: 42 }).success).toBe(false);
     });
   });
