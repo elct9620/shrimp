@@ -15,6 +15,13 @@ import {
   TELEGRAM_CHANNEL_NAME,
   TELEGRAM_MAX_MESSAGE_LENGTH,
   BACKOFF_MS,
+  LOG_REPLY_FAILED_UPSTREAM_STATUS,
+  LOG_REPLY_FAILED_NETWORK,
+  LOG_REPLY_FAILED_UPSTREAM_ERROR,
+  LOG_REPLY_SKIPPED_WRONG_CHANNEL,
+  LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL,
+  LOG_CHAT_ACTION_FAILED_UPSTREAM_STATUS,
+  LOG_CHAT_ACTION_FAILED_NETWORK,
 } from "../../../src/infrastructure/channel/telegram-channel";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 
@@ -65,7 +72,7 @@ describe("TelegramChannel.reply", () => {
     ).resolves.toBeUndefined();
 
     expect(logger.warn).toHaveBeenCalledWith(
-      "telegram reply failed — upstream status",
+      LOG_REPLY_FAILED_UPSTREAM_STATUS,
       expect.objectContaining({ status: 400 }),
     );
   });
@@ -87,7 +94,7 @@ describe("TelegramChannel.reply", () => {
     ).resolves.toBeUndefined();
 
     expect(logger.warn).toHaveBeenCalledWith(
-      "telegram reply failed — network",
+      LOG_REPLY_FAILED_NETWORK,
       expect.objectContaining({ error: expect.any(String) }),
     );
   });
@@ -113,7 +120,7 @@ describe("TelegramChannel.reply", () => {
     ).resolves.toBeUndefined();
 
     expect(logger.warn).toHaveBeenCalledWith(
-      "telegram reply failed — upstream error",
+      LOG_REPLY_FAILED_UPSTREAM_ERROR,
       expect.objectContaining({
         error_code: 400,
         description: "Bad Request: message is too long",
@@ -136,7 +143,7 @@ describe("TelegramChannel.reply", () => {
 
     expect(handlerCalled).toBe(false);
     expect(logger.warn).toHaveBeenCalledWith(
-      "telegram reply skipped — wrong channel",
+      LOG_REPLY_SKIPPED_WRONG_CHANNEL,
       expect.objectContaining({ channel: "slack" }),
     );
   });
@@ -223,7 +230,7 @@ describe("TelegramChannel.reply", () => {
       expect(callCount).toBe(3);
       expect(logger.warn).toHaveBeenCalledOnce();
       expect(logger.warn).toHaveBeenCalledWith(
-        "telegram reply failed — network",
+        LOG_REPLY_FAILED_NETWORK,
         expect.objectContaining({ attempts: 3 }),
       );
     });
@@ -253,7 +260,7 @@ describe("TelegramChannel.reply", () => {
       expect(callCount).toBe(1);
       expect(logger.warn).toHaveBeenCalledOnce();
       expect(logger.warn).toHaveBeenCalledWith(
-        "telegram reply failed — upstream error",
+        LOG_REPLY_FAILED_UPSTREAM_ERROR,
         expect.objectContaining({ description: "Bad Request: chat not found" }),
       );
     });
@@ -394,7 +401,7 @@ describe("TelegramChannel.reply", () => {
     expect(callCount).toBe(3);
     expect(logger.warn).toHaveBeenCalledOnce();
     expect(logger.warn).toHaveBeenCalledWith(
-      "telegram reply failed — upstream error",
+      LOG_REPLY_FAILED_UPSTREAM_ERROR,
       expect.objectContaining({ chunkIndex: 2, totalChunks: 3 }),
     );
   });
@@ -431,7 +438,7 @@ describe("TelegramChannel.indicateProcessing", () => {
     });
 
     expect(logger.warn).toHaveBeenCalledWith(
-      "telegram chat action skipped — wrong channel",
+      LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL,
       expect.objectContaining({ channel: "other" }),
     );
   });
@@ -453,7 +460,7 @@ describe("TelegramChannel.indicateProcessing", () => {
     ).resolves.toBeUndefined();
 
     expect(logger.warn).toHaveBeenCalledWith(
-      "telegram chat action failed — upstream status",
+      LOG_CHAT_ACTION_FAILED_UPSTREAM_STATUS,
       expect.objectContaining({ status: 403 }),
     );
   });
@@ -475,7 +482,7 @@ describe("TelegramChannel.indicateProcessing", () => {
     ).resolves.toBeUndefined();
 
     expect(logger.warn).toHaveBeenCalledWith(
-      "telegram chat action failed — network",
+      LOG_CHAT_ACTION_FAILED_NETWORK,
       expect.objectContaining({ error: expect.any(String) }),
     );
   });

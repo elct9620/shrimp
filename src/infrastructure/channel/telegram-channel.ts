@@ -232,7 +232,7 @@ export class TelegramChannel implements ChannelGateway {
       // Application-level failure over HTTP 200 (e.g. message too long, invalid
       // chat_id). Not retryable — would waste calls.
       if (!responseBody?.ok) {
-        this.logger.warn("telegram reply failed — upstream error", {
+        this.logger.warn(LOG_REPLY_FAILED_UPSTREAM_ERROR, {
           error_code: responseBody?.error_code,
           description: responseBody?.description,
           ...chunkContext,
