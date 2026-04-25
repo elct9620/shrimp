@@ -291,12 +291,12 @@ describe("TelegramChannel.reply", () => {
     });
 
     it("retries after AbortSignal.timeout fires on a hung first request", async () => {
-      // shouldAdvanceTime: true makes the fake clock track real wall-clock
-      // time, so AbortSignal.timeout(10_000) fires after ~10s without
-      // explicit vi.advanceTimersByTime calls. The never-resolving handler
-      // stays pending until the fetch aborts; the abort throws TimeoutError
-      // into the catch branch which schedules the 250ms retry sleep.
-      vi.useFakeTimers({ shouldAdvanceTime: true });
+      // Real timers are required here: AbortSignal.timeout() relies on
+      // platform-level (libuv) timers that vi.useFakeTimers() intercepts but
+      // does not advance automatically, so the abort never fires under fake
+      // timers even with shouldAdvanceTime:true. Switching to real timers lets
+      // the 10s abort fire naturally; the 15s test timeout accommodates it.
+      vi.useRealTimers();
 
       let callCount = 0;
       server.use(
