@@ -364,6 +364,82 @@ describe("OtelTelemetry", () => {
       const span = exporter.getFinishedSpans()[0];
       expect(Object.keys(span.attributes)).toHaveLength(0);
     });
+
+    it("should pass a SpanLike handle to the callback", async () => {
+      const { tracer } = makeTracerProvider();
+      const telemetry = new OtelTelemetry(makeOptions({ tracer }));
+
+      let receivedSpan: unknown;
+      await telemetry.runInSpan("x", async (span) => {
+        receivedSpan = span;
+      });
+
+      expect(receivedSpan).toBeDefined();
+      expect(
+        typeof (receivedSpan as { setAttribute: unknown }).setAttribute,
+      ).toBe("function");
+      expect(
+        typeof (receivedSpan as { setAttributes: unknown }).setAttributes,
+      ).toBe("function");
+      expect(
+        typeof (receivedSpan as { recordException: unknown }).recordException,
+      ).toBe("function");
+    });
+
+    it("should apply setAttribute calls from the callback to the span", async () => {
+      const { tracer, exporter } = makeTracerProvider();
+      const telemetry = new OtelTelemetry(makeOptions({ tracer }));
+
+      await telemetry.runInSpan("x", async (span) => {
+        span.setAttribute("chat.id", 12345);
+        span.setAttribute("attempt.result", "ok");
+      });
+
+      const finished = exporter.getFinishedSpans()[0];
+      expect(finished.attributes["chat.id"]).toBe(12345);
+      expect(finished.attributes["attempt.result"]).toBe("ok");
+    });
+
+    it("should apply setAttributes calls from the callback to the span", async () => {
+      const { tracer, exporter } = makeTracerProvider();
+      const telemetry = new OtelTelemetry(makeOptions({ tracer }));
+
+      await telemetry.runInSpan("x", async (span) => {
+        span.setAttributes({ "http.status_code": 200, "attempt.index": 0 });
+      });
+
+      const finished = exporter.getFinishedSpans()[0];
+      expect(finished.attributes["http.status_code"]).toBe(200);
+      expect(finished.attributes["attempt.index"]).toBe(0);
+    });
+
+    it("should record an exception and set ERROR status when SpanLike.recordException is called", async () => {
+      const { tracer, exporter } = makeTracerProvider();
+      const telemetry = new OtelTelemetry(makeOptions({ tracer }));
+      const boom = new Error("explicit record");
+
+      await telemetry.runInSpan("x", async (span) => {
+        span.recordException(boom);
+      });
+
+      const finished = exporter.getFinishedSpans()[0];
+      expect(finished.status.code).toBe(SpanStatusCode.ERROR);
+      const exceptionEvents = finished.events.filter(
+        (e) => e.name === "exception",
+      );
+      expect(exceptionEvents).toHaveLength(1);
+    });
+
+    // Nesting verification (code-reading only): OtelTelemetry.runInSpan uses
+    // tracer.startActiveSpan(), which is documented by the OTel API spec to
+    // register the new span as the active span in the current context and
+    // restore the previous active span after the callback returns. Nested calls
+    // therefore produce a parent/child relationship automatically — this is
+    // core OTel SDK behavior, not an invariant this adapter needs to prove.
+    // A live integration test would require @opentelemetry/context-async-hooks
+    // (a transitive dep, not a direct dep) to set up a real context manager,
+    // which the test harness would not allow cleanly alongside the afterEach
+    // context.disable() reset. Skipped per item-5 brief guidance.
   });
 
   describe("telemetry exporter ready startup log", () => {

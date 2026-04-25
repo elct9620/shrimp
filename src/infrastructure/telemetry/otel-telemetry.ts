@@ -13,6 +13,7 @@ import {
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
 import type {
   SpanAttributes,
+  SpanLike,
   TelemetryPort,
 } from "../../use-cases/ports/telemetry";
 import type { LoggerPort } from "../../use-cases/ports/logger";
@@ -91,15 +92,23 @@ export class OtelTelemetry implements TelemetryPort {
 
   async runInSpan<T>(
     name: string,
-    fn: () => Promise<T>,
+    fn: (span: SpanLike) => Promise<T>,
     attributes?: SpanAttributes,
   ): Promise<T> {
     return this.tracer.startActiveSpan(name, async (span) => {
       if (attributes) {
         span.setAttributes(attributes);
       }
+      const spanLike: SpanLike = {
+        setAttribute: (key, value) => span.setAttribute(key, value),
+        setAttributes: (attrs) => span.setAttributes(attrs),
+        recordException: (err) => {
+          span.recordException(err as Error);
+          span.setStatus({ code: SpanStatusCode.ERROR });
+        },
+      };
       try {
-        return await fn();
+        return await fn(spanLike);
       } catch (err) {
         span.recordException(err as Error);
         span.setStatus({ code: SpanStatusCode.ERROR });

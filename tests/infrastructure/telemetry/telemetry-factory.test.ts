@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import type { TelemetryPort } from "../../../src/use-cases/ports/telemetry";
+import type {
+  SpanLike,
+  TelemetryPort,
+} from "../../../src/use-cases/ports/telemetry";
 import type { EnvConfig } from "../../../src/infrastructure/config/env-config";
 import type { Tracer } from "@opentelemetry/api";
 import { makeFakeLogger } from "../../mocks/fake-logger";
@@ -30,10 +33,16 @@ const BASE_ENV: EnvConfig = {
   skillsCustomRoot: "/tmp/.shrimp/skills",
 };
 
+const noopSpanLike: SpanLike = {
+  setAttribute: () => undefined,
+  setAttributes: () => undefined,
+  recordException: () => undefined,
+};
+
 function makeStubOtelTelemetry(): TelemetryPort & { tracer: Tracer } {
   return {
     tracer: {} as Tracer,
-    runInSpan: vi.fn(async (_name, fn) => fn()),
+    runInSpan: vi.fn(async (_name, fn) => fn(noopSpanLike)),
     shutdown: vi.fn().mockResolvedValue(undefined),
   };
 }
