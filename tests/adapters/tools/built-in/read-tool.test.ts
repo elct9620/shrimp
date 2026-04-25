@@ -221,7 +221,7 @@ describe("createReadTool", () => {
       expect(logger.warn).toHaveBeenCalledWith(
         "tool failed",
         expect.objectContaining({
-          error: "Path is outside the allowed skill roots: /etc/passwd",
+          error: new SandboxViolationError("/etc/passwd").message,
         }),
       );
     });
