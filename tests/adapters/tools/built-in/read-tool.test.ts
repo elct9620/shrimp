@@ -132,9 +132,12 @@ describe("createReadTool", () => {
         { toolCallId: "test", messages: [] },
       );
 
+      const expectedError = new FileNotFoundError(
+        "/var/lib/shrimp/skills/missing.md",
+      ).message;
       expect(result).toEqual({
         ok: false,
-        error: "File not found: /var/lib/shrimp/skills/missing.md",
+        error: expectedError,
       });
     });
 
