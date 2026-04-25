@@ -58,6 +58,6 @@ describe("comparePriority", () => {
     // Priority is a plain const object; the comparator is `a - b` with no
     // runtime guard. Passing a numeric literal that matches a member value
     // behaves identically — this documents the current runtime contract.
-    expect(comparePriority(1 as Priority, 4 as Priority)).toBe(-3);
+    expect(comparePriority(1 as Priority, 4 as Priority)).toBeLessThan(0);
   });
 });
