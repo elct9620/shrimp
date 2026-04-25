@@ -62,8 +62,12 @@ export class EnvConfigError extends Error {
   /** The environment variable keys that caused the error (missing or invalid). */
   readonly fields: readonly string[];
 
-  constructor(message: string, fields: readonly string[] = []) {
-    super(message);
+  constructor(
+    message: string,
+    fields: readonly string[] = [],
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
     this.name = "EnvConfigError";
     this.fields = fields;
   }
@@ -214,7 +218,9 @@ export function loadEnvConfig(env: NodeJS.ProcessEnv = process.env): EnvConfig {
       mkdirSync(shrimpHome, { recursive: true });
     } catch (err) {
       throw new EnvConfigError(
-        `Failed to create SHRIMP_HOME "${shrimpHome}": ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to create SHRIMP_HOME "${shrimpHome}"`,
+        [],
+        { cause: err },
       );
     }
   }

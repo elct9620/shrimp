@@ -225,7 +225,7 @@ export class JsonlSessionRepository implements SessionRepository {
         "append to session JSONL failed — continuing (Fail-Open)",
         {
           path: sessionPath,
-          error: err instanceof Error ? err.message : String(err),
+          err,
         },
       );
     }

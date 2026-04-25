@@ -905,7 +905,7 @@ describe("AiSdkShrimpAgent.run", () => {
 
       expect(logger.error).toHaveBeenCalledWith(
         "main agent run failed",
-        expect.objectContaining({ error: "upstream provider exploded" }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
       expect(logger.info).not.toHaveBeenCalled();
     });

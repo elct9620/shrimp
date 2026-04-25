@@ -222,7 +222,7 @@ describe("OtelTelemetry", () => {
     await expect(telemetry.shutdown()).resolves.toBeUndefined();
     expect(logger.warn).toHaveBeenCalledWith(
       "telemetry shutdown failed",
-      expect.objectContaining({ error: "boom" }),
+      expect.objectContaining({ err: expect.any(Error) }),
     );
   });
 

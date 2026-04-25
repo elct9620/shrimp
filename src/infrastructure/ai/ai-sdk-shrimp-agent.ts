@@ -214,7 +214,7 @@ export class AiSdkShrimpAgent implements ShrimpAgent {
         );
         span.setStatus({ code: SpanStatusCode.ERROR });
         this.logger.error("main agent run failed", {
-          error: err instanceof Error ? err.message : String(err),
+          err,
         });
         throw err;
       } finally {

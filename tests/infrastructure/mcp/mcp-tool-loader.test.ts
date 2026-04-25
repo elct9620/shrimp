@@ -259,7 +259,7 @@ describe("McpToolLoader", () => {
         expect.objectContaining({
           serverName: "bad",
           url: "https://example.com/bad",
-          error: "connection refused",
+          err: expect.any(Error),
         }),
       );
     });
@@ -280,7 +280,7 @@ describe("McpToolLoader", () => {
         MCP_SERVER_LIST_TOOLS_FAILED,
         expect.objectContaining({
           serverName: "broken",
-          error: "listTools timeout",
+          err: expect.any(Error),
         }),
       );
     });

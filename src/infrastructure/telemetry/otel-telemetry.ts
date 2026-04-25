@@ -116,7 +116,7 @@ export class OtelTelemetry implements TelemetryPort {
     } catch (err) {
       // Fail-open: never propagate exporter/shutdown errors.
       this.logger.warn("telemetry shutdown failed", {
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
     }
   }

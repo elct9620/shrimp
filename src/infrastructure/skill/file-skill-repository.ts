@@ -231,7 +231,7 @@ export class FileSkillRepository implements SkillCatalog {
     } catch (err) {
       this.logger.warn("SKILL.md frontmatter unparseable — skipping skill", {
         skillFilePath,
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
       return null;
     }

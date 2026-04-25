@@ -112,7 +112,7 @@ export class McpToolLoader {
         this.logger.warn(MCP_SERVER_START_FAILED, {
           serverName,
           url: definition.url,
-          error: err instanceof Error ? err.message : String(err),
+          err,
         });
         continue;
       }
@@ -125,7 +125,7 @@ export class McpToolLoader {
       } catch (err) {
         this.logger.warn(MCP_SERVER_LIST_TOOLS_FAILED, {
           serverName,
-          error: err instanceof Error ? err.message : String(err),
+          err,
         });
         continue;
       }

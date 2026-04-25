@@ -141,7 +141,7 @@ export class TelegramChannel implements ChannelGateway {
       }
     } catch (err) {
       this.logger.warn(LOG_CHAT_ACTION_FAILED_NETWORK, {
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
     }
   }
@@ -192,7 +192,7 @@ export class TelegramChannel implements ChannelGateway {
         const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
         if (isLastAttempt) {
           this.logger.warn(LOG_REPLY_FAILED_NETWORK, {
-            error: err instanceof Error ? err.message : String(err),
+            err,
             attempts: MAX_ATTEMPTS,
             ...chunkContext,
           });

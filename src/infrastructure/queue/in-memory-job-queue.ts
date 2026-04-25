@@ -30,7 +30,7 @@ export class InMemoryJobQueue implements JobQueue {
     } catch (err) {
       // Fail-Open Recovery: errors are not propagated; the slot is always released.
       this.logger.warn("queue job failed", {
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
     } finally {
       this.busy = false;

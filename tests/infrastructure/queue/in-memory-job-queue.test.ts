@@ -111,7 +111,7 @@ describe("InMemoryJobQueue", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "queue job failed",
-        expect.objectContaining({ error: "boom" }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
     });
   });

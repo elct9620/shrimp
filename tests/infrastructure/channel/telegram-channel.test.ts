@@ -95,7 +95,7 @@ describe("TelegramChannel.reply", () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       LOG_REPLY_FAILED_NETWORK,
-      expect.objectContaining({ error: expect.any(String) }),
+      expect.objectContaining({ err: expect.any(Error) }),
     );
   });
 
@@ -482,7 +482,7 @@ describe("TelegramChannel.indicateProcessing", () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       LOG_CHAT_ACTION_FAILED_NETWORK,
-      expect.objectContaining({ error: expect.any(String) }),
+      expect.objectContaining({ err: expect.any(Error) }),
     );
   });
 });

@@ -30,7 +30,7 @@ export class FileUserAgents implements UserAgentsPort {
       this.logger?.warn("user agents file unreadable", {
         path: this.path,
         code,
-        error: err instanceof Error ? err.message : String(err),
+        err,
       });
       return null;
     }
