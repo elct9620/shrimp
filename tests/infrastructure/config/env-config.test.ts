@@ -1,5 +1,5 @@
 import { existsSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -388,9 +388,7 @@ describe("loadEnvConfig", () => {
       expect(config.channelsEnabled).toBe(false);
       expect(config.telegramBotToken).toBeUndefined();
       expect(config.telegramWebhookSecret).toBeUndefined();
-      expect(config.shrimpHome).toBe(
-        join(require("node:os").homedir(), ".shrimp"),
-      );
+      expect(config.shrimpHome).toBe(join(homedir(), ".shrimp"));
     });
 
     it("should succeed and create the state directory when CHANNELS_ENABLED=true and both TELEGRAM_* vars are set", () => {
