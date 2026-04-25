@@ -7,6 +7,20 @@ export const TELEGRAM_CHANNEL_NAME = "telegram";
 // Telegram Bot API rejects sendMessage text longer than 4096 characters.
 export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 
+export const LOG_REPLY_FAILED_UPSTREAM_STATUS =
+  "telegram reply failed — upstream status";
+export const LOG_REPLY_FAILED_NETWORK = "telegram reply failed — network";
+export const LOG_REPLY_FAILED_UPSTREAM_ERROR =
+  "telegram reply failed — upstream error";
+export const LOG_REPLY_SKIPPED_WRONG_CHANNEL =
+  "telegram reply skipped — wrong channel";
+export const LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL =
+  "telegram chat action skipped — wrong channel";
+export const LOG_CHAT_ACTION_FAILED_UPSTREAM_STATUS =
+  "telegram chat action failed — upstream status";
+export const LOG_CHAT_ACTION_FAILED_NETWORK =
+  "telegram chat action failed — network";
+
 type TelegramPayload = { chatId: number };
 
 /**
@@ -60,7 +74,7 @@ export function chunkText(text: string, limit: number): string[] {
  * independently; a failed chunk logs a warn and does not abort the rest.
  */
 const MAX_ATTEMPTS = 3;
-const BACKOFF_MS = [250, 500] as const;
+export const BACKOFF_MS = [250, 500] as const;
 const RETRY_AFTER_CAP_MS = 10_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 // Typing indicator is cosmetic and Telegram only displays it for ~5s.
@@ -87,7 +101,7 @@ export class TelegramChannel implements ChannelGateway {
 
   async indicateProcessing(ref: ConversationRef): Promise<void> {
     if (ref.channel !== TELEGRAM_CHANNEL_NAME) {
-      this.logger.warn("telegram chat action skipped — wrong channel", {
+      this.logger.warn(LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL, {
         channel: ref.channel,
       });
       return;
@@ -107,12 +121,12 @@ export class TelegramChannel implements ChannelGateway {
         signal: AbortSignal.timeout(CHAT_ACTION_TIMEOUT_MS),
       });
       if (!resp.ok) {
-        this.logger.warn("telegram chat action failed — upstream status", {
+        this.logger.warn(LOG_CHAT_ACTION_FAILED_UPSTREAM_STATUS, {
           status: resp.status,
         });
       }
     } catch (err) {
-      this.logger.warn("telegram chat action failed — network", {
+      this.logger.warn(LOG_CHAT_ACTION_FAILED_NETWORK, {
         error: err instanceof Error ? err.message : String(err),
       });
     }
@@ -121,7 +135,7 @@ export class TelegramChannel implements ChannelGateway {
   async reply(ref: ConversationRef, text: string): Promise<void> {
     // Guard: only handle refs originating from the Telegram webhook adapter.
     if (ref.channel !== TELEGRAM_CHANNEL_NAME) {
-      this.logger.warn("telegram reply skipped — wrong channel", {
+      this.logger.warn(LOG_REPLY_SKIPPED_WRONG_CHANNEL, {
         channel: ref.channel,
       });
       return;
@@ -163,7 +177,7 @@ export class TelegramChannel implements ChannelGateway {
       } catch (err) {
         const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
         if (isLastAttempt) {
-          this.logger.warn("telegram reply failed — network", {
+          this.logger.warn(LOG_REPLY_FAILED_NETWORK, {
             error: err instanceof Error ? err.message : String(err),
             attempts: MAX_ATTEMPTS,
             ...chunkContext,
@@ -189,7 +203,7 @@ export class TelegramChannel implements ChannelGateway {
       if (isRetryableStatus(resp.status)) {
         const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
         if (isLastAttempt) {
-          this.logger.warn("telegram reply failed — upstream status", {
+          this.logger.warn(LOG_REPLY_FAILED_UPSTREAM_STATUS, {
             status: resp.status,
             error_code: responseBody?.error_code,
             description: responseBody?.description,

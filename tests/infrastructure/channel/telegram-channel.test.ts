@@ -14,6 +14,7 @@ import {
   TelegramChannel,
   TELEGRAM_CHANNEL_NAME,
   TELEGRAM_MAX_MESSAGE_LENGTH,
+  BACKOFF_MS,
 } from "../../../src/infrastructure/channel/telegram-channel";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 
@@ -355,7 +356,7 @@ describe("TelegramChannel.reply", () => {
       // BACKOFF_MS[0] = 250ms — advancing by 250ms must trigger the retry.
       // If the uncapped retry_after:30 were used (30 000ms), no retry would
       // fire here and callCount would remain 1.
-      await vi.advanceTimersByTimeAsync(250);
+      await vi.advanceTimersByTimeAsync(BACKOFF_MS[0]);
       await promise;
 
       expect(callCount).toBe(2);
