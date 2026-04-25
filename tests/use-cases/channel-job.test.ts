@@ -374,12 +374,18 @@ describe("ChannelJob.run", () => {
     const session = makeSession({ id: "session-1" });
     sessionRepo.getCurrent = vi.fn().mockResolvedValue(session);
 
-    const appendOrder: string[] = [];
+    // Recording-collaborator pattern (mirrors sibling blocks and commit 7407068):
+    // stamp each side-effect with a monotonic counter so ordering is captured in
+    // observable state rather than spy call-sequence.
+    let counter = 0;
+    let appendStamp = -1;
+    let agentStamp = -1;
+
     sessionRepo.append = vi.fn().mockImplementation(async () => {
-      appendOrder.push("append");
+      appendStamp = ++counter;
     });
     agent.run = vi.fn().mockImplementation(async () => {
-      appendOrder.push("agent");
+      agentStamp = ++counter;
       return { reason: "finished", newMessages: [] };
     });
 
@@ -389,8 +395,9 @@ describe("ChannelJob.run", () => {
       telemetry: DEFAULT_TELEMETRY,
     });
 
-    expect(appendOrder[0]).toBe("append");
-    expect(appendOrder[1]).toBe("agent");
+    expect(appendStamp).toBeGreaterThan(0);
+    expect(agentStamp).toBeGreaterThan(0);
+    expect(appendStamp).toBeLessThan(agentStamp);
   });
 
   it("forwards the caller-provided span name and attributes to the telemetry port", async () => {
