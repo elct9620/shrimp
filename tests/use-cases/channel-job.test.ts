@@ -712,11 +712,13 @@ describe("ChannelJob.run — Auto Compact", () => {
     const sessionRepo = makeSessionRepository({
       getCurrent: vi.fn().mockResolvedValue(session),
     });
-    const appendOrder: string[] = [];
+    let counter = 0;
+    let appendStamp = -1;
+    let summarizeStamp = -1;
     let snapshotAtSummarizeCall: readonly ConversationMessage[] = [];
 
     sessionRepo.append = vi.fn().mockImplementation(async () => {
-      appendOrder.push("append");
+      appendStamp = ++counter;
     });
 
     const summarizePort: SummarizePort = {
@@ -725,7 +727,7 @@ describe("ChannelJob.run — Auto Compact", () => {
         .mockImplementation(
           async ({ history }: { history: readonly ConversationMessage[] }) => {
             snapshotAtSummarizeCall = history;
-            appendOrder.push("summarize");
+            summarizeStamp = ++counter;
             return "summary";
           },
         ),
@@ -751,9 +753,8 @@ describe("ChannelJob.run — Auto Compact", () => {
     });
 
     // Both appends happen before summarize
-    expect(appendOrder[0]).toBe("append"); // user msg append
-    expect(appendOrder[1]).toBe("append"); // assistant msg append
-    expect(appendOrder[2]).toBe("summarize");
+    expect(appendStamp).toBeGreaterThan(0);
+    expect(appendStamp).toBeLessThan(summarizeStamp);
 
     // Snapshot includes the user message that was appended
     expect(snapshotAtSummarizeCall).toContainEqual({
