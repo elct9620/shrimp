@@ -18,9 +18,7 @@ export function createGetTasksTool(repo: BoardRepository, logger: LoggerPort) {
       try {
         return await repo.getTasks(sectionMap[section]);
       } catch (err) {
-        logger.warn("tool failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+        logger.warn("tool failed", { err });
         throw err;
       }
     },

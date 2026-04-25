@@ -221,9 +221,7 @@ describe("createReadTool", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "tool failed",
-        expect.objectContaining({
-          error: new SandboxViolationError("/etc/passwd").message,
-        }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
     });
 
@@ -242,9 +240,7 @@ describe("createReadTool", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "tool failed",
-        expect.objectContaining({
-          error: "File not found: /var/lib/shrimp/skills/missing.md",
-        }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
     });
 
@@ -261,7 +257,7 @@ describe("createReadTool", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "tool failed",
-        expect.objectContaining({ error: "I/O failure" }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
     });
   });

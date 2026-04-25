@@ -111,7 +111,7 @@ describe("createPostCommentTool", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "tool failed",
-        expect.objectContaining({ error: "rejected" }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
     });
   });

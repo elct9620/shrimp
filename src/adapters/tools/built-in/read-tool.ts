@@ -23,7 +23,7 @@ export function createReadTool(skillCatalog: SkillCatalog, logger: LoggerPort) {
         return { ok: true as const, content };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        logger.warn("tool failed", { error: message });
+        logger.warn("tool failed", { err });
         return { ok: false as const, error: message };
       }
     },

@@ -100,7 +100,7 @@ describe("createGetCommentsTool", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "tool failed",
-        expect.objectContaining({ error: "boom" }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
     });
   });

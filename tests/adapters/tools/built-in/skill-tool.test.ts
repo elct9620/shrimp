@@ -164,7 +164,7 @@ describe("createSkillTool", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "tool failed",
-        expect.objectContaining({ error: "Skill not found: missing" }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
     });
 
@@ -183,7 +183,7 @@ describe("createSkillTool", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "tool failed",
-        expect.objectContaining({ error: "I/O failure" }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
     });
   });

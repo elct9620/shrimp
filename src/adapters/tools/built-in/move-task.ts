@@ -20,9 +20,7 @@ export function createMoveTaskTool(repo: BoardRepository, logger: LoggerPort) {
         await repo.moveTask(taskId, sectionMap[section]);
         return { ok: true } as const;
       } catch (err) {
-        logger.warn("tool failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+        logger.warn("tool failed", { err });
         throw err;
       }
     },

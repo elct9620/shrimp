@@ -100,7 +100,7 @@ describe("createGetTasksTool", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "tool failed",
-        expect.objectContaining({ error: "upstream down" }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
     });
   });

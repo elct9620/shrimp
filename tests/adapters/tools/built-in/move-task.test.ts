@@ -102,7 +102,7 @@ describe("createMoveTaskTool", () => {
 
       expect(logger.warn).toHaveBeenCalledWith(
         "tool failed",
-        expect.objectContaining({ error: "no section" }),
+        expect.objectContaining({ err: expect.any(Error) }),
       );
     });
   });
