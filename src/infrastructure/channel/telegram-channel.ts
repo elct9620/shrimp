@@ -173,9 +173,9 @@ export class TelegramChannel implements ChannelGateway {
         }
       },
       {
-        "telegram.chat_id": chatId,
-        "telegram.message.length": text.length,
-        "telegram.total_chunks": totalChunks,
+        "telegram.chat.id": chatId,
+        "telegram.message.text.length": text.length,
+        "telegram.message.total_chunks": totalChunks,
       },
     );
   }

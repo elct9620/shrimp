@@ -451,14 +451,14 @@ describe("TelegramChannel.reply", () => {
       expect(telemetry.calls[0].name).toBe("telegram.send_message");
       expect(telemetry.calls[0].attributes).toEqual(
         expect.objectContaining({
-          "telegram.chat_id": 100,
-          "telegram.message.length": 5,
-          "telegram.total_chunks": 1,
+          "telegram.chat.id": 100,
+          "telegram.message.text.length": 5,
+          "telegram.message.total_chunks": 1,
         }),
       );
     });
 
-    it("multi-chunk reply opens exactly one telegram.send_message span with telegram.total_chunks: 3", async () => {
+    it("multi-chunk reply opens exactly one telegram.send_message span with telegram.message.total_chunks: 3", async () => {
       server.use(
         http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
           return HttpResponse.json({ ok: true, result: {} });
@@ -484,7 +484,7 @@ describe("TelegramChannel.reply", () => {
       expect(telemetry.calls[0].name).toBe("telegram.send_message");
       expect(telemetry.calls[0].attributes).toEqual(
         expect.objectContaining({
-          "telegram.total_chunks": 3,
+          "telegram.message.total_chunks": 3,
         }),
       );
     });
