@@ -189,15 +189,15 @@ export class ChannelJob {
             // Reply delivery and append are both committed above (SPEC steps 3a and 4).
             if (err instanceof SessionJsonlWriteError) {
               this.logger.error(AUTO_COMPACT_JSONL_WRITE_FAILED, {
-                cause: err.cause,
+                err: err.cause,
               });
             } else if (err instanceof SessionStateUpdateError) {
               this.logger.error(AUTO_COMPACT_STATE_UPDATE_FAILED, {
                 newSessionId: err.newSessionId,
-                cause: err.cause,
+                err: err.cause,
               });
             } else {
-              this.logger.error(AUTO_COMPACT_SUMMARIZE_FAILED, { cause: err });
+              this.logger.error(AUTO_COMPACT_SUMMARIZE_FAILED, { err });
             }
           }
         }

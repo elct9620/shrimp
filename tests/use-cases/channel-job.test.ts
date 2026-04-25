@@ -820,10 +820,10 @@ describe("ChannelJob.run — Auto Compact Fail-Open", () => {
     // Reply must still have been delivered
     expect(gateway.reply).toHaveBeenCalledWith(makeRef(), "Reply");
 
-    // Error must be logged with cause
+    // Error must be logged with err
     expect(logger.error).toHaveBeenCalledWith(
       AUTO_COMPACT_SUMMARIZE_FAILED,
-      expect.objectContaining({ cause: expect.any(Error) }),
+      expect.objectContaining({ err: expect.any(Error) }),
     );
   });
 
@@ -859,7 +859,7 @@ describe("ChannelJob.run — Auto Compact Fail-Open", () => {
     // Error must mention JSONL write failure / rotation aborted
     expect(logger.error).toHaveBeenCalledWith(
       AUTO_COMPACT_JSONL_WRITE_FAILED,
-      expect.objectContaining({ cause: expect.any(Error) }),
+      expect.objectContaining({ err: expect.any(Error) }),
     );
   });
 
@@ -903,7 +903,7 @@ describe("ChannelJob.run — Auto Compact Fail-Open", () => {
       AUTO_COMPACT_STATE_UPDATE_FAILED,
       expect.objectContaining({
         newSessionId: ORPHAN_ID,
-        cause: expect.any(Error),
+        err: expect.any(Error),
       }),
     );
   });

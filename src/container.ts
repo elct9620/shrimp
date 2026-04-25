@@ -249,9 +249,7 @@ export async function bootstrap(): Promise<void> {
     });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      logger.error("failed to load mcp config", {
-        error: err instanceof Error ? err.message : String(err),
-      });
+      logger.error("failed to load mcp config", { err });
       throw err;
     }
     logger.debug("no .mcp.json found — continuing without mcp servers");

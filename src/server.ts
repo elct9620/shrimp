@@ -65,9 +65,7 @@ async function main() {
     } catch (err) {
       // Defense-in-depth: TelemetryPort impls already swallow errors,
       // but never let a shutdown error block process exit.
-      logger.warn("telemetry shutdown failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
+      logger.warn("telemetry shutdown failed", { err });
     }
     logger.info("server stopped");
     process.exit(0);
