@@ -1174,7 +1174,7 @@ describe("assembleSummarizeSystemPrompt", () => {
   });
 
   it("is a pure function (same output for repeated calls)", () => {
-    expect(assembleSummarizeSystemPrompt()).toBe(
+    expect(assembleSummarizeSystemPrompt()).toEqual(
       assembleSummarizeSystemPrompt(),
     );
   });
