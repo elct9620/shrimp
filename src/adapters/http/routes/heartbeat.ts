@@ -49,9 +49,7 @@ async function decideHeartbeatEnqueue(
     }
     return { enqueue: true };
   } catch (err) {
-    logger.warn("heartbeat pre-check board query failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    logger.warn("heartbeat pre-check board query failed", { err });
     return { enqueue: false, reason: "board query failed" };
   }
 }
@@ -99,9 +97,7 @@ export function createHeartbeatRoute(deps: {
       .catch((err) => {
         // Defense-in-depth: decideHeartbeatEnqueue already catches; this
         // guards against logger.info / enqueue itself throwing.
-        deps.logger.warn("heartbeat pre-check unexpected failure", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+        deps.logger.warn("heartbeat pre-check unexpected failure", { err });
       });
     void chain;
     deps.onPreCheckSettled?.(chain);

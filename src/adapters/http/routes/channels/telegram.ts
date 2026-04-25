@@ -38,9 +38,7 @@ async function handleSlashCommand(
       await deps.startNewSession.execute();
       await deps.channelGateway.reply(ref, "Started a new session.");
     } catch (err) {
-      deps.logger.error("slash command /new failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
+      deps.logger.error("slash command /new failed", { err });
       await deps.channelGateway.reply(ref, "Failed to start a new session.");
     }
     return;
