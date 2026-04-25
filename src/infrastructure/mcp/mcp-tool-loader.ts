@@ -14,6 +14,9 @@ import { TOKENS } from "../container/tokens";
 
 export const MCP_CLIENT_CLOSE_FAILED = "mcp client failed to close";
 export const MCP_CLIENT_CLOSED = "mcp close";
+export const MCP_SERVER_CONNECTED = "mcp server connected";
+export const MCP_SERVER_START_FAILED = "mcp server failed to start";
+export const MCP_SERVER_LIST_TOOLS_FAILED = "mcp server failed to list tools";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -106,7 +109,7 @@ export class McpToolLoader {
         client = await this.factory(serverName, definition);
       } catch (err) {
         // Per SPEC §Failure Handling: exclude failed server, continue with others
-        this.logger.warn("mcp server failed to start", {
+        this.logger.warn(MCP_SERVER_START_FAILED, {
           serverName,
           url: definition.url,
           error: err instanceof Error ? err.message : String(err),
@@ -120,7 +123,7 @@ export class McpToolLoader {
       try {
         serverTools = await client.tools();
       } catch (err) {
-        this.logger.warn("mcp server failed to list tools", {
+        this.logger.warn(MCP_SERVER_LIST_TOOLS_FAILED, {
           serverName,
           error: err instanceof Error ? err.message : String(err),
         });
@@ -135,7 +138,7 @@ export class McpToolLoader {
         toolNames.push(name);
       }
 
-      this.logger.info("mcp server connected", {
+      this.logger.info(MCP_SERVER_CONNECTED, {
         serverName,
         toolCount: toolNames.length,
         toolNames,

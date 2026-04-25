@@ -7,6 +7,9 @@ import {
   McpToolLoader,
   MCP_CLIENT_CLOSE_FAILED,
   MCP_CLIENT_CLOSED,
+  MCP_SERVER_CONNECTED,
+  MCP_SERVER_START_FAILED,
+  MCP_SERVER_LIST_TOOLS_FAILED,
 } from "../../../src/infrastructure/mcp/mcp-tool-loader";
 import type { McpConfig } from "../../../src/infrastructure/config/mcp-config";
 import { jsonSchema, tool } from "ai";
@@ -232,7 +235,7 @@ describe("McpToolLoader", () => {
       await loader.load(config);
 
       expect(logger.info).toHaveBeenCalledWith(
-        "mcp server connected",
+        MCP_SERVER_CONNECTED,
         expect.objectContaining({
           serverName: "fs",
           toolCount: 2,
@@ -252,7 +255,7 @@ describe("McpToolLoader", () => {
       await loader.load(config);
 
       expect(logger.warn).toHaveBeenCalledWith(
-        "mcp server failed to start",
+        MCP_SERVER_START_FAILED,
         expect.objectContaining({
           serverName: "bad",
           url: "https://example.com/bad",
@@ -274,7 +277,7 @@ describe("McpToolLoader", () => {
       await loader.load(config);
 
       expect(logger.warn).toHaveBeenCalledWith(
-        "mcp server failed to list tools",
+        MCP_SERVER_LIST_TOOLS_FAILED,
         expect.objectContaining({
           serverName: "broken",
           error: "listTools timeout",
