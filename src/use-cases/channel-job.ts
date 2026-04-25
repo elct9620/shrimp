@@ -17,6 +17,14 @@ import { assembleChannelSystemPrompt } from "./prompt-assembler";
 
 export const CYCLE_FINISHED = "cycle finished";
 
+// Log event constants
+export const AUTO_COMPACT_SUMMARIZE_FAILED =
+  "auto compact: summarize failed, skipping compaction this turn";
+export const AUTO_COMPACT_JSONL_WRITE_FAILED =
+  "auto compact: JSONL write failed, rotation aborted";
+export const AUTO_COMPACT_STATE_UPDATE_FAILED =
+  "auto compact: state.json update failed, new session JSONL orphaned";
+
 export type ChannelJobConfig = {
   sessionRepository: SessionRepository;
   channelGateway: ChannelGateway;
@@ -180,20 +188,16 @@ export class ChannelJob {
             // Fail-Open Recovery: compaction failure NEVER fails the Job.
             // Reply delivery and append are both committed above (SPEC steps 3a and 4).
             if (err instanceof SessionJsonlWriteError) {
-              this.logger.error(
-                "auto compact: JSONL write failed, rotation aborted",
-                { cause: err.cause },
-              );
+              this.logger.error(AUTO_COMPACT_JSONL_WRITE_FAILED, {
+                cause: err.cause,
+              });
             } else if (err instanceof SessionStateUpdateError) {
-              this.logger.error(
-                "auto compact: state.json update failed, new session JSONL orphaned",
-                { newSessionId: err.newSessionId, cause: err.cause },
-              );
+              this.logger.error(AUTO_COMPACT_STATE_UPDATE_FAILED, {
+                newSessionId: err.newSessionId,
+                cause: err.cause,
+              });
             } else {
-              this.logger.error(
-                "auto compact: summarize failed, skipping compaction this turn",
-                { cause: err },
-              );
+              this.logger.error(AUTO_COMPACT_SUMMARIZE_FAILED, { cause: err });
             }
           }
         }

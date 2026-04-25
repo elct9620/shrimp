@@ -10,7 +10,13 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { SpanStatusCode } from "@opentelemetry/api";
 import type { Tracer } from "@opentelemetry/api";
-import { ChannelJob, CYCLE_FINISHED } from "../../src/use-cases/channel-job";
+import {
+  ChannelJob,
+  CYCLE_FINISHED,
+  AUTO_COMPACT_SUMMARIZE_FAILED,
+  AUTO_COMPACT_JSONL_WRITE_FAILED,
+  AUTO_COMPACT_STATE_UPDATE_FAILED,
+} from "../../src/use-cases/channel-job";
 import type {
   SessionRepository,
   Session,
@@ -816,7 +822,7 @@ describe("ChannelJob.run — Auto Compact Fail-Open", () => {
 
     // Error must be logged with cause
     expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining("summarize failed"),
+      AUTO_COMPACT_SUMMARIZE_FAILED,
       expect.objectContaining({ cause: expect.any(Error) }),
     );
   });
@@ -852,7 +858,7 @@ describe("ChannelJob.run — Auto Compact Fail-Open", () => {
 
     // Error must mention JSONL write failure / rotation aborted
     expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining("JSONL write failed"),
+      AUTO_COMPACT_JSONL_WRITE_FAILED,
       expect.objectContaining({ cause: expect.any(Error) }),
     );
   });
@@ -894,7 +900,7 @@ describe("ChannelJob.run — Auto Compact Fail-Open", () => {
 
     // Error must mention orphaned JSONL and include the orphan session ID
     expect(logger.error).toHaveBeenCalledWith(
-      expect.stringContaining("state.json update failed"),
+      AUTO_COMPACT_STATE_UPDATE_FAILED,
       expect.objectContaining({
         newSessionId: ORPHAN_ID,
         cause: expect.any(Error),
