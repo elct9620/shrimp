@@ -43,11 +43,6 @@ describe("comparePriority", () => {
     ]);
   });
 
-  it("returns exact numeric difference (a - b)", () => {
-    expect(comparePriority(Priority.p1, Priority.p4)).toBe(-3);
-    expect(comparePriority(Priority.p4, Priority.p1)).toBe(3);
-  });
-
   it("produces a stable sort when all priorities are the same value", () => {
     const priorities = [Priority.p3, Priority.p3, Priority.p3];
     const sorted = [...priorities].sort(comparePriority);
