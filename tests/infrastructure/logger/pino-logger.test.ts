@@ -5,6 +5,7 @@ import {
   createPinoLogger,
 } from "../../../src/infrastructure/logger/pino-logger";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
+import type { LogLevel } from "../../../src/infrastructure/config/env-config";
 
 type CaptureResult = {
   pinoInstance: Logger;
@@ -166,6 +167,81 @@ describe("PinoLogger", () => {
       expect(parsed.msg).toBe("captured message");
       expect(parsed.requestId).toBe("abc-123");
       expect(parsed.level).toBe(30);
+    });
+  });
+
+  describe("error serialization via errorContext", () => {
+    function makeCapture(level: LogLevel = "warn") {
+      const messages: string[] = [];
+      const destination = {
+        write: (msg: string) => {
+          messages.push(msg);
+        },
+      };
+      const { logger } = createPinoLogger({ level, destination });
+      const parsed = () =>
+        messages.map((m) => JSON.parse(m) as Record<string, unknown>);
+      return { logger, parsed };
+    }
+
+    it("serializes an Error under `err` as a structured object, not a string", () => {
+      const { logger, parsed } = makeCapture();
+
+      logger.warn("boom", { err: new Error("boom") });
+
+      const lines = parsed();
+      expect(lines).toHaveLength(1);
+      expect(lines[0]!.err).toEqual({ name: "Error", message: "boom" });
+      expect(typeof lines[0]!.err).not.toBe("string");
+    });
+
+    it("serializes nested cause chains recursively under `err`", () => {
+      const { logger, parsed } = makeCapture();
+      const root = new Error("root", {
+        cause: new Error("cause level 1"),
+      });
+
+      logger.warn("chained", { err: root });
+
+      const lines = parsed();
+      const err = lines[0]!.err as Record<string, unknown>;
+      expect(err.message).toBe("root");
+      expect(err.cause).toEqual({ name: "Error", message: "cause level 1" });
+    });
+
+    it("serializes an Error passed under the `cause` key", () => {
+      const { logger, parsed } = makeCapture();
+
+      logger.warn("via cause key", { cause: new Error("from cause") });
+
+      const lines = parsed();
+      expect(lines[0]!.cause).toEqual({
+        name: "Error",
+        message: "from cause",
+      });
+    });
+
+    it("serializes a non-Error value under `err` as { name: NonError, message: ... }", () => {
+      // Transition note: no current call site passes a non-Error under `err`;
+      // this test documents the graceful fallback behaviour of errorContext.
+      const { logger, parsed } = makeCapture();
+
+      logger.warn("non-error err", { err: "just a string" });
+
+      const lines = parsed();
+      expect(lines[0]!.err).toEqual({
+        name: "NonError",
+        message: "just a string",
+      });
+    });
+
+    it("passes through non-err/cause fields unchanged", () => {
+      const { logger, parsed } = makeCapture();
+
+      logger.warn("mixed", { err: new Error("x"), chatId: 42 });
+
+      const lines = parsed();
+      expect(lines[0]!.chatId).toBe(42);
     });
   });
 });

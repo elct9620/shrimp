@@ -1,6 +1,7 @@
 import pino, { type Logger, type DestinationStream } from "pino";
 import type { LogLevel } from "../config/env-config";
 import type { LoggerPort } from "../../use-cases/ports/logger";
+import { errorContext } from "./error-context";
 
 type LogMethod = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 
@@ -62,7 +63,13 @@ export type CreatePinoLoggerResult = {
 export function createPinoLogger(
   options: CreatePinoLoggerOptions,
 ): CreatePinoLoggerResult {
-  const pinoOptions: pino.LoggerOptions = { level: options.level };
+  const pinoOptions: pino.LoggerOptions = {
+    level: options.level,
+    serializers: {
+      err: (value: unknown) => errorContext(value),
+      cause: (value: unknown) => errorContext(value),
+    },
+  };
 
   let pinoInstance: Logger;
   if (options.destination) {
