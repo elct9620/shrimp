@@ -24,6 +24,7 @@ import {
   LOG_CHAT_ACTION_FAILED_NETWORK,
 } from "../../../src/infrastructure/channel/telegram-channel";
 import { makeFakeLogger } from "../../mocks/fake-logger";
+import { makeSpyTelemetry } from "../../mocks/spy-telemetry";
 
 const BOT_TOKEN = "test-bot-token";
 const TELEGRAM_BASE = `https://api.telegram.org/bot${BOT_TOKEN}`;
@@ -44,7 +45,7 @@ describe("TelegramChannel.reply", () => {
       }),
     );
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
     await channel.reply(
       { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 123 } },
@@ -62,7 +63,7 @@ describe("TelegramChannel.reply", () => {
       }),
     );
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
     await expect(
       channel.reply(
@@ -84,7 +85,7 @@ describe("TelegramChannel.reply", () => {
       }),
     );
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
     await expect(
       channel.reply(
@@ -110,7 +111,7 @@ describe("TelegramChannel.reply", () => {
       }),
     );
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
     await expect(
       channel.reply(
@@ -137,7 +138,7 @@ describe("TelegramChannel.reply", () => {
       }),
     );
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
     await channel.reply({ channel: "slack", payload: { chatId: 1 } }, "hi");
 
@@ -157,7 +158,7 @@ describe("TelegramChannel.reply", () => {
       }),
     );
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
     // Paragraph boundary at char 4000 lets the chunker split cleanly under the limit.
     const longText = "a".repeat(4000) + "\n\n" + "b".repeat(1000);
 
@@ -196,7 +197,11 @@ describe("TelegramChannel.reply", () => {
         }),
       );
       const logger = makeFakeLogger();
-      const channel = new TelegramChannel(BOT_TOKEN, logger);
+      const channel = new TelegramChannel(
+        BOT_TOKEN,
+        logger,
+        makeSpyTelemetry(),
+      );
 
       const promise = channel.reply(
         { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 1 } },
@@ -218,7 +223,11 @@ describe("TelegramChannel.reply", () => {
         }),
       );
       const logger = makeFakeLogger();
-      const channel = new TelegramChannel(BOT_TOKEN, logger);
+      const channel = new TelegramChannel(
+        BOT_TOKEN,
+        logger,
+        makeSpyTelemetry(),
+      );
 
       const promise = channel.reply(
         { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 2 } },
@@ -248,7 +257,11 @@ describe("TelegramChannel.reply", () => {
         }),
       );
       const logger = makeFakeLogger();
-      const channel = new TelegramChannel(BOT_TOKEN, logger);
+      const channel = new TelegramChannel(
+        BOT_TOKEN,
+        logger,
+        makeSpyTelemetry(),
+      );
 
       const promise = channel.reply(
         { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 3 } },
@@ -285,7 +298,11 @@ describe("TelegramChannel.reply", () => {
         }),
       );
       const logger = makeFakeLogger();
-      const channel = new TelegramChannel(BOT_TOKEN, logger);
+      const channel = new TelegramChannel(
+        BOT_TOKEN,
+        logger,
+        makeSpyTelemetry(),
+      );
 
       const promise = channel.reply(
         { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 4 } },
@@ -315,9 +332,14 @@ describe("TelegramChannel.reply", () => {
         }),
       );
       const logger = makeFakeLogger();
-      const channel = new TelegramChannel(BOT_TOKEN, logger, {
-        requestTimeoutMs: 50,
-      });
+      const channel = new TelegramChannel(
+        BOT_TOKEN,
+        logger,
+        makeSpyTelemetry(),
+        {
+          requestTimeoutMs: 50,
+        },
+      );
 
       await channel.reply(
         { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 5 } },
@@ -348,7 +370,11 @@ describe("TelegramChannel.reply", () => {
         }),
       );
       const logger = makeFakeLogger();
-      const channel = new TelegramChannel(BOT_TOKEN, logger);
+      const channel = new TelegramChannel(
+        BOT_TOKEN,
+        logger,
+        makeSpyTelemetry(),
+      );
 
       const promise = channel.reply(
         { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 6 } },
@@ -385,7 +411,7 @@ describe("TelegramChannel.reply", () => {
       }),
     );
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
     // ~9000 chars with paragraph breaks near each 3000-char boundary → 3 chunks.
     const nineKText =
       "x".repeat(3000) + "\n\n" + "y".repeat(3000) + "\n\n" + "z".repeat(3000);
@@ -404,6 +430,75 @@ describe("TelegramChannel.reply", () => {
       expect.objectContaining({ chunkIndex: 2, totalChunks: 3 }),
     );
   });
+
+  describe("telemetry spans", () => {
+    it("single-chunk reply opens exactly one telegram.send_message span with all 3 attributes", async () => {
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      await channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 100 } },
+        "hello",
+      );
+
+      expect(telemetry.calls).toHaveLength(1);
+      expect(telemetry.calls[0].name).toBe("telegram.send_message");
+      expect(telemetry.calls[0].attributes).toEqual(
+        expect.objectContaining({
+          "telegram.chat_id": 100,
+          "telegram.message.length": 5,
+          "telegram.total_chunks": 1,
+        }),
+      );
+    });
+
+    it("multi-chunk reply opens exactly one telegram.send_message span with telegram.total_chunks: 3", async () => {
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+      // ~9000 chars with paragraph breaks → 3 chunks.
+      const nineKText =
+        "x".repeat(3000) +
+        "\n\n" +
+        "y".repeat(3000) +
+        "\n\n" +
+        "z".repeat(3000);
+
+      await channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 200 } },
+        nineKText,
+      );
+
+      expect(telemetry.calls).toHaveLength(1);
+      expect(telemetry.calls[0].name).toBe("telegram.send_message");
+      expect(telemetry.calls[0].attributes).toEqual(
+        expect.objectContaining({
+          "telegram.total_chunks": 3,
+        }),
+      );
+    });
+
+    it("wrong-channel guard does NOT open a span", async () => {
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      await channel.reply({ channel: "slack", payload: { chatId: 1 } }, "hi");
+
+      expect(telemetry.calls).toHaveLength(0);
+    });
+  });
 });
 
 describe("TelegramChannel.indicateProcessing", () => {
@@ -416,7 +511,7 @@ describe("TelegramChannel.indicateProcessing", () => {
       }),
     );
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
     await channel.indicateProcessing({
       channel: TELEGRAM_CHANNEL_NAME,
@@ -429,7 +524,7 @@ describe("TelegramChannel.indicateProcessing", () => {
 
   it("skips and logs warn when ref.channel is not telegram", async () => {
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
     await channel.indicateProcessing({
       channel: "other",
@@ -449,7 +544,7 @@ describe("TelegramChannel.indicateProcessing", () => {
       }),
     );
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
     await expect(
       channel.indicateProcessing({
@@ -471,7 +566,7 @@ describe("TelegramChannel.indicateProcessing", () => {
       }),
     );
     const logger = makeFakeLogger();
-    const channel = new TelegramChannel(BOT_TOKEN, logger);
+    const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
     await expect(
       channel.indicateProcessing({

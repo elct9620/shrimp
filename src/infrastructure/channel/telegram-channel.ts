@@ -1,6 +1,7 @@
 import type { ChannelGateway } from "../../use-cases/ports/channel-gateway";
 import type { ConversationRef } from "../../entities/conversation-ref";
 import type { LoggerPort } from "../../use-cases/ports/logger";
+import type { TelemetryPort } from "../../use-cases/ports/telemetry";
 
 export const TELEGRAM_CHANNEL_NAME = "telegram";
 
@@ -105,6 +106,7 @@ export class TelegramChannel implements ChannelGateway {
   constructor(
     private readonly botToken: string,
     private readonly logger: LoggerPort,
+    private readonly telemetry: TelemetryPort,
     options: TelegramChannelOptions = {},
   ) {
     this.requestTimeoutMs =
@@ -159,13 +161,23 @@ export class TelegramChannel implements ChannelGateway {
     const chunks = chunkText(text, TELEGRAM_MAX_MESSAGE_LENGTH);
     const totalChunks = chunks.length;
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const chunkContext =
-        totalChunks > 1 ? { chunkIndex: i + 1, totalChunks } : undefined;
+    await this.telemetry.runInSpan(
+      "telegram.send_message",
+      async () => {
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          const chunkContext =
+            totalChunks > 1 ? { chunkIndex: i + 1, totalChunks } : undefined;
 
-      await this.sendChunkWithRetry(url, chatId, chunk, chunkContext);
-    }
+          await this.sendChunkWithRetry(url, chatId, chunk, chunkContext);
+        }
+      },
+      {
+        "telegram.chat_id": chatId,
+        "telegram.message.length": text.length,
+        "telegram.total_chunks": totalChunks,
+      },
+    );
   }
 
   private async sendChunkWithRetry(

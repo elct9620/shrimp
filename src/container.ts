@@ -160,10 +160,11 @@ export async function bootstrap(): Promise<void> {
   // Registered before step 8 (ToolProviderFactory) so BuiltInToolFactory can resolve it.
   if (env.channelsEnabled) {
     container.register(TOKENS.ChannelGateway, {
-      useFactory: () =>
+      useFactory: (c) =>
         new TelegramChannel(
           env.telegramBotToken!,
           logger.child({ module: "TelegramChannel" }),
+          c.resolve<TelemetryPort>(TOKENS.Telemetry),
         ),
     });
 
