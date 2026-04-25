@@ -8,6 +8,7 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
+import { SpanStatusCode } from "@opentelemetry/api";
 import type { Tracer } from "@opentelemetry/api";
 import { ChannelJob, CYCLE_FINISHED } from "../../src/use-cases/channel-job";
 import type {
@@ -30,7 +31,6 @@ import { NoopTelemetry } from "../../src/infrastructure/telemetry/noop-telemetry
 import { OtelTelemetry } from "../../src/infrastructure/telemetry/otel-telemetry";
 import type { TelemetryPort } from "../../src/use-cases/ports/telemetry";
 import { makeFakeLogger } from "../mocks/fake-logger";
-import { makeSpyTelemetry } from "../mocks/spy-telemetry";
 import type { ConversationMessage } from "../../src/entities/conversation-message";
 import type { ConversationRef } from "../../src/entities/conversation-ref";
 import type { SummarizePort } from "../../src/use-cases/ports/summarize";
@@ -441,8 +441,15 @@ describe("ChannelJob.run", () => {
     const existingSession = makeSession({ id: "session-1" });
     sessionRepo.getCurrent = vi.fn().mockResolvedValue(existingSession);
     agent.run = vi.fn().mockRejectedValue(new Error("boom"));
-    const spy = makeSpyTelemetry();
-    const j = makeJob(sessionRepo, agent, logger, undefined, undefined, spy);
+    const { telemetry, exporter } = makeInMemoryTelemetry();
+    const j = makeJob(
+      sessionRepo,
+      agent,
+      logger,
+      undefined,
+      undefined,
+      telemetry,
+    );
 
     await expect(
       j.run({
@@ -451,8 +458,15 @@ describe("ChannelJob.run", () => {
         telemetry: DEFAULT_TELEMETRY,
       }),
     ).rejects.toThrow("boom");
-    expect(spy.calls).toHaveLength(1);
-    expect(spy.calls[0]!.name).toBe("POST /channels/telegram");
+
+    const spans = exporter.getFinishedSpans();
+    const span = spans.find((s) => s.name === "POST /channels/telegram");
+    expect(span).toBeDefined();
+    expect(span!.status.code).toBe(SpanStatusCode.ERROR);
+
+    const exceptionEvent = span!.events.find((e) => e.name === "exception");
+    expect(exceptionEvent).toBeDefined();
+    expect(exceptionEvent!.attributes?.["exception.message"]).toBe("boom");
   });
 });
 
