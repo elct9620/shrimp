@@ -299,11 +299,9 @@ describe("TelegramChannel.reply", () => {
     });
 
     it("retries after AbortSignal.timeout fires on a hung first request", async () => {
-      // Real timers are required here: AbortSignal.timeout() relies on
-      // platform-level (libuv) timers that vi.useFakeTimers() intercepts but
-      // does not advance automatically, so the abort never fires under fake
-      // timers even with shouldAdvanceTime:true. Switching to real timers lets
-      // the 10s abort fire naturally; the 15s test timeout accommodates it.
+      // AbortSignal.timeout() relies on platform-level (libuv) timers that
+      // vi.useFakeTimers() does not advance, so this test runs on real timers
+      // with a tiny requestTimeoutMs to keep it fast.
       vi.useRealTimers();
 
       let callCount = 0;
@@ -311,14 +309,15 @@ describe("TelegramChannel.reply", () => {
         http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
           callCount += 1;
           if (callCount === 1) {
-            // Never resolves — AbortSignal.timeout(10_000ms) aborts the fetch.
             return new Promise<never>(() => {});
           }
           return HttpResponse.json({ ok: true, result: {} });
         }),
       );
       const logger = makeFakeLogger();
-      const channel = new TelegramChannel(BOT_TOKEN, logger);
+      const channel = new TelegramChannel(BOT_TOKEN, logger, {
+        requestTimeoutMs: 50,
+      });
 
       await channel.reply(
         { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 5 } },
@@ -327,7 +326,7 @@ describe("TelegramChannel.reply", () => {
 
       expect(callCount).toBe(2);
       expect(logger.warn).not.toHaveBeenCalled();
-    }, 15_000);
+    });
 
     it("falls back to exponential backoff when retry_after exceeds the 10s cap", async () => {
       let callCount = 0;

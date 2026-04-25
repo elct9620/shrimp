@@ -76,10 +76,15 @@ export function chunkText(text: string, limit: number): string[] {
 const MAX_ATTEMPTS = 3;
 export const BACKOFF_MS = [250, 500] as const;
 const RETRY_AFTER_CAP_MS = 10_000;
-const REQUEST_TIMEOUT_MS = 10_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 // Typing indicator is cosmetic and Telegram only displays it for ~5s.
 // Keep the timeout short so a slow Bot API never delays the Agent start.
-const CHAT_ACTION_TIMEOUT_MS = 2_000;
+const DEFAULT_CHAT_ACTION_TIMEOUT_MS = 2_000;
+
+export type TelegramChannelOptions = {
+  requestTimeoutMs?: number;
+  chatActionTimeoutMs?: number;
+};
 
 function isRetryableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status < 600);
@@ -94,10 +99,19 @@ function retryDelayMs(attempt: number, retryAfterSeconds?: number): number {
 }
 
 export class TelegramChannel implements ChannelGateway {
+  private readonly requestTimeoutMs: number;
+  private readonly chatActionTimeoutMs: number;
+
   constructor(
     private readonly botToken: string,
     private readonly logger: LoggerPort,
-  ) {}
+    options: TelegramChannelOptions = {},
+  ) {
+    this.requestTimeoutMs =
+      options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.chatActionTimeoutMs =
+      options.chatActionTimeoutMs ?? DEFAULT_CHAT_ACTION_TIMEOUT_MS;
+  }
 
   async indicateProcessing(ref: ConversationRef): Promise<void> {
     if (ref.channel !== TELEGRAM_CHANNEL_NAME) {
@@ -118,7 +132,7 @@ export class TelegramChannel implements ChannelGateway {
         method: "POST",
         headers: { "content-type": "application/json" },
         body,
-        signal: AbortSignal.timeout(CHAT_ACTION_TIMEOUT_MS),
+        signal: AbortSignal.timeout(this.chatActionTimeoutMs),
       });
       if (!resp.ok) {
         this.logger.warn(LOG_CHAT_ACTION_FAILED_UPSTREAM_STATUS, {
@@ -172,7 +186,7 @@ export class TelegramChannel implements ChannelGateway {
           method: "POST",
           headers: { "content-type": "application/json" },
           body,
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          signal: AbortSignal.timeout(this.requestTimeoutMs),
         });
       } catch (err) {
         const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
@@ -220,7 +234,7 @@ export class TelegramChannel implements ChannelGateway {
 
       // Other non-2xx responses (4xx excl. 429) are client errors — don't retry.
       if (!resp.ok) {
-        this.logger.warn("telegram reply failed — upstream status", {
+        this.logger.warn(LOG_REPLY_FAILED_UPSTREAM_STATUS, {
           status: resp.status,
           error_code: responseBody?.error_code,
           description: responseBody?.description,
