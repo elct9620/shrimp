@@ -727,7 +727,7 @@ describe("loadEnvConfig", () => {
     it("should resolve to <shrimpHome>/skills using default SHRIMP_HOME", () => {
       const config = loadEnvConfig(REQUIRED_ENV);
       expect(config.skillsCustomRoot).toBe(
-        join(require("node:os").homedir(), ".shrimp", "skills"),
+        join(homedir(), ".shrimp", "skills"),
       );
     });
 
