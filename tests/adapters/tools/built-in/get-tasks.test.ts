@@ -62,7 +62,10 @@ describe("createGetTasksTool", () => {
     vi.mocked(repo.getTasks).mockRejectedValue(new Error("API failure"));
     const t = createGetTasksTool(repo, makeFakeLogger());
     await expect(
-      t.execute!({ section: "Backlog" }, { toolCallId: "test", messages: [] }),
+      t.execute!(
+        { section: Section.Backlog },
+        { toolCallId: "test", messages: [] },
+      ),
     ).rejects.toThrow("API failure");
   });
 
@@ -73,13 +76,13 @@ describe("createGetTasksTool", () => {
       const t = createGetTasksTool(repo, logger);
 
       await t.execute!(
-        { section: "Backlog" },
+        { section: Section.Backlog },
         { toolCallId: "test", messages: [] },
       );
 
       expect(logger.debug).toHaveBeenCalledWith(
         "tool invoked",
-        expect.objectContaining({ input: { section: "Backlog" } }),
+        expect.objectContaining({ input: { section: Section.Backlog } }),
       );
     });
 
@@ -90,7 +93,7 @@ describe("createGetTasksTool", () => {
 
       await expect(
         t.execute!(
-          { section: "Backlog" },
+          { section: Section.Backlog },
           { toolCallId: "test", messages: [] },
         ),
       ).rejects.toThrow("upstream down");

@@ -63,7 +63,7 @@ describe("createMoveTaskTool", () => {
     const t = createMoveTaskTool(repo, makeFakeLogger());
     await expect(
       t.execute!(
-        { taskId: "task-123", section: "Done" },
+        { taskId: "task-123", section: Section.Done },
         { toolCallId: "test", messages: [] },
       ),
     ).rejects.toThrow("Move failed");
@@ -76,14 +76,14 @@ describe("createMoveTaskTool", () => {
       const t = createMoveTaskTool(repo, logger);
 
       await t.execute!(
-        { taskId: "task-42", section: "Done" },
+        { taskId: "task-42", section: Section.Done },
         { toolCallId: "test", messages: [] },
       );
 
       expect(logger.debug).toHaveBeenCalledWith(
         "tool invoked",
         expect.objectContaining({
-          input: { taskId: "task-42", section: "Done" },
+          input: { taskId: "task-42", section: Section.Done },
         }),
       );
     });
@@ -95,7 +95,7 @@ describe("createMoveTaskTool", () => {
 
       await expect(
         t.execute!(
-          { taskId: "task-42", section: "Done" },
+          { taskId: "task-42", section: Section.Done },
           { toolCallId: "test", messages: [] },
         ),
       ).rejects.toThrow("no section");
