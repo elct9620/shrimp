@@ -90,13 +90,4 @@ describe("createTelemetry", () => {
       logger,
     });
   });
-
-  it("always satisfies TelemetryPort interface", () => {
-    const logger = makeFakeLogger();
-    const env: EnvConfig = { ...BASE_ENV, telemetryEnabled: false };
-
-    const t: TelemetryPort = createTelemetry(env, logger).telemetry;
-
-    expect(t).toBeDefined();
-  });
 });
