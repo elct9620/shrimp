@@ -5,9 +5,13 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import {
+  context,
   diag,
   DiagLogLevel,
+  metrics,
+  propagation,
   SpanStatusCode,
+  trace,
   type DiagLogger,
   type Tracer,
 } from "@opentelemetry/api";
@@ -23,12 +27,28 @@ import { makeFakeLogger } from "../../mocks/fake-logger";
 // Helpers
 // ---------------------------------------------------------------------------
 
+// Default no-op SDK so tests don't boot a real NodeSDK (which mutates
+// process.env, registers global OTel APIs, and spams stderr with duplicate
+// registration warnings on every subsequent test). Tests that need real
+// span recording inject a `tracer` built from BasicTracerProvider; tests that
+// need to exercise shutdown error paths override `sdk` explicitly.
+function makeStubSdk(): Pick<
+  import("@opentelemetry/sdk-node").NodeSDK,
+  "start" | "shutdown"
+> {
+  return {
+    start: () => undefined,
+    shutdown: () => Promise.resolve(),
+  };
+}
+
 function makeOptions(
   overrides: Partial<OtelTelemetryOptions> = {},
 ): OtelTelemetryOptions {
   return {
     serviceName: "shrimp-test",
     logger: makeFakeLogger(),
+    sdk: makeStubSdk(),
     ...overrides,
   };
 }
@@ -59,11 +79,22 @@ describe("OtelTelemetry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setLoggerSpy = vi.spyOn(diag, "setLogger");
+    // Prevent applyDefaultDeploymentEnvironment from leaking mutations across
+    // tests via real process.env.
+    vi.stubEnv("OTEL_RESOURCE_ATTRIBUTES", "");
+    vi.stubEnv("OTEL_LOG_LEVEL", "");
   });
 
   afterEach(() => {
     setLoggerSpy.mockRestore();
     diag.disable();
+    // Reset every global OTel API surface so a stray real-NodeSDK construction
+    // (or a future test that needs one) starts from a clean slate instead of
+    // hitting "Attempted duplicate registration of API" warnings.
+    trace.disable();
+    context.disable();
+    propagation.disable();
+    metrics.disable();
     vi.unstubAllEnvs();
   });
 
