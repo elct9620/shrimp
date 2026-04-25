@@ -42,4 +42,27 @@ describe("comparePriority", () => {
       Priority.p4,
     ]);
   });
+
+  it("returns exact numeric difference (a - b)", () => {
+    expect(comparePriority(Priority.p1, Priority.p4)).toBe(-3);
+    expect(comparePriority(Priority.p4, Priority.p1)).toBe(3);
+  });
+
+  it("produces a stable sort when all priorities are the same value", () => {
+    const priorities = [Priority.p3, Priority.p3, Priority.p3];
+    const sorted = [...priorities].sort(comparePriority);
+    expect(sorted).toEqual([Priority.p3, Priority.p3, Priority.p3]);
+  });
+
+  it("sorts a single-element array unchanged", () => {
+    const sorted = [Priority.p2].sort(comparePriority);
+    expect(sorted).toEqual([Priority.p2]);
+  });
+
+  it("accepts raw numeric values that coincide with Priority members at runtime", () => {
+    // Priority is a plain const object; the comparator is `a - b` with no
+    // runtime guard. Passing a numeric literal that matches a member value
+    // behaves identically — this documents the current runtime contract.
+    expect(comparePriority(1 as Priority, 4 as Priority)).toBe(-3);
+  });
 });
