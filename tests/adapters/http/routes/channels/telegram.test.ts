@@ -3,6 +3,7 @@ import {
   createTelegramRoute,
   LOG_WEBHOOK_UNAUTHORIZED,
   LOG_WEBHOOK_INVALID_JSON,
+  LOG_WEBHOOK_UNSUPPORTED_UPDATE,
   type ChannelJobRunner,
   type SessionStarter,
 } from "../../../../../src/adapters/http/routes/channels/telegram";
@@ -123,17 +124,26 @@ describe("POST /channels/telegram", () => {
   it("returns 200 and skips dispatch for a non-message update (empty object)", async () => {
     const jobQueue = makeJobQueue();
     const startNewSession = makeStartNewSession();
-    const app = makeApp({ jobQueue, startNewSession });
+    const logger = makeFakeLogger();
+    const app = makeApp({ jobQueue, startNewSession, logger });
     const res = await post(app, {}, VALID_SECRET);
     expect(res.status).toBe(200);
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(startNewSession.execute).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      LOG_WEBHOOK_UNSUPPORTED_UPDATE,
+      expect.objectContaining({
+        event: "channel.telegram.webhook.unsupported_update",
+        update_type: "unknown",
+      }),
+    );
   });
 
   it("returns 200 and skips dispatch for a non-message update (e.g. edited_message)", async () => {
     const jobQueue = makeJobQueue();
     const startNewSession = makeStartNewSession();
-    const app = makeApp({ jobQueue, startNewSession });
+    const logger = makeFakeLogger();
+    const app = makeApp({ jobQueue, startNewSession, logger });
     // edited_message update has no `message` — hits the "acknowledge and skip" branch.
     const res = await post(
       app,
@@ -143,12 +153,20 @@ describe("POST /channels/telegram", () => {
     expect(res.status).toBe(200);
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(startNewSession.execute).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      LOG_WEBHOOK_UNSUPPORTED_UPDATE,
+      expect.objectContaining({
+        event: "channel.telegram.webhook.unsupported_update",
+        update_type: "edited_message",
+      }),
+    );
   });
 
   it("returns 200 and skips dispatch for a message without text (e.g. photo)", async () => {
     const jobQueue = makeJobQueue();
     const startNewSession = makeStartNewSession();
-    const app = makeApp({ jobQueue, startNewSession });
+    const logger = makeFakeLogger();
+    const app = makeApp({ jobQueue, startNewSession, logger });
     // photo-only message has no text field — should ack 200 per SPEC §Telegram Channel
     const res = await post(
       app,
@@ -158,6 +176,88 @@ describe("POST /channels/telegram", () => {
     expect(res.status).toBe(200);
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(startNewSession.execute).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      LOG_WEBHOOK_UNSUPPORTED_UPDATE,
+      expect.objectContaining({
+        event: "channel.telegram.webhook.unsupported_update",
+        update_type: "message.photo",
+      }),
+    );
+  });
+
+  it("returns 200 and logs debug with update_type message.photo for photo-only message", async () => {
+    const jobQueue = makeJobQueue();
+    const logger = makeFakeLogger();
+    const app = makeApp({ jobQueue, logger });
+    const res = await post(
+      app,
+      {
+        update_id: 111,
+        message: { photo: [{ file_id: "xyz" }], chat: { id: 5 } },
+      },
+      VALID_SECRET,
+    );
+    expect(res.status).toBe(200);
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      LOG_WEBHOOK_UNSUPPORTED_UPDATE,
+      expect.objectContaining({
+        event: "channel.telegram.webhook.unsupported_update",
+        update_type: "message.photo",
+        update_id: 111,
+      }),
+    );
+  });
+
+  it("returns 200 and logs debug with update_type callback_query for callback query", async () => {
+    const jobQueue = makeJobQueue();
+    const logger = makeFakeLogger();
+    const app = makeApp({ jobQueue, logger });
+    const res = await post(
+      app,
+      {
+        update_id: 222,
+        callback_query: { id: "cq1", data: "button_clicked" },
+      },
+      VALID_SECRET,
+    );
+    expect(res.status).toBe(200);
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      LOG_WEBHOOK_UNSUPPORTED_UPDATE,
+      expect.objectContaining({
+        event: "channel.telegram.webhook.unsupported_update",
+        update_type: "callback_query",
+        update_id: 222,
+      }),
+    );
+  });
+
+  it("returns 200 and logs debug with update_type message.other for message with no recognized media key", async () => {
+    const jobQueue = makeJobQueue();
+    const logger = makeFakeLogger();
+    const app = makeApp({ jobQueue, logger });
+    const res = await post(
+      app,
+      {
+        update_id: 333,
+        message: {
+          location: { latitude: 1.0, longitude: 2.0 },
+          chat: { id: 9 },
+        },
+      },
+      VALID_SECRET,
+    );
+    expect(res.status).toBe(200);
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      LOG_WEBHOOK_UNSUPPORTED_UPDATE,
+      expect.objectContaining({
+        event: "channel.telegram.webhook.unsupported_update",
+        update_type: "message.other",
+        update_id: 333,
+      }),
+    );
   });
 
   it("returns 200 and enqueues ChannelJob for a plain text message", async () => {

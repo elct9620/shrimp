@@ -20,6 +20,48 @@ export const LOG_WEBHOOK_UNAUTHORIZED =
 export const LOG_WEBHOOK_INVALID_JSON =
   "telegram webhook rejected — invalid JSON";
 
+export const LOG_WEBHOOK_UNSUPPORTED_UPDATE =
+  "telegram webhook accepted — unsupported update type";
+
+function deriveUpdateType(payload: unknown): string {
+  if (typeof payload !== "object" || payload === null) return "unknown";
+  const p = payload as Record<string, unknown>;
+  // Order matters: edited_message takes precedence over message when both exist (rare)
+  for (const key of [
+    "edited_message",
+    "message",
+    "callback_query",
+    "channel_post",
+    "edited_channel_post",
+    "inline_query",
+    "chosen_inline_result",
+    "shipping_query",
+    "pre_checkout_query",
+    "poll",
+    "poll_answer",
+    "my_chat_member",
+    "chat_member",
+    "chat_join_request",
+  ] as const) {
+    if (key in p) {
+      if (key === "message") {
+        // Distinguish text-message from media-message
+        const m = p[key] as Record<string, unknown>;
+        if ("text" in m) return "message.text";
+        if ("photo" in m) return "message.photo";
+        if ("voice" in m) return "message.voice";
+        if ("audio" in m) return "message.audio";
+        if ("video" in m) return "message.video";
+        if ("sticker" in m) return "message.sticker";
+        if ("document" in m) return "message.document";
+        return "message.other";
+      }
+      return key;
+    }
+  }
+  return "unknown";
+}
+
 const TelegramUpdate = z.object({
   update_id: z.number().optional(),
   message: z
@@ -93,6 +135,11 @@ export function createTelegramRoute(deps: {
 
     const msg = parsed.data.message;
     if (!msg?.text) {
+      deps.logger.debug(LOG_WEBHOOK_UNSUPPORTED_UPDATE, {
+        event: "channel.telegram.webhook.unsupported_update",
+        update_type: deriveUpdateType(body),
+        update_id: parsed.data.update_id,
+      });
       return c.body(null, 200);
     }
 
