@@ -17,6 +17,11 @@ import { assembleChannelSystemPrompt } from "./prompt-assembler";
 
 export const CYCLE_FINISHED = "cycle finished";
 
+function deriveChatId(ref: ConversationRef): number | undefined {
+  const payload = ref.payload as { chatId?: unknown };
+  return typeof payload?.chatId === "number" ? payload.chatId : undefined;
+}
+
 // Log event constants
 export const AUTO_COMPACT_SUMMARIZE_FAILED =
   "auto compact: summarize failed, skipping compaction this turn";
@@ -90,13 +95,20 @@ export class ChannelJob {
     return this.telemetry.runInSpan(
       event.telemetry.spanName,
       async () => {
-        this.logger.info("cycle started");
+        const chatId = deriveChatId(event.ref);
+        const log = this.logger.child({
+          job_id: jobId,
+          channel: event.ref.channel,
+          ...(chatId !== undefined ? { chat_id: chatId } : {}),
+        });
+
+        log.info("cycle started");
 
         // Load or lazily create the current session.
         let session = await this.sessionRepository.getCurrent();
         if (!session) {
           session = await this.sessionRepository.createNew();
-          this.logger.debug("cycle new session created", {
+          log.debug("cycle new session created", {
             sessionId: session.id,
           });
         }
@@ -120,7 +132,7 @@ export class ChannelJob {
         // Fail-Open per SPEC §Channel Integration — ChannelGateway swallows errors.
         await this.channelGateway.indicateProcessing(event.ref);
 
-        this.logger.debug("cycle invoking shrimp agent", {
+        log.debug("cycle invoking shrimp agent", {
           sessionId: session.id,
         });
 
@@ -179,7 +191,7 @@ export class ChannelJob {
             // Steps 3–5: create new Session JSONL + update state.json (rotateWithSummary).
             await this.sessionRepository.rotateWithSummary(summary);
 
-            this.logger.info("auto compact: session rotated", {
+            log.info("auto compact: session rotated", {
               sessionId: session.id,
               promptTokens: result.promptTokens,
               threshold: this.compactionThreshold,
@@ -188,21 +200,21 @@ export class ChannelJob {
             // Fail-Open Recovery: compaction failure NEVER fails the Job.
             // Reply delivery and append are both committed above (SPEC steps 3a and 4).
             if (err instanceof SessionJsonlWriteError) {
-              this.logger.error(AUTO_COMPACT_JSONL_WRITE_FAILED, {
+              log.error(AUTO_COMPACT_JSONL_WRITE_FAILED, {
                 err: err.cause,
               });
             } else if (err instanceof SessionStateUpdateError) {
-              this.logger.error(AUTO_COMPACT_STATE_UPDATE_FAILED, {
+              log.error(AUTO_COMPACT_STATE_UPDATE_FAILED, {
                 newSessionId: err.newSessionId,
                 err: err.cause,
               });
             } else {
-              this.logger.error(AUTO_COMPACT_SUMMARIZE_FAILED, { err });
+              log.error(AUTO_COMPACT_SUMMARIZE_FAILED, { err });
             }
           }
         }
 
-        this.logger.info(CYCLE_FINISHED, {
+        log.info(CYCLE_FINISHED, {
           sessionId: session.id,
           reason: result.reason,
         });

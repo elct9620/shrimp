@@ -174,6 +174,49 @@ function makeJob(
 
 // --- Tests ---
 
+describe("ChannelJob.run — child logger bindings", () => {
+  it("creates a child logger with job_id, channel, and chat_id when the ref carries a numeric chatId", async () => {
+    const sessionRepo = makeSessionRepository();
+    const agent = makeShrimpAgent();
+    const logger = makeFakeLogger();
+    const job = makeJob(sessionRepo, agent, logger);
+
+    const ref: ConversationRef = {
+      channel: "telegram",
+      payload: { chatId: 42 },
+    };
+
+    await job.run({ message: "Hi", ref, telemetry: DEFAULT_TELEMETRY });
+
+    expect(logger.child).toHaveBeenCalledWith(
+      expect.objectContaining({
+        job_id: expect.any(String),
+        channel: "telegram",
+        chat_id: 42,
+      }),
+    );
+  });
+
+  it("CYCLE_FINISHED is still logged via the child logger after the refactor", async () => {
+    const sessionRepo = makeSessionRepository();
+    const agent = makeShrimpAgent();
+    const logger = makeFakeLogger();
+    // child() returns the same fake instance, so logger.info captures the child's calls
+    const job = makeJob(sessionRepo, agent, logger);
+
+    await job.run({
+      message: "Hi",
+      ref: makeRef(),
+      telemetry: DEFAULT_TELEMETRY,
+    });
+
+    expect(logger.info).toHaveBeenCalledWith(
+      CYCLE_FINISHED,
+      expect.objectContaining({ reason: "finished" }),
+    );
+  });
+});
+
 describe("ChannelJob.run", () => {
   let sessionRepo: SessionRepository;
   let agent: ReturnType<typeof makeShrimpAgent>;
