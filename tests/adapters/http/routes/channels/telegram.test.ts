@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createTelegramRoute,
   LOG_WEBHOOK_UNAUTHORIZED,
+  LOG_WEBHOOK_INVALID_JSON,
   type ChannelJobRunner,
   type SessionStarter,
 } from "../../../../../src/adapters/http/routes/channels/telegram";
@@ -105,10 +106,18 @@ describe("POST /channels/telegram", () => {
 
   it("returns 400 when body is malformed JSON", async () => {
     const jobQueue = makeJobQueue();
-    const app = makeApp({ jobQueue });
+    const logger = makeFakeLogger();
+    const app = makeApp({ jobQueue, logger });
     const res = await post(app, "{not-json", VALID_SECRET);
     expect(res.status).toBe(400);
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      LOG_WEBHOOK_INVALID_JSON,
+      expect.objectContaining({
+        event: "channel.telegram.webhook.invalid_json",
+        content_length: expect.any(Number),
+      }),
+    );
   });
 
   it("returns 200 and skips dispatch for a non-message update (empty object)", async () => {

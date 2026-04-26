@@ -17,6 +17,9 @@ import { timingSafeEqualStr } from "../../timing-safe-compare";
 export const LOG_WEBHOOK_UNAUTHORIZED =
   "telegram webhook rejected — secret mismatch";
 
+export const LOG_WEBHOOK_INVALID_JSON =
+  "telegram webhook rejected — invalid JSON";
+
 const TelegramUpdate = z.object({
   update_id: z.number().optional(),
   message: z
@@ -76,6 +79,10 @@ export function createTelegramRoute(deps: {
     try {
       body = await c.req.json();
     } catch {
+      deps.logger.warn(LOG_WEBHOOK_INVALID_JSON, {
+        event: "channel.telegram.webhook.invalid_json",
+        content_length: Number(c.req.header("content-length") ?? 0),
+      });
       return c.body(null, 400);
     }
 
