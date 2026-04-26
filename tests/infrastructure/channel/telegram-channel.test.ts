@@ -447,7 +447,7 @@ describe("TelegramChannel.reply", () => {
         "hello",
       );
 
-      expect(telemetry.calls).toHaveLength(1);
+      expect(telemetry.calls).toHaveLength(2);
       expect(telemetry.calls[0].name).toBe("telegram.send_message");
       expect(telemetry.calls[0].attributes).toEqual(
         expect.objectContaining({
@@ -480,7 +480,8 @@ describe("TelegramChannel.reply", () => {
         nineKText,
       );
 
-      expect(telemetry.calls).toHaveLength(1);
+      // 1 parent span + 3 attempt child spans (one per chunk).
+      expect(telemetry.calls).toHaveLength(4);
       expect(telemetry.calls[0].name).toBe("telegram.send_message");
       expect(telemetry.calls[0].attributes).toEqual(
         expect.objectContaining({
@@ -497,6 +498,105 @@ describe("TelegramChannel.reply", () => {
       await channel.reply({ channel: "slack", payload: { chatId: 1 } }, "hi");
 
       expect(telemetry.calls).toHaveLength(0);
+    });
+
+    it("single success: child span has attempt.index 1, attempt.max 3, attempt.outcome success, http.status_code 200, no exceptions", async () => {
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      await channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 101 } },
+        "hello",
+      );
+
+      // calls[0] = parent telegram.send_message, calls[1] = attempt child
+      expect(telemetry.calls).toHaveLength(2);
+      const child = telemetry.calls[1];
+      expect(child.name).toBe("telegram.send_message.attempt");
+      expect(child.spanAttributes).toEqual(
+        expect.objectContaining({
+          "attempt.index": 1,
+          "attempt.max": 3,
+          "attempt.outcome": "success",
+          "http.status_code": 200,
+        }),
+      );
+      expect(child.exceptions).toHaveLength(0);
+    });
+
+    it("retry then success: 3 spans total; first child has outcome retry_network with 1 exception, second has outcome success", async () => {
+      vi.useFakeTimers();
+      let callCount = 0;
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          if (callCount === 1) return HttpResponse.error();
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 102 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+      vi.useRealTimers();
+
+      // calls[0] = parent, calls[1] = first attempt (retry_network), calls[2] = second attempt (success)
+      expect(telemetry.calls).toHaveLength(3);
+      const firstChild = telemetry.calls[1];
+      expect(firstChild.name).toBe("telegram.send_message.attempt");
+      expect(firstChild.spanAttributes).toEqual(
+        expect.objectContaining({ "attempt.outcome": "retry_network" }),
+      );
+      expect(firstChild.exceptions).toHaveLength(1);
+      const secondChild = telemetry.calls[2];
+      expect(secondChild.name).toBe("telegram.send_message.attempt");
+      expect(secondChild.spanAttributes).toEqual(
+        expect.objectContaining({ "attempt.outcome": "success" }),
+      );
+    });
+
+    it("ok:false body: child span has outcome telegram_error, http.status_code 200, 1 exception", async () => {
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          return HttpResponse.json({
+            ok: false,
+            error_code: 400,
+            description: "Bad Request: chat not found",
+          });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      await channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 103 } },
+        "hi",
+      );
+
+      // calls[0] = parent, calls[1] = attempt child
+      expect(telemetry.calls).toHaveLength(2);
+      const child = telemetry.calls[1];
+      expect(child.name).toBe("telegram.send_message.attempt");
+      expect(child.spanAttributes).toEqual(
+        expect.objectContaining({
+          "attempt.outcome": "telegram_error",
+          "http.status_code": 200,
+        }),
+      );
+      expect(child.exceptions).toHaveLength(1);
     });
   });
 });

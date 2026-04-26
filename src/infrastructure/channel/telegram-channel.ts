@@ -184,90 +184,204 @@ export class TelegramChannel implements ChannelGateway {
     url: string,
     chatId: number,
     chunk: string,
-    chunkContext: Record<string, number> | undefined,
+    chunkContext: { chunkIndex: number; totalChunks: number } | undefined,
   ): Promise<void> {
     const body = JSON.stringify({ chat_id: chatId, text: chunk });
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      // Network-level attempt — transient socket failures and timeout land in
-      // the catch block. AbortSignal.timeout bounds each attempt so a hung
-      // request cannot stall the Job Queue.
-      let resp: Response;
-      try {
-        resp = await fetch(url, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body,
-          signal: AbortSignal.timeout(this.requestTimeoutMs),
+      type AttemptResult =
+        | { outcome: "success" }
+        | { outcome: "retry_network"; delayMs: number; err: unknown }
+        | {
+            outcome: "retry_status";
+            delayMs: number;
+            status: number;
+            error_code?: number;
+            description?: string;
+          }
+        | { outcome: "give_up_network"; err: unknown }
+        | {
+            outcome: "give_up_status";
+            status: number;
+            error_code?: number;
+            description?: string;
+          }
+        | {
+            outcome: "http_error";
+            status: number;
+            error_code?: number;
+            description?: string;
+          }
+        | {
+            outcome: "telegram_error";
+            error_code?: number;
+            description?: string;
+          };
+
+      const result = await this.telemetry.runInSpan(
+        "telegram.send_message.attempt",
+        async (span) => {
+          span.setAttribute("attempt.index", attempt + 1);
+          span.setAttribute("attempt.max", MAX_ATTEMPTS);
+          if (chunkContext) {
+            span.setAttribute("telegram.chunk.index", chunkContext.chunkIndex);
+            span.setAttribute("telegram.chunk.total", chunkContext.totalChunks);
+          }
+
+          // Network-level attempt — transient socket failures and timeout land
+          // in the catch block. AbortSignal.timeout bounds each attempt so a
+          // hung request cannot stall the Job Queue.
+          let resp: Response;
+          try {
+            resp = await fetch(url, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body,
+              signal: AbortSignal.timeout(this.requestTimeoutMs),
+            });
+          } catch (err) {
+            const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
+            span.recordException(err);
+            if (isLastAttempt) {
+              span.setAttribute("attempt.outcome", "give_up_network");
+              return { outcome: "give_up_network", err } as AttemptResult;
+            }
+            const delayMs = retryDelayMs(attempt);
+            span.setAttribute("attempt.outcome", "retry_network");
+            span.setAttribute("telegram.retry_after_ms", delayMs);
+            return { outcome: "retry_network", delayMs, err } as AttemptResult;
+          }
+
+          span.setAttribute("http.status_code", resp.status);
+
+          // Parse body for every response — Telegram Bot API reports
+          // application-level failures (including 429 throttling) via
+          // `ok:false` + description, with the retry delay carried in
+          // `parameters.retry_after` (seconds).
+          // The HTTP `Retry-After` header is not guaranteed.
+          const responseBody = (await resp.json().catch(() => null)) as {
+            ok: boolean;
+            error_code?: number;
+            description?: string;
+            parameters?: { retry_after?: number };
+          } | null;
+
+          const error_code = responseBody?.error_code;
+          const description = responseBody?.description;
+
+          // 429 / 5xx are transient; retry with appropriate backoff.
+          if (isRetryableStatus(resp.status)) {
+            const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
+            if (error_code != null) {
+              span.setAttribute("telegram.error_code", error_code);
+            }
+            if (isLastAttempt) {
+              span.setAttribute("attempt.outcome", "give_up_status");
+              return {
+                outcome: "give_up_status",
+                status: resp.status,
+                error_code,
+                description,
+              } as AttemptResult;
+            }
+            const delayMs = retryDelayMs(
+              attempt,
+              responseBody?.parameters?.retry_after,
+            );
+            span.setAttribute("attempt.outcome", "retry_status");
+            span.setAttribute("telegram.retry_after_ms", delayMs);
+            return {
+              outcome: "retry_status",
+              delayMs,
+              status: resp.status,
+              error_code,
+              description,
+            } as AttemptResult;
+          }
+
+          // Other non-2xx responses (4xx excl. 429) are client errors —
+          // don't retry.
+          if (!resp.ok) {
+            span.recordException(
+              new Error(
+                `http ${resp.status}: ${description ?? "no description"}`,
+              ),
+            );
+            if (error_code != null) {
+              span.setAttribute("telegram.error_code", error_code);
+            }
+            span.setAttribute("attempt.outcome", "http_error");
+            return {
+              outcome: "http_error",
+              status: resp.status,
+              error_code,
+              description,
+            } as AttemptResult;
+          }
+
+          // Application-level failure over HTTP 200 (e.g. message too long,
+          // invalid chat_id). Not retryable — would waste calls.
+          if (!responseBody?.ok) {
+            span.recordException(new Error(description ?? "telegram error"));
+            if (error_code != null) {
+              span.setAttribute("telegram.error_code", error_code);
+            }
+            span.setAttribute("attempt.outcome", "telegram_error");
+            return {
+              outcome: "telegram_error",
+              error_code,
+              description,
+            } as AttemptResult;
+          }
+
+          // Success — chunk delivered.
+          span.setAttribute("attempt.outcome", "success");
+          return { outcome: "success" } as AttemptResult;
+        },
+      );
+
+      // Translate outcome to logger.warn + return/continue outside the span.
+      if (result.outcome === "give_up_network") {
+        this.logger.warn(LOG_REPLY_FAILED_NETWORK, {
+          err: result.err,
+          attempts: MAX_ATTEMPTS,
+          ...chunkContext,
         });
-      } catch (err) {
-        const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
-        if (isLastAttempt) {
-          this.logger.warn(LOG_REPLY_FAILED_NETWORK, {
-            err,
-            attempts: MAX_ATTEMPTS,
-            ...chunkContext,
-          });
-          return;
-        }
-        await sleep(retryDelayMs(attempt));
-        continue;
+        return;
       }
-
-      // Parse body for every response — Telegram Bot API reports application-
-      // level failures (including 429 throttling) via `ok:false` + description,
-      // with the retry delay carried in `parameters.retry_after` (seconds).
-      // The HTTP `Retry-After` header is not guaranteed.
-      const responseBody = (await resp.json().catch(() => null)) as {
-        ok: boolean;
-        error_code?: number;
-        description?: string;
-        parameters?: { retry_after?: number };
-      } | null;
-
-      // 429 / 5xx are transient; retry with appropriate backoff.
-      if (isRetryableStatus(resp.status)) {
-        const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
-        if (isLastAttempt) {
-          this.logger.warn(LOG_REPLY_FAILED_UPSTREAM_STATUS, {
-            status: resp.status,
-            error_code: responseBody?.error_code,
-            description: responseBody?.description,
-            attempts: MAX_ATTEMPTS,
-            ...chunkContext,
-          });
-          return;
-        }
-        await sleep(
-          retryDelayMs(attempt, responseBody?.parameters?.retry_after),
-        );
-        continue;
-      }
-
-      // Other non-2xx responses (4xx excl. 429) are client errors — don't retry.
-      if (!resp.ok) {
+      if (result.outcome === "give_up_status") {
         this.logger.warn(LOG_REPLY_FAILED_UPSTREAM_STATUS, {
-          status: resp.status,
-          error_code: responseBody?.error_code,
-          description: responseBody?.description,
+          status: result.status,
+          error_code: result.error_code,
+          description: result.description,
+          attempts: MAX_ATTEMPTS,
           ...chunkContext,
         });
         return;
       }
-
-      // Application-level failure over HTTP 200 (e.g. message too long, invalid
-      // chat_id). Not retryable — would waste calls.
-      if (!responseBody?.ok) {
+      if (result.outcome === "http_error") {
+        this.logger.warn(LOG_REPLY_FAILED_UPSTREAM_STATUS, {
+          status: result.status,
+          error_code: result.error_code,
+          description: result.description,
+          ...chunkContext,
+        });
+        return;
+      }
+      if (result.outcome === "telegram_error") {
         this.logger.warn(LOG_REPLY_FAILED_UPSTREAM_ERROR, {
-          error_code: responseBody?.error_code,
-          description: responseBody?.description,
+          error_code: result.error_code,
+          description: result.description,
           ...chunkContext,
         });
         return;
       }
+      if (result.outcome === "success") {
+        return;
+      }
 
-      // Success — chunk delivered.
-      return;
+      // retry_network or retry_status — sleep outside the span.
+      await sleep(result.delayMs);
     }
   }
 }
