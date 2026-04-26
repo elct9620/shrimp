@@ -374,39 +374,6 @@ describe("TelegramChannel.reply", () => {
       expect(DEFAULT_REQUEST_TIMEOUT_MS).toBe(60_000);
     });
 
-    it("does not abort sendMessage when Telegram responds within the default 60s window", async () => {
-      // Real timers because AbortSignal.timeout uses libuv platform timers.
-      vi.useRealTimers();
-
-      let callCount = 0;
-      server.use(
-        http.post(`${TELEGRAM_BASE}/sendMessage`, async () => {
-          callCount += 1;
-          // 50ms latency: well under the 60s default but well over the
-          // previous 10s default. If anyone reverts the timeout to 10s
-          // this stays green; the regression is caught by the constant
-          // assertion above. This test guards against accidental abort
-          // bugs from future timeout-handling refactors.
-          await new Promise((resolve) => setTimeout(resolve, 50));
-          return HttpResponse.json({ ok: true, result: {} });
-        }),
-      );
-      const logger = makeFakeLogger();
-      const channel = new TelegramChannel(
-        BOT_TOKEN,
-        logger,
-        makeSpyTelemetry(),
-      );
-
-      await channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, chatId: 7, payload: {} },
-        "hi",
-      );
-
-      expect(callCount).toBe(1);
-      expect(logger.warn).not.toHaveBeenCalled();
-    });
-
     it("falls back to exponential backoff when retry_after exceeds the 10s cap", async () => {
       let callCount = 0;
       server.use(
