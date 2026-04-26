@@ -14,6 +14,9 @@ import { TELEGRAM_CHANNEL_NAME } from "../../../../infrastructure/channel/telegr
 import { collectHttpSpanAttributes } from "../../telemetry-attributes";
 import { timingSafeEqualStr } from "../../timing-safe-compare";
 
+export const LOG_WEBHOOK_UNAUTHORIZED =
+  "telegram webhook rejected — secret mismatch";
+
 const TelegramUpdate = z.object({
   update_id: z.number().optional(),
   message: z
@@ -62,6 +65,10 @@ export function createTelegramRoute(deps: {
   app.post("/channels/telegram", async (c) => {
     const secret = c.req.header("x-telegram-bot-api-secret-token");
     if (!secret || !timingSafeEqualStr(secret, deps.webhookSecret)) {
+      deps.logger.warn(LOG_WEBHOOK_UNAUTHORIZED, {
+        event: "channel.telegram.webhook.unauthorized",
+        secret_length: secret?.length ?? 0,
+      });
       return c.body(null, 401);
     }
 

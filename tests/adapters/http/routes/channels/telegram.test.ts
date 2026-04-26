@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createTelegramRoute,
+  LOG_WEBHOOK_UNAUTHORIZED,
   type ChannelJobRunner,
   type SessionStarter,
 } from "../../../../../src/adapters/http/routes/channels/telegram";
@@ -39,6 +40,7 @@ function makeApp(overrides?: {
   startNewSession?: SessionStarter;
   channelGateway?: ChannelGateway;
   webhookSecret?: string;
+  logger?: ReturnType<typeof makeFakeLogger>;
 }) {
   return createTelegramRoute({
     jobQueue: overrides?.jobQueue ?? makeJobQueue(),
@@ -46,7 +48,7 @@ function makeApp(overrides?: {
     startNewSession: overrides?.startNewSession ?? makeStartNewSession(),
     channelGateway: overrides?.channelGateway ?? makeChannelGateway(),
     webhookSecret: overrides?.webhookSecret ?? VALID_SECRET,
-    logger: makeFakeLogger(),
+    logger: overrides?.logger ?? makeFakeLogger(),
   });
 }
 
@@ -71,18 +73,34 @@ function post(
 describe("POST /channels/telegram", () => {
   it("returns 401 when secret header is missing", async () => {
     const jobQueue = makeJobQueue();
-    const app = makeApp({ jobQueue });
+    const logger = makeFakeLogger();
+    const app = makeApp({ jobQueue, logger });
     const res = await post(app, {}, undefined);
     expect(res.status).toBe(401);
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      LOG_WEBHOOK_UNAUTHORIZED,
+      expect.objectContaining({
+        event: "channel.telegram.webhook.unauthorized",
+        secret_length: 0,
+      }),
+    );
   });
 
   it("returns 401 when secret header does not match", async () => {
     const jobQueue = makeJobQueue();
-    const app = makeApp({ jobQueue });
+    const logger = makeFakeLogger();
+    const app = makeApp({ jobQueue, logger });
     const res = await post(app, {}, "wrong-secret");
     expect(res.status).toBe(401);
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      LOG_WEBHOOK_UNAUTHORIZED,
+      expect.objectContaining({
+        event: "channel.telegram.webhook.unauthorized",
+        secret_length: "wrong-secret".length,
+      }),
+    );
   });
 
   it("returns 400 when body is malformed JSON", async () => {
