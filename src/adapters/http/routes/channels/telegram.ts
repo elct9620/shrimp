@@ -13,6 +13,7 @@ import type { ConversationRef } from "../../../../entities/conversation-ref";
 import { TELEGRAM_CHANNEL_NAME } from "../../../../infrastructure/channel/telegram-channel";
 import { collectHttpSpanAttributes } from "../../telemetry-attributes";
 import { timingSafeEqualStr } from "../../timing-safe-compare";
+import type { TelemetryPort } from "../../../../use-cases/ports/telemetry";
 
 export const LOG_WEBHOOK_UNAUTHORIZED =
   "telegram webhook rejected — secret mismatch";
@@ -104,6 +105,7 @@ export function createTelegramRoute(deps: {
   channelGateway: ChannelGateway;
   webhookSecret: string;
   logger: LoggerPort;
+  telemetry: TelemetryPort;
 }): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
@@ -152,7 +154,19 @@ export function createTelegramRoute(deps: {
 
     if (text.startsWith("/")) {
       const name = text.slice(1).split(/\s+/, 1)[0]?.toLowerCase();
-      await handleSlashCommand(name, ref, deps);
+      const attributes = collectHttpSpanAttributes(c, "/channels/telegram");
+      attributes["telegram.chat.id"] = msg.chat.id;
+      if (parsed.data.update_id !== undefined) {
+        attributes["telegram.update.id"] = parsed.data.update_id;
+      }
+      if (name !== undefined) {
+        attributes["telegram.command"] = name;
+      }
+      await deps.telemetry.runInSpan(
+        "POST /channels/telegram",
+        () => handleSlashCommand(name, ref, deps),
+        attributes,
+      );
       return c.body(null, 200);
     }
 

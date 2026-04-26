@@ -10,6 +10,7 @@ import {
 import type { JobQueue } from "../../../../../src/use-cases/ports/job-queue";
 import type { ChannelGateway } from "../../../../../src/use-cases/ports/channel-gateway";
 import { makeFakeLogger } from "../../../../mocks/fake-logger";
+import { makeSpyTelemetry } from "../../../../mocks/spy-telemetry";
 
 const VALID_SECRET = "test-secret-token";
 
@@ -43,6 +44,7 @@ function makeApp(overrides?: {
   channelGateway?: ChannelGateway;
   webhookSecret?: string;
   logger?: ReturnType<typeof makeFakeLogger>;
+  telemetry?: ReturnType<typeof makeSpyTelemetry>;
 }) {
   return createTelegramRoute({
     jobQueue: overrides?.jobQueue ?? makeJobQueue(),
@@ -51,6 +53,7 @@ function makeApp(overrides?: {
     channelGateway: overrides?.channelGateway ?? makeChannelGateway(),
     webhookSecret: overrides?.webhookSecret ?? VALID_SECRET,
     logger: overrides?.logger ?? makeFakeLogger(),
+    telemetry: overrides?.telemetry ?? makeSpyTelemetry(),
   });
 }
 
@@ -344,5 +347,49 @@ describe("POST /channels/telegram", () => {
       { channel: "telegram", chatId: 7, payload: {} },
       "Unknown command: /help",
     );
+  });
+
+  it("opens exactly 1 span 'POST /channels/telegram' with telegram.chat.id and telegram.command:'new' for /new", async () => {
+    const telemetry = makeSpyTelemetry();
+    const app = makeApp({ telemetry });
+
+    const res = await post(
+      app,
+      {
+        update_id: 100,
+        message: { text: "/new", chat: { id: 99 } },
+      },
+      VALID_SECRET,
+    );
+
+    expect(res.status).toBe(200);
+    expect(telemetry.calls).toHaveLength(1);
+    const call = telemetry.calls[0]!;
+    expect(call.name).toBe("POST /channels/telegram");
+    expect(call.attributes).toMatchObject({
+      "telegram.chat.id": 99,
+      "telegram.update.id": 100,
+      "telegram.command": "new",
+    });
+  });
+
+  it("opens exactly 1 span with telegram.command:'unknown' for an unrecognised slash command", async () => {
+    const telemetry = makeSpyTelemetry();
+    const app = makeApp({ telemetry });
+
+    const res = await post(
+      app,
+      { message: { text: "/unknown", chat: { id: 5 } } },
+      VALID_SECRET,
+    );
+
+    expect(res.status).toBe(200);
+    expect(telemetry.calls).toHaveLength(1);
+    const call = telemetry.calls[0]!;
+    expect(call.name).toBe("POST /channels/telegram");
+    expect(call.attributes).toMatchObject({
+      "telegram.chat.id": 5,
+      "telegram.command": "unknown",
+    });
   });
 });

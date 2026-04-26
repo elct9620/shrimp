@@ -7,6 +7,7 @@ import type { JobQueue } from "../../use-cases/ports/job-queue";
 import type { BoardRepository } from "../../use-cases/ports/board-repository";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import type { ChannelGateway } from "../../use-cases/ports/channel-gateway";
+import type { TelemetryPort } from "../../use-cases/ports/telemetry";
 import { createHealthRoute } from "./routes/health";
 import {
   createHeartbeatRoute,
@@ -30,6 +31,7 @@ export type CreateAppDeps = {
     startNewSession: SessionStarter;
     channelGateway: ChannelGateway;
     webhookSecret: string;
+    telemetry: TelemetryPort;
   };
 };
 
@@ -78,6 +80,7 @@ export function createApp(deps: CreateAppDeps): Hono<AppEnv> {
         channelGateway: deps.channels.channelGateway,
         webhookSecret: deps.channels.webhookSecret,
         logger: deps.logger,
+        telemetry: deps.channels.telemetry,
       }),
     );
   }

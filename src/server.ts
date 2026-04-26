@@ -40,6 +40,7 @@ async function main() {
           TOKENS.ChannelGateway,
         ),
         webhookSecret: env.telegramWebhookSecret!,
+        telemetry,
       }
     : undefined;
 

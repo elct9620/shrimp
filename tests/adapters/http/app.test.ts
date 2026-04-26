@@ -12,6 +12,7 @@ import type { JobQueue } from "../../../src/use-cases/ports/job-queue";
 import type { BoardRepository } from "../../../src/use-cases/ports/board-repository";
 import type { ChannelGateway } from "../../../src/use-cases/ports/channel-gateway";
 import { makeFakeLogger } from "../../mocks/fake-logger";
+import { makeSpyTelemetry } from "../../mocks/spy-telemetry";
 import pino from "pino";
 
 const VALID_SECRET = "webhook-secret";
@@ -55,6 +56,7 @@ function makeChannelDeps() {
     startNewSession,
     channelGateway,
     webhookSecret: VALID_SECRET,
+    telemetry: makeSpyTelemetry(),
   };
 }
 
