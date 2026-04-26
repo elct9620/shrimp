@@ -117,7 +117,7 @@ export class TelegramChannel implements ChannelGateway {
 
   async indicateProcessing(ref: ConversationRef): Promise<void> {
     if (ref.channel !== TELEGRAM_CHANNEL_NAME) {
-      this.logger.warn(LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL, {
+      this.logger.debug(LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL, {
         channel: ref.channel,
       });
       return;
@@ -163,7 +163,7 @@ export class TelegramChannel implements ChannelGateway {
   async reply(ref: ConversationRef, text: string): Promise<void> {
     // Guard: only handle refs originating from the Telegram webhook adapter.
     if (ref.channel !== TELEGRAM_CHANNEL_NAME) {
-      this.logger.warn(LOG_REPLY_SKIPPED_WRONG_CHANNEL, {
+      this.logger.debug(LOG_REPLY_SKIPPED_WRONG_CHANNEL, {
         channel: ref.channel,
       });
       return;

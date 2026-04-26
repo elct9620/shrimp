@@ -129,7 +129,7 @@ describe("TelegramChannel.reply", () => {
     );
   });
 
-  it("skips Telegram endpoint for wrong-channel ref and logs warn", async () => {
+  it("skips Telegram endpoint for wrong-channel ref and logs debug", async () => {
     let handlerCalled = false;
     server.use(
       http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
@@ -143,7 +143,7 @@ describe("TelegramChannel.reply", () => {
     await channel.reply({ channel: "slack", payload: { chatId: 1 } }, "hi");
 
     expect(handlerCalled).toBe(false);
-    expect(logger.warn).toHaveBeenCalledWith(
+    expect(logger.debug).toHaveBeenCalledWith(
       LOG_REPLY_SKIPPED_WRONG_CHANNEL,
       expect.objectContaining({ channel: "slack" }),
     );
@@ -622,7 +622,7 @@ describe("TelegramChannel.indicateProcessing", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it("skips and logs warn when ref.channel is not telegram", async () => {
+  it("skips and logs debug when ref.channel is not telegram", async () => {
     const logger = makeFakeLogger();
     const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
@@ -631,7 +631,7 @@ describe("TelegramChannel.indicateProcessing", () => {
       payload: { chatId: 1 },
     });
 
-    expect(logger.warn).toHaveBeenCalledWith(
+    expect(logger.debug).toHaveBeenCalledWith(
       LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL,
       expect.objectContaining({ channel: "other" }),
     );
@@ -771,7 +771,7 @@ describe("TelegramChannel.indicateProcessing", () => {
       });
 
       expect(telemetry.calls).toHaveLength(0);
-      expect(logger.warn).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL,
         expect.objectContaining({ channel: "other" }),
       );
