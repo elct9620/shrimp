@@ -74,7 +74,10 @@ describe("TelegramChannel.reply", () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       LOG_REPLY_FAILED_UPSTREAM_STATUS,
-      expect.objectContaining({ status: 400 }),
+      expect.objectContaining({
+        event: "telegram.reply.upstream_status_failed",
+        status: 400,
+      }),
     );
   });
 
@@ -96,7 +99,10 @@ describe("TelegramChannel.reply", () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       LOG_REPLY_FAILED_NETWORK,
-      expect.objectContaining({ err: expect.any(Error) }),
+      expect.objectContaining({
+        event: "telegram.reply.network_failed",
+        err: expect.any(Error),
+      }),
     );
   });
 
@@ -123,6 +129,7 @@ describe("TelegramChannel.reply", () => {
     expect(logger.warn).toHaveBeenCalledWith(
       LOG_REPLY_FAILED_UPSTREAM_ERROR,
       expect.objectContaining({
+        event: "telegram.reply.upstream_error",
         error_code: 400,
         description: "Bad Request: message is too long",
       }),
@@ -145,7 +152,10 @@ describe("TelegramChannel.reply", () => {
     expect(handlerCalled).toBe(false);
     expect(logger.debug).toHaveBeenCalledWith(
       LOG_REPLY_SKIPPED_WRONG_CHANNEL,
-      expect.objectContaining({ channel: "slack" }),
+      expect.objectContaining({
+        event: "telegram.reply.skipped_wrong_channel",
+        channel: "slack",
+      }),
     );
   });
 
@@ -240,7 +250,10 @@ describe("TelegramChannel.reply", () => {
       expect(logger.warn).toHaveBeenCalledOnce();
       expect(logger.warn).toHaveBeenCalledWith(
         LOG_REPLY_FAILED_NETWORK,
-        expect.objectContaining({ attempts: 3 }),
+        expect.objectContaining({
+          event: "telegram.reply.network_failed",
+          attempts: 3,
+        }),
       );
     });
 
@@ -274,7 +287,10 @@ describe("TelegramChannel.reply", () => {
       expect(logger.warn).toHaveBeenCalledOnce();
       expect(logger.warn).toHaveBeenCalledWith(
         LOG_REPLY_FAILED_UPSTREAM_ERROR,
-        expect.objectContaining({ description: "Bad Request: chat not found" }),
+        expect.objectContaining({
+          event: "telegram.reply.upstream_error",
+          description: "Bad Request: chat not found",
+        }),
       );
     });
 
@@ -427,7 +443,11 @@ describe("TelegramChannel.reply", () => {
     expect(logger.warn).toHaveBeenCalledOnce();
     expect(logger.warn).toHaveBeenCalledWith(
       LOG_REPLY_FAILED_UPSTREAM_ERROR,
-      expect.objectContaining({ chunkIndex: 2, totalChunks: 3 }),
+      expect.objectContaining({
+        event: "telegram.reply.upstream_error",
+        chunkIndex: 2,
+        totalChunks: 3,
+      }),
     );
   });
 
@@ -633,7 +653,10 @@ describe("TelegramChannel.indicateProcessing", () => {
 
     expect(logger.debug).toHaveBeenCalledWith(
       LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL,
-      expect.objectContaining({ channel: "other" }),
+      expect.objectContaining({
+        event: "telegram.chat_action.skipped_wrong_channel",
+        channel: "other",
+      }),
     );
   });
 
@@ -655,7 +678,10 @@ describe("TelegramChannel.indicateProcessing", () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       LOG_CHAT_ACTION_FAILED_UPSTREAM_STATUS,
-      expect.objectContaining({ status: 403 }),
+      expect.objectContaining({
+        event: "telegram.chat_action.upstream_status_failed",
+        status: 403,
+      }),
     );
   });
 
@@ -677,7 +703,10 @@ describe("TelegramChannel.indicateProcessing", () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       LOG_CHAT_ACTION_FAILED_NETWORK,
-      expect.objectContaining({ err: expect.any(Error) }),
+      expect.objectContaining({
+        event: "telegram.chat_action.network_failed",
+        err: expect.any(Error),
+      }),
     );
   });
 
@@ -773,7 +802,10 @@ describe("TelegramChannel.indicateProcessing", () => {
       expect(telemetry.calls).toHaveLength(0);
       expect(logger.debug).toHaveBeenCalledWith(
         LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL,
-        expect.objectContaining({ channel: "other" }),
+        expect.objectContaining({
+          event: "telegram.chat_action.skipped_wrong_channel",
+          channel: "other",
+        }),
       );
     });
   });

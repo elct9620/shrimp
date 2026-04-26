@@ -118,6 +118,7 @@ export class TelegramChannel implements ChannelGateway {
   async indicateProcessing(ref: ConversationRef): Promise<void> {
     if (ref.channel !== TELEGRAM_CHANNEL_NAME) {
       this.logger.debug(LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL, {
+        event: "telegram.chat_action.skipped_wrong_channel",
         channel: ref.channel,
       });
       return;
@@ -145,6 +146,7 @@ export class TelegramChannel implements ChannelGateway {
           span.recordException(new Error(`http ${resp.status}`));
           span.setAttribute("attempt.outcome", "http_error");
           this.logger.warn(LOG_CHAT_ACTION_FAILED_UPSTREAM_STATUS, {
+            event: "telegram.chat_action.upstream_status_failed",
             status: resp.status,
           });
         } else {
@@ -154,6 +156,7 @@ export class TelegramChannel implements ChannelGateway {
         span.recordException(err);
         span.setAttribute("attempt.outcome", "network_error");
         this.logger.warn(LOG_CHAT_ACTION_FAILED_NETWORK, {
+          event: "telegram.chat_action.network_failed",
           err,
         });
       }
@@ -164,6 +167,7 @@ export class TelegramChannel implements ChannelGateway {
     // Guard: only handle refs originating from the Telegram webhook adapter.
     if (ref.channel !== TELEGRAM_CHANNEL_NAME) {
       this.logger.debug(LOG_REPLY_SKIPPED_WRONG_CHANNEL, {
+        event: "telegram.reply.skipped_wrong_channel",
         channel: ref.channel,
       });
       return;
@@ -355,6 +359,7 @@ export class TelegramChannel implements ChannelGateway {
       // Translate outcome to logger.warn + return/continue outside the span.
       if (result.outcome === "give_up_network") {
         this.logger.warn(LOG_REPLY_FAILED_NETWORK, {
+          event: "telegram.reply.network_failed",
           err: result.err,
           attempts: MAX_ATTEMPTS,
           ...chunkContext,
@@ -363,6 +368,7 @@ export class TelegramChannel implements ChannelGateway {
       }
       if (result.outcome === "give_up_status") {
         this.logger.warn(LOG_REPLY_FAILED_UPSTREAM_STATUS, {
+          event: "telegram.reply.upstream_status_failed",
           status: result.status,
           error_code: result.error_code,
           description: result.description,
@@ -373,6 +379,7 @@ export class TelegramChannel implements ChannelGateway {
       }
       if (result.outcome === "http_error") {
         this.logger.warn(LOG_REPLY_FAILED_UPSTREAM_STATUS, {
+          event: "telegram.reply.upstream_status_failed",
           status: result.status,
           error_code: result.error_code,
           description: result.description,
@@ -382,6 +389,7 @@ export class TelegramChannel implements ChannelGateway {
       }
       if (result.outcome === "telegram_error") {
         this.logger.warn(LOG_REPLY_FAILED_UPSTREAM_ERROR, {
+          event: "telegram.reply.upstream_error",
           error_code: result.error_code,
           description: result.description,
           ...chunkContext,
