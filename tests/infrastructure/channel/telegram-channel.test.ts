@@ -925,7 +925,7 @@ describe("TelegramChannel.indicateProcessing", () => {
       channel.indicateProcessing({
         channel: TELEGRAM_CHANNEL_NAME,
         chatId: 42,
-      payload: {},
+        payload: {},
       }),
     ).resolves.toBeUndefined();
 
@@ -951,7 +951,7 @@ describe("TelegramChannel.indicateProcessing", () => {
       channel.indicateProcessing({
         channel: TELEGRAM_CHANNEL_NAME,
         chatId: 7,
-      payload: {},
+        payload: {},
       }),
     ).resolves.toBeUndefined();
 
@@ -978,7 +978,7 @@ describe("TelegramChannel.indicateProcessing", () => {
       await channel.indicateProcessing({
         channel: TELEGRAM_CHANNEL_NAME,
         chatId: 200,
-      payload: {},
+        payload: {},
       });
 
       expect(telemetry.calls).toHaveLength(1);
@@ -1007,7 +1007,7 @@ describe("TelegramChannel.indicateProcessing", () => {
       await channel.indicateProcessing({
         channel: TELEGRAM_CHANNEL_NAME,
         chatId: 201,
-      payload: {},
+        payload: {},
       });
 
       expect(telemetry.calls).toHaveLength(1);
@@ -1033,7 +1033,7 @@ describe("TelegramChannel.indicateProcessing", () => {
       await channel.indicateProcessing({
         channel: TELEGRAM_CHANNEL_NAME,
         chatId: 202,
-      payload: {},
+        payload: {},
       });
 
       expect(telemetry.calls).toHaveLength(1);
