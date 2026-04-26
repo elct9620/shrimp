@@ -410,6 +410,116 @@ describe("TelegramChannel.reply", () => {
       expect(callCount).toBe(2);
       expect(logger.warn).not.toHaveBeenCalled();
     });
+
+    it("retries using HTTP Retry-After header when body has no parameters.retry_after", async () => {
+      let callCount = 0;
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          if (callCount === 1) {
+            return HttpResponse.json(
+              { ok: false, error_code: 429, description: "Too Many Requests" },
+              { status: 429, headers: { "retry-after": "1" } },
+            );
+          }
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 10 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(callCount).toBe(2);
+      expect(logger.warn).not.toHaveBeenCalled();
+      // Attempt 1 span (calls[1]) must record 1s * 1000 = 1000ms delay.
+      const attempt1 = telemetry.calls[1];
+      expect(attempt1.spanAttributes).toEqual(
+        expect.objectContaining({ "telegram.retry_after_ms": 1000 }),
+      );
+    });
+
+    it("body parameters.retry_after wins over HTTP Retry-After header", async () => {
+      let callCount = 0;
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          if (callCount === 1) {
+            return HttpResponse.json(
+              {
+                ok: false,
+                error_code: 429,
+                description: "Too Many Requests: retry after 1",
+                parameters: { retry_after: 1 },
+              },
+              { status: 429, headers: { "retry-after": "5" } },
+            );
+          }
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 11 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(callCount).toBe(2);
+      // Body retry_after: 1 (1000ms) wins over header retry-after: 5 (5000ms).
+      const attempt1 = telemetry.calls[1];
+      expect(attempt1.spanAttributes).toEqual(
+        expect.objectContaining({ "telegram.retry_after_ms": 1000 }),
+      );
+    });
+
+    it("falls back to BACKOFF_MS when HTTP Retry-After header exceeds the 10s cap", async () => {
+      let callCount = 0;
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          if (callCount === 1) {
+            return HttpResponse.json(
+              { ok: false, error_code: 429, description: "Too Many Requests" },
+              { status: 429, headers: { "retry-after": "30" } },
+            );
+          }
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 12 } },
+        "hi",
+      );
+
+      // First attempt fires immediately.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(callCount).toBe(1);
+
+      // Header value of 30s exceeds cap — falls back to BACKOFF_MS[0] = 250ms.
+      await vi.advanceTimersByTimeAsync(BACKOFF_MS[0]);
+      await promise;
+
+      expect(callCount).toBe(2);
+      const attempt1 = telemetry.calls[1];
+      expect(attempt1.spanAttributes).toEqual(
+        expect.objectContaining({ "telegram.retry_after_ms": BACKOFF_MS[0] }),
+      );
+    });
   });
 
   it("is Fail-Open when a middle chunk returns ok:false — all three requests are made and warn includes chunkIndex", async () => {

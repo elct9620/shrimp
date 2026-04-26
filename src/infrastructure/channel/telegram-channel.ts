@@ -91,10 +91,42 @@ function isRetryableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status < 600);
 }
 
-function retryDelayMs(attempt: number, retryAfterSeconds?: number): number {
-  if (retryAfterSeconds != null && Number.isFinite(retryAfterSeconds)) {
-    const ms = retryAfterSeconds * 1000;
-    if (ms > 0 && ms <= RETRY_AFTER_CAP_MS) return ms;
+/**
+ * Parse the HTTP `Retry-After` header value as delta-seconds.
+ *
+ * RFC 7231 allows either delta-seconds or an HTTP-date. Only delta-seconds
+ * are supported here; Telegram does not use the HTTP-date form in practice,
+ * so it is intentionally left unimplemented.
+ */
+function parseRetryAfterHeader(
+  value: string | null | undefined,
+): number | undefined {
+  if (!value) return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return undefined;
+  return n;
+}
+
+/**
+ * Compute the backoff delay in milliseconds for the given attempt.
+ *
+ * Resolution priority:
+ *  1. `bodyRetryAfterSeconds` — Telegram Bot API `parameters.retry_after` (primary per API docs)
+ *  2. `headerRetryAfterSeconds` — standard HTTP `Retry-After` header (fallback)
+ *  3. `BACKOFF_MS[attempt]` — exponential backoff table (cap exceeded or no hint)
+ *
+ * Both seconds-based inputs are subject to the same `RETRY_AFTER_CAP_MS` cap.
+ */
+function retryDelayMs(
+  attempt: number,
+  bodyRetryAfterSeconds?: number,
+  headerRetryAfterSeconds?: number,
+): number {
+  for (const seconds of [bodyRetryAfterSeconds, headerRetryAfterSeconds]) {
+    if (seconds != null && Number.isFinite(seconds)) {
+      const ms = seconds * 1000;
+      if (ms > 0 && ms <= RETRY_AFTER_CAP_MS) return ms;
+    }
   }
   return BACKOFF_MS[attempt] ?? BACKOFF_MS[BACKOFF_MS.length - 1];
 }
@@ -273,8 +305,12 @@ export class TelegramChannel implements ChannelGateway {
           // Parse body for every response — Telegram Bot API reports
           // application-level failures (including 429 throttling) via
           // `ok:false` + description, with the retry delay carried in
-          // `parameters.retry_after` (seconds).
-          // The HTTP `Retry-After` header is not guaranteed.
+          // `parameters.retry_after` (seconds). The standard HTTP
+          // `Retry-After` header is parsed as a fallback for cases where
+          // Telegram omits the body field.
+          const headerRetryAfter = parseRetryAfterHeader(
+            resp.headers.get("retry-after"),
+          );
           const responseBody = (await resp.json().catch(() => null)) as {
             ok: boolean;
             error_code?: number;
@@ -303,6 +339,7 @@ export class TelegramChannel implements ChannelGateway {
             const delayMs = retryDelayMs(
               attempt,
               responseBody?.parameters?.retry_after,
+              headerRetryAfter,
             );
             span.setAttribute("attempt.outcome", "retry_status");
             span.setAttribute("telegram.retry_after_ms", delayMs);
