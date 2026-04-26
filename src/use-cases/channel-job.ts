@@ -17,11 +17,6 @@ import { assembleChannelSystemPrompt } from "./prompt-assembler";
 
 export const CYCLE_FINISHED = "cycle finished";
 
-function deriveChatId(ref: ConversationRef): number | undefined {
-  const payload = ref.payload as { chatId?: unknown };
-  return typeof payload?.chatId === "number" ? payload.chatId : undefined;
-}
-
 // Log event constants
 export const AUTO_COMPACT_SUMMARIZE_FAILED =
   "auto compact: summarize failed, skipping compaction this turn";
@@ -95,11 +90,12 @@ export class ChannelJob {
     return this.telemetry.runInSpan(
       event.telemetry.spanName,
       async () => {
-        const chatId = deriveChatId(event.ref);
         const log = this.logger.child({
           job_id: jobId,
           channel: event.ref.channel,
-          ...(chatId !== undefined ? { chat_id: chatId } : {}),
+          ...(event.ref.chatId !== undefined
+            ? { chat_id: event.ref.chatId }
+            : {}),
         });
 
         log.info("cycle started");

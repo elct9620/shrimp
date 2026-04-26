@@ -48,7 +48,7 @@ describe("TelegramChannel.reply", () => {
     const channel = new TelegramChannel(BOT_TOKEN, logger, makeSpyTelemetry());
 
     await channel.reply(
-      { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 123 } },
+      { channel: TELEGRAM_CHANNEL_NAME, chatId: 123, payload: {} },
       "hi",
     );
 
@@ -67,7 +67,7 @@ describe("TelegramChannel.reply", () => {
 
     await expect(
       channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 42 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 42, payload: {} },
         "hello",
       ),
     ).resolves.toBeUndefined();
@@ -92,7 +92,7 @@ describe("TelegramChannel.reply", () => {
 
     await expect(
       channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 7 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 7, payload: {} },
         "test",
       ),
     ).resolves.toBeUndefined();
@@ -121,7 +121,7 @@ describe("TelegramChannel.reply", () => {
 
     await expect(
       channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 99 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 99, payload: {} },
         "a".repeat(4097),
       ),
     ).resolves.toBeUndefined();
@@ -173,7 +173,7 @@ describe("TelegramChannel.reply", () => {
     const longText = "a".repeat(4000) + "\n\n" + "b".repeat(1000);
 
     await channel.reply(
-      { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 55 } },
+      { channel: TELEGRAM_CHANNEL_NAME, chatId: 55, payload: {} },
       longText,
     );
 
@@ -214,7 +214,7 @@ describe("TelegramChannel.reply", () => {
       );
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 1 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 1, payload: {} },
         "hi",
       );
       await vi.runAllTimersAsync();
@@ -240,7 +240,7 @@ describe("TelegramChannel.reply", () => {
       );
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 2 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 2, payload: {} },
         "hi",
       );
       await vi.runAllTimersAsync();
@@ -277,7 +277,7 @@ describe("TelegramChannel.reply", () => {
       );
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 3 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 3, payload: {} },
         "hi",
       );
       await vi.runAllTimersAsync();
@@ -321,7 +321,7 @@ describe("TelegramChannel.reply", () => {
       );
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 4 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 4, payload: {} },
         "hi",
       );
       await vi.runAllTimersAsync();
@@ -358,7 +358,7 @@ describe("TelegramChannel.reply", () => {
       );
 
       await channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 5 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 5, payload: {} },
         "hi",
       );
 
@@ -393,7 +393,7 @@ describe("TelegramChannel.reply", () => {
       );
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 6 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 6, payload: {} },
         "hi",
       );
 
@@ -430,7 +430,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 10 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 10, payload: {} },
         "hi",
       );
       await vi.runAllTimersAsync();
@@ -469,7 +469,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 11 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 11, payload: {} },
         "hi",
       );
       await vi.runAllTimersAsync();
@@ -502,7 +502,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 12 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 12, payload: {} },
         "hi",
       );
 
@@ -544,7 +544,7 @@ describe("TelegramChannel.reply", () => {
 
     await expect(
       channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 77 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 77, payload: {} },
         nineKText,
       ),
     ).resolves.toBeUndefined();
@@ -573,7 +573,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       await channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 100 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 100, payload: {} },
         "hello",
       );
 
@@ -606,7 +606,7 @@ describe("TelegramChannel.reply", () => {
         "z".repeat(3000);
 
       await channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 200 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 200, payload: {} },
         nineKText,
       );
 
@@ -641,7 +641,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       await channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 101 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 101, payload: {} },
         "hello",
       );
 
@@ -675,7 +675,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 102 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 102, payload: {} },
         "hi",
       );
       await vi.runAllTimersAsync();
@@ -712,7 +712,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       await channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 103 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 103, payload: {} },
         "hi",
       );
 
@@ -741,7 +741,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 104 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 104, payload: {} },
         "hi",
       );
       await vi.runAllTimersAsync();
@@ -783,7 +783,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 105 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 105, payload: {} },
         "hi",
       );
       await vi.runAllTimersAsync();
@@ -826,7 +826,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       const promise = channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 106 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 106, payload: {} },
         "hi",
       );
       await vi.runAllTimersAsync();
@@ -854,7 +854,7 @@ describe("TelegramChannel.reply", () => {
       const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
 
       await channel.reply(
-        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 107 } },
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 107, payload: {} },
         "hi",
       );
 
@@ -886,7 +886,8 @@ describe("TelegramChannel.indicateProcessing", () => {
 
     await channel.indicateProcessing({
       channel: TELEGRAM_CHANNEL_NAME,
-      payload: { chatId: 123 },
+      chatId: 123,
+      payload: {},
     });
 
     expect(capturedBody).toEqual({ chat_id: 123, action: "typing" });
@@ -923,7 +924,8 @@ describe("TelegramChannel.indicateProcessing", () => {
     await expect(
       channel.indicateProcessing({
         channel: TELEGRAM_CHANNEL_NAME,
-        payload: { chatId: 42 },
+        chatId: 42,
+      payload: {},
       }),
     ).resolves.toBeUndefined();
 
@@ -948,7 +950,8 @@ describe("TelegramChannel.indicateProcessing", () => {
     await expect(
       channel.indicateProcessing({
         channel: TELEGRAM_CHANNEL_NAME,
-        payload: { chatId: 7 },
+        chatId: 7,
+      payload: {},
       }),
     ).resolves.toBeUndefined();
 
@@ -974,7 +977,8 @@ describe("TelegramChannel.indicateProcessing", () => {
 
       await channel.indicateProcessing({
         channel: TELEGRAM_CHANNEL_NAME,
-        payload: { chatId: 200 },
+        chatId: 200,
+      payload: {},
       });
 
       expect(telemetry.calls).toHaveLength(1);
@@ -1002,7 +1006,8 @@ describe("TelegramChannel.indicateProcessing", () => {
 
       await channel.indicateProcessing({
         channel: TELEGRAM_CHANNEL_NAME,
-        payload: { chatId: 201 },
+        chatId: 201,
+      payload: {},
       });
 
       expect(telemetry.calls).toHaveLength(1);
@@ -1027,7 +1032,8 @@ describe("TelegramChannel.indicateProcessing", () => {
 
       await channel.indicateProcessing({
         channel: TELEGRAM_CHANNEL_NAME,
-        payload: { chatId: 202 },
+        chatId: 202,
+      payload: {},
       });
 
       expect(telemetry.calls).toHaveLength(1);

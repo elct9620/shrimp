@@ -146,7 +146,8 @@ export function createTelegramRoute(deps: {
     const text = msg.text;
     const ref: ConversationRef = {
       channel: TELEGRAM_CHANNEL_NAME,
-      payload: { chatId: msg.chat.id },
+      chatId: msg.chat.id,
+      payload: {},
     };
 
     if (text.startsWith("/")) {

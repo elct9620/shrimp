@@ -290,7 +290,8 @@ describe("POST /channels/telegram", () => {
     expect(runArg.message).toBe("hello");
     expect(runArg.ref).toEqual({
       channel: "telegram",
-      payload: { chatId: 42 },
+      chatId: 42,
+      payload: {},
     });
     expect(runArg.telemetry.spanName).toBe("POST /channels/telegram");
     expect(runArg.telemetry.attributes).toMatchObject({
@@ -319,7 +320,7 @@ describe("POST /channels/telegram", () => {
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(startNewSession.execute).toHaveBeenCalledTimes(1);
     expect(channelGateway.reply).toHaveBeenCalledWith(
-      { channel: "telegram", payload: { chatId: 99 } },
+      { channel: "telegram", chatId: 99, payload: {} },
       "Started a new session.",
     );
   });
@@ -340,7 +341,7 @@ describe("POST /channels/telegram", () => {
     expect(jobQueue.enqueue).not.toHaveBeenCalled();
     expect(startNewSession.execute).not.toHaveBeenCalled();
     expect(channelGateway.reply).toHaveBeenCalledWith(
-      { channel: "telegram", payload: { chatId: 7 } },
+      { channel: "telegram", chatId: 7, payload: {} },
       "Unknown command: /help",
     );
   });

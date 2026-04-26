@@ -22,8 +22,6 @@ export const LOG_CHAT_ACTION_FAILED_UPSTREAM_STATUS =
 export const LOG_CHAT_ACTION_FAILED_NETWORK =
   "telegram chat action failed — network";
 
-type TelegramPayload = { chatId: number };
-
 /**
  * Split text into chunks of at most `limit` characters.
  * Prefers to break at the last "\n\n" within the window, then "\n", then " ",
@@ -155,7 +153,7 @@ export class TelegramChannel implements ChannelGateway {
       });
       return;
     }
-    const chatId = (ref.payload as TelegramPayload).chatId;
+    const chatId = ref.chatId!;
     const url = `https://api.telegram.org/bot${this.botToken}/sendChatAction`;
     const body = JSON.stringify({ chat_id: chatId, action: "typing" });
 
@@ -204,7 +202,7 @@ export class TelegramChannel implements ChannelGateway {
       });
       return;
     }
-    const chatId = (ref.payload as TelegramPayload).chatId;
+    const chatId = ref.chatId!;
     const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
     const chunks = chunkText(text, TELEGRAM_MAX_MESSAGE_LENGTH);
     const totalChunks = chunks.length;

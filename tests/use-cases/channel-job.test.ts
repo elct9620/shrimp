@@ -47,7 +47,7 @@ import { AiSdkSummarizePort } from "../../src/infrastructure/ai/ai-sdk-summarize
 
 const makeRef = (): ConversationRef => ({
   channel: "telegram",
-  payload: { chatId: "123" },
+  payload: {},
 });
 
 const DEFAULT_TELEMETRY = {
@@ -183,7 +183,8 @@ describe("ChannelJob.run — child logger bindings", () => {
 
     const ref: ConversationRef = {
       channel: "telegram",
-      payload: { chatId: 42 },
+      chatId: 42,
+      payload: {},
     };
 
     await job.run({ message: "Hi", ref, telemetry: DEFAULT_TELEMETRY });
@@ -194,6 +195,24 @@ describe("ChannelJob.run — child logger bindings", () => {
         channel: "telegram",
         chat_id: 42,
       }),
+    );
+  });
+
+  it("omits chat_id from child logger bindings when ref has no chatId", async () => {
+    const sessionRepo = makeSessionRepository();
+    const agent = makeShrimpAgent();
+    const logger = makeFakeLogger();
+    const job = makeJob(sessionRepo, agent, logger);
+
+    const ref: ConversationRef = {
+      channel: "telegram",
+      payload: {},
+    };
+
+    await job.run({ message: "Hi", ref, telemetry: DEFAULT_TELEMETRY });
+
+    expect(logger.child).toHaveBeenCalledWith(
+      expect.not.objectContaining({ chat_id: expect.anything() }),
     );
   });
 
