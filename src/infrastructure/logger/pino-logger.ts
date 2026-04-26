@@ -71,6 +71,27 @@ export type CreatePinoLoggerResult = {
   pino: Logger;
 };
 
+/**
+ * Field-name convention — why pino defaults are the conformant choice:
+ *
+ * Pino inherits the bunyan JSON-logging lineage (https://github.com/trentm/node-bunyan),
+ * which established `level` (numeric), `time` (epoch ms), and `msg` as the de-facto
+ * Node.js structured-log baseline. This is the convention, not just a default.
+ *
+ * OTel Logs Data Model (https://opentelemetry.io/docs/specs/otel/logs/data-model/) defines
+ * its own abstract field names (`SeverityText`, `SeverityNumber`, `Timestamp`, `Body`), but
+ * these are internal model fields — the OTel Collector maps from whatever JSON field names
+ * you emit via `parse_from` rules; there is no prescribed stdout JSON wire format.
+ * `@opentelemetry/instrumentation-pino` bridges pino → OTel SDK in-process without
+ * requiring field renames in the emitted JSON.
+ *
+ * Renaming to OTel or ECS field names (`severity_text`, `@timestamp`, `message`) would:
+ *   - break Dozzle's level coloring (which uses the `level` field for color coding)
+ *   - provide no collector benefit (the collector is configured to suit the source)
+ *   - diverge from the bunyan convention that pino intentionally follows
+ *
+ * Verdict: `{level: <number>, time: <epoch ms>, msg: "..."}` is the standard here.
+ */
 export function createPinoLogger(
   options: CreatePinoLoggerOptions,
 ): CreatePinoLoggerResult {
