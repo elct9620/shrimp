@@ -1,7 +1,18 @@
 import pino, { type Logger, type DestinationStream } from "pino";
+import { trace } from "@opentelemetry/api";
 import type { LogLevel } from "../config/env-config";
 import type { LoggerPort } from "../../use-cases/ports/logger";
 import { errorContext } from "./error-context";
+
+const INVALID_TRACE_ID = "00000000000000000000000000000000";
+
+function otelMixin(): Record<string, unknown> {
+  const span = trace.getActiveSpan();
+  if (!span) return {};
+  const ctx = span.spanContext();
+  if (ctx.traceId === INVALID_TRACE_ID) return {};
+  return { trace_id: ctx.traceId, span_id: ctx.spanId };
+}
 
 type LogMethod = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 
@@ -65,6 +76,7 @@ export function createPinoLogger(
 ): CreatePinoLoggerResult {
   const pinoOptions: pino.LoggerOptions = {
     level: options.level,
+    mixin: otelMixin,
     serializers: {
       err: (value: unknown) => errorContext(value),
       cause: (value: unknown) => errorContext(value),

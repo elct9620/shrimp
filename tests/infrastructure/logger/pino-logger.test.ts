@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import pino, { type Logger } from "pino";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
+import { context, trace } from "@opentelemetry/api";
 import {
   PinoLogger,
   createPinoLogger,
@@ -242,6 +249,69 @@ describe("PinoLogger", () => {
 
       const lines = parsed();
       expect(lines[0]!.chatId).toBe(42);
+    });
+  });
+
+  describe("OTel trace correlation via mixin", () => {
+    // Each test that registers a global provider must reset it afterwards to
+    // avoid cross-test contamination (matches the pattern in otel-telemetry.test.ts).
+    afterEach(() => {
+      trace.disable();
+      context.disable();
+    });
+
+    function makeOtelCapture() {
+      const messages: string[] = [];
+      const destination = {
+        write: (msg: string) => {
+          messages.push(msg);
+        },
+      };
+      const { logger } = createPinoLogger({ level: "info", destination });
+      const parsed = () =>
+        messages.map((m) => JSON.parse(m) as Record<string, unknown>);
+      return { logger, parsed };
+    }
+
+    function makeRegisteredProvider() {
+      const exporter = new InMemorySpanExporter();
+      const provider = new BasicTracerProvider({
+        spanProcessors: [new SimpleSpanProcessor(exporter)],
+      });
+      // Register as the global provider and install a real context manager so
+      // trace.getActiveSpan() sees spans started via startActiveSpan().
+      const contextManager = new AsyncLocalStorageContextManager();
+      contextManager.enable();
+      context.setGlobalContextManager(contextManager);
+      trace.setGlobalTracerProvider(provider);
+      return { provider, tracer: provider.getTracer("pino-logger-test") };
+    }
+
+    it("does NOT inject trace_id or span_id when no active span is in scope", () => {
+      const { logger, parsed } = makeOtelCapture();
+
+      logger.info("outside span");
+
+      const lines = parsed();
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).not.toHaveProperty("trace_id");
+      expect(lines[0]).not.toHaveProperty("span_id");
+    });
+
+    it("injects trace_id and span_id matching the active span when inside a span", () => {
+      const { logger, parsed } = makeOtelCapture();
+      const { tracer } = makeRegisteredProvider();
+
+      tracer.startActiveSpan("test-span", (span) => {
+        const ctx = span.spanContext();
+        logger.info("inside span");
+        span.end();
+
+        const lines = parsed();
+        expect(lines).toHaveLength(1);
+        expect(lines[0]!.trace_id).toBe(ctx.traceId);
+        expect(lines[0]!.span_id).toBe(ctx.spanId);
+      });
     });
   });
 });
