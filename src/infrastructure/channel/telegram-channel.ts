@@ -75,7 +75,11 @@ export function chunkText(text: string, limit: number): string[] {
 const MAX_ATTEMPTS = 3;
 export const BACKOFF_MS = [250, 500] as const;
 const RETRY_AFTER_CAP_MS = 10_000;
-const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+// Aligned with Telegram Bot API's documented 60s server-side response timeout
+// (core.telegram.org/bots/faq). A shorter client-side abort risks dropping
+// replies that Telegram would otherwise deliver successfully under transient
+// upstream slowness.
+export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 // Typing indicator is cosmetic and Telegram only displays it for ~5s.
 // Keep the timeout short so a slow Bot API never delays the Agent start.
 const DEFAULT_CHAT_ACTION_TIMEOUT_MS = 2_000;
