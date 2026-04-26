@@ -129,23 +129,35 @@ export class TelegramChannel implements ChannelGateway {
     // Best-effort: typing indicator is cosmetic. No retries — an expired
     // indicator simply means the user sees no hint, which is strictly better
     // than stalling the Job. Fail-Open on any error.
-    try {
-      const resp = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body,
-        signal: AbortSignal.timeout(this.chatActionTimeoutMs),
-      });
-      if (!resp.ok) {
-        this.logger.warn(LOG_CHAT_ACTION_FAILED_UPSTREAM_STATUS, {
-          status: resp.status,
+    await this.telemetry.runInSpan("telegram.chat_action", async (span) => {
+      span.setAttribute("telegram.chat.id", chatId);
+      span.setAttribute("telegram.chat_action.action", "typing");
+
+      try {
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+          signal: AbortSignal.timeout(this.chatActionTimeoutMs),
+        });
+        span.setAttribute("http.status_code", resp.status);
+        if (!resp.ok) {
+          span.recordException(new Error(`http ${resp.status}`));
+          span.setAttribute("attempt.outcome", "http_error");
+          this.logger.warn(LOG_CHAT_ACTION_FAILED_UPSTREAM_STATUS, {
+            status: resp.status,
+          });
+        } else {
+          span.setAttribute("attempt.outcome", "success");
+        }
+      } catch (err) {
+        span.recordException(err);
+        span.setAttribute("attempt.outcome", "network_error");
+        this.logger.warn(LOG_CHAT_ACTION_FAILED_NETWORK, {
+          err,
         });
       }
-    } catch (err) {
-      this.logger.warn(LOG_CHAT_ACTION_FAILED_NETWORK, {
-        err,
-      });
-    }
+    });
   }
 
   async reply(ref: ConversationRef, text: string): Promise<void> {

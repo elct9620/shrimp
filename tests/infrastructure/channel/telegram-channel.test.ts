@@ -680,4 +680,101 @@ describe("TelegramChannel.indicateProcessing", () => {
       expect.objectContaining({ err: expect.any(Error) }),
     );
   });
+
+  describe("telemetry spans", () => {
+    it("success: 1 span with all 4 attributes and no exceptions", async () => {
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendChatAction`, () => {
+          return HttpResponse.json({ ok: true, result: true });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      await channel.indicateProcessing({
+        channel: TELEGRAM_CHANNEL_NAME,
+        payload: { chatId: 200 },
+      });
+
+      expect(telemetry.calls).toHaveLength(1);
+      expect(telemetry.calls[0].name).toBe("telegram.chat_action");
+      expect(telemetry.calls[0].spanAttributes).toEqual(
+        expect.objectContaining({
+          "telegram.chat.id": 200,
+          "telegram.chat_action.action": "typing",
+          "attempt.outcome": "success",
+          "http.status_code": 200,
+        }),
+      );
+      expect(telemetry.calls[0].exceptions).toHaveLength(0);
+    });
+
+    it("upstream non-2xx: 1 span with http_error outcome, http.status_code 403, and 1 exception", async () => {
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendChatAction`, () => {
+          return new HttpResponse(null, { status: 403 });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      await channel.indicateProcessing({
+        channel: TELEGRAM_CHANNEL_NAME,
+        payload: { chatId: 201 },
+      });
+
+      expect(telemetry.calls).toHaveLength(1);
+      expect(telemetry.calls[0].spanAttributes).toEqual(
+        expect.objectContaining({
+          "attempt.outcome": "http_error",
+          "http.status_code": 403,
+        }),
+      );
+      expect(telemetry.calls[0].exceptions).toHaveLength(1);
+    });
+
+    it("network error: 1 span with network_error outcome, no http.status_code, and 1 exception", async () => {
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendChatAction`, () => {
+          return HttpResponse.error();
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      await channel.indicateProcessing({
+        channel: TELEGRAM_CHANNEL_NAME,
+        payload: { chatId: 202 },
+      });
+
+      expect(telemetry.calls).toHaveLength(1);
+      expect(telemetry.calls[0].spanAttributes).toEqual(
+        expect.objectContaining({ "attempt.outcome": "network_error" }),
+      );
+      expect(telemetry.calls[0].spanAttributes).not.toHaveProperty(
+        "http.status_code",
+      );
+      expect(telemetry.calls[0].exceptions).toHaveLength(1);
+    });
+
+    it("wrong channel: zero spans fired", async () => {
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      await channel.indicateProcessing({
+        channel: "other",
+        payload: { chatId: 203 },
+      });
+
+      expect(telemetry.calls).toHaveLength(0);
+      expect(logger.warn).toHaveBeenCalledWith(
+        LOG_CHAT_ACTION_SKIPPED_WRONG_CHANNEL,
+        expect.objectContaining({ channel: "other" }),
+      );
+    });
+  });
 });
