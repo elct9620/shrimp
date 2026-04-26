@@ -250,6 +250,27 @@ describe("PinoLogger", () => {
       const lines = parsed();
       expect(lines[0]!.chatId).toBe(42);
     });
+
+    it("end-to-end: Node-style fetch Error with ENOTFOUND cause preserves full chain including cause.code", () => {
+      // This is the regression test for the Telegram-instability blind spot:
+      // a fetch wrapper Error with the underlying ENOTFOUND/ECONNRESET attached
+      // as `cause` must survive the pino serializer chain intact so operators
+      // can diagnose DNS or connectivity failures from log output alone.
+      const { logger, parsed } = makeCapture();
+      const inner = new Error("ENOTFOUND telegram.org");
+      (inner as unknown as Record<string, unknown>).code = "ENOTFOUND";
+      const outer = new Error("fetch failed", { cause: inner });
+
+      logger.warn("network failed", { err: outer });
+
+      const lines = parsed();
+      expect(lines).toHaveLength(1);
+      const err = lines[0]!.err as Record<string, unknown>;
+      expect(err.message).toBe("fetch failed");
+      const cause = err.cause as Record<string, unknown>;
+      expect(cause.message).toBe("ENOTFOUND telegram.org");
+      expect(cause.code).toBe("ENOTFOUND");
+    });
   });
 
   describe("OTel trace correlation via mixin", () => {

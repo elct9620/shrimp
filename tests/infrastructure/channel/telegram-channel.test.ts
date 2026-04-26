@@ -728,6 +728,147 @@ describe("TelegramChannel.reply", () => {
       );
       expect(child.exceptions).toHaveLength(1);
     });
+
+    it("give_up_network: 4 spans total; last child has outcome give_up_network and 1 exception", async () => {
+      vi.useFakeTimers();
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          return HttpResponse.error();
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 104 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+      vi.useRealTimers();
+
+      // calls[0] = parent, calls[1..3] = 3 attempt children
+      expect(telemetry.calls).toHaveLength(4);
+      const lastChild = telemetry.calls[3];
+      expect(lastChild.name).toBe("telegram.send_message.attempt");
+      expect(lastChild.spanAttributes).toEqual(
+        expect.objectContaining({ "attempt.outcome": "give_up_network" }),
+      );
+      expect(lastChild.exceptions).toHaveLength(1);
+    });
+
+    it("retry_status (body retry_after): first child has outcome retry_status and telegram.retry_after_ms 1000", async () => {
+      vi.useFakeTimers();
+      let callCount = 0;
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          callCount += 1;
+          if (callCount === 1) {
+            return HttpResponse.json(
+              {
+                ok: false,
+                error_code: 429,
+                description: "Too Many Requests: retry after 1",
+                parameters: { retry_after: 1 },
+              },
+              { status: 429 },
+            );
+          }
+          return HttpResponse.json({ ok: true, result: {} });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 105 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+      vi.useRealTimers();
+
+      // calls[0] = parent, calls[1] = first attempt (retry_status), calls[2] = second (success)
+      expect(telemetry.calls).toHaveLength(3);
+      const firstChild = telemetry.calls[1];
+      expect(firstChild.spanAttributes).toEqual(
+        expect.objectContaining({
+          "attempt.outcome": "retry_status",
+          "telegram.retry_after_ms": 1000,
+        }),
+      );
+      expect(firstChild.exceptions).toHaveLength(0);
+      const secondChild = telemetry.calls[2];
+      expect(secondChild.spanAttributes).toEqual(
+        expect.objectContaining({ "attempt.outcome": "success" }),
+      );
+    });
+
+    it("give_up_status (429 exhausted): last child has outcome give_up_status and no exception", async () => {
+      vi.useFakeTimers();
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          return HttpResponse.json(
+            {
+              ok: false,
+              error_code: 429,
+              description: "Too Many Requests: retry after 1",
+              parameters: { retry_after: 1 },
+            },
+            { status: 429 },
+          );
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      const promise = channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 106 } },
+        "hi",
+      );
+      await vi.runAllTimersAsync();
+      await promise;
+      vi.useRealTimers();
+
+      // calls[0] = parent, calls[1..3] = 3 attempts; last one is give_up_status
+      expect(telemetry.calls).toHaveLength(4);
+      const lastChild = telemetry.calls[3];
+      expect(lastChild.spanAttributes).toEqual(
+        expect.objectContaining({ "attempt.outcome": "give_up_status" }),
+      );
+      // give_up_status does not call recordException (no error object available)
+      expect(lastChild.exceptions).toHaveLength(0);
+    });
+
+    it("http_error (non-retryable 4xx): child span has outcome http_error, http.status_code 400, and 1 exception", async () => {
+      server.use(
+        http.post(`${TELEGRAM_BASE}/sendMessage`, () => {
+          return new HttpResponse(null, { status: 400 });
+        }),
+      );
+      const logger = makeFakeLogger();
+      const telemetry = makeSpyTelemetry();
+      const channel = new TelegramChannel(BOT_TOKEN, logger, telemetry);
+
+      await channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, payload: { chatId: 107 } },
+        "hi",
+      );
+
+      // calls[0] = parent, calls[1] = single attempt child
+      expect(telemetry.calls).toHaveLength(2);
+      const child = telemetry.calls[1];
+      expect(child.spanAttributes).toEqual(
+        expect.objectContaining({
+          "attempt.outcome": "http_error",
+          "http.status_code": 400,
+        }),
+      );
+      expect(child.exceptions).toHaveLength(1);
+    });
   });
 });
 
