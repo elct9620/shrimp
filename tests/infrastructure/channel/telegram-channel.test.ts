@@ -1076,80 +1076,106 @@ describe("TelegramChannel.indicateProcessing", () => {
   });
 });
 
-describe("TelegramChannel dispatcher injection", () => {
-  it("forwards the injected dispatcher to fetch on reply", async () => {
-    server.use(
-      http.post(`${TELEGRAM_BASE}/sendMessage`, () =>
-        HttpResponse.json({ ok: true, result: {} }),
-      ),
-    );
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const dispatcher = { dispatch: vi.fn(), close: vi.fn(), destroy: vi.fn() };
-    const channel = new TelegramChannel(
-      BOT_TOKEN,
-      makeFakeLogger(),
-      makeSpyTelemetry(),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { dispatcher: dispatcher as any },
-    );
+// Integration test against a real local http.Server so the fetch + agent
+// stack is actually exercised end-to-end. A previous attempt mocked the
+// dispatcher and missed UND_ERR_INVALID_ARG (npm undici 8 vs. Node 22's
+// bundled undici 7 dispatch handler protocol mismatch) at deploy time.
+// This test fails fast if the chosen HTTP client breaks the handler contract.
+describe("TelegramChannel against real local http server", () => {
+  it("delivers reply through node-fetch + custom http agent", async () => {
+    const { createServer } = await import("node:http");
+    const { Agent } = await import("node:http");
 
-    await channel.reply(
-      { channel: TELEGRAM_CHANNEL_NAME, chatId: 123, payload: {} },
-      "hi",
-    );
-
-    const init = fetchSpy.mock.calls[0]?.[1] as { dispatcher?: unknown };
-    expect(init?.dispatcher).toBe(dispatcher);
-    fetchSpy.mockRestore();
-  });
-
-  it("forwards the injected dispatcher to fetch on indicateProcessing", async () => {
-    server.use(
-      http.post(`${TELEGRAM_BASE}/sendChatAction`, () =>
-        HttpResponse.json({ ok: true, result: true }),
-      ),
-    );
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const dispatcher = { dispatch: vi.fn(), close: vi.fn(), destroy: vi.fn() };
-    const channel = new TelegramChannel(
-      BOT_TOKEN,
-      makeFakeLogger(),
-      makeSpyTelemetry(),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { dispatcher: dispatcher as any },
-    );
-
-    await channel.indicateProcessing({
-      channel: TELEGRAM_CHANNEL_NAME,
-      chatId: 123,
-      payload: {},
+    const received: { url: string; body: unknown }[] = [];
+    const httpServer = createServer((req, res) => {
+      let raw = "";
+      req.on("data", (chunk) => (raw += chunk));
+      req.on("end", () => {
+        received.push({
+          url: req.url ?? "",
+          body: raw ? JSON.parse(raw) : null,
+        });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, result: {} }));
+      });
     });
+    await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+    const address = httpServer.address();
+    if (!address || typeof address === "string") {
+      throw new Error("server did not bind");
+    }
+    const port = address.port;
+    // http.Agent (not https.Agent) since the test server is plain HTTP.
+    // In production this is https.Agent — same Node.js Agent contract.
+    const agent = new Agent({ keepAlive: false });
 
-    const init = fetchSpy.mock.calls[0]?.[1] as { dispatcher?: unknown };
-    expect(init?.dispatcher).toBe(dispatcher);
-    fetchSpy.mockRestore();
+    try {
+      const channel = new TelegramChannel(
+        BOT_TOKEN,
+        makeFakeLogger(),
+        makeSpyTelemetry(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { agent: agent as any, apiBaseUrl: `http://127.0.0.1:${port}` },
+      );
+
+      await channel.reply(
+        { channel: TELEGRAM_CHANNEL_NAME, chatId: 999, payload: {} },
+        "integration check",
+      );
+
+      expect(received).toHaveLength(1);
+      expect(received[0].url).toBe(`/bot${BOT_TOKEN}/sendMessage`);
+      expect(received[0].body).toEqual({
+        chat_id: 999,
+        text: "integration check",
+      });
+    } finally {
+      agent.destroy();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    }
   });
 
-  it("omits dispatcher option when none injected (default)", async () => {
-    server.use(
-      http.post(`${TELEGRAM_BASE}/sendMessage`, () =>
-        HttpResponse.json({ ok: true, result: {} }),
-      ),
-    );
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const channel = new TelegramChannel(
-      BOT_TOKEN,
-      makeFakeLogger(),
-      makeSpyTelemetry(),
-    );
+  it("delivers indicateProcessing through node-fetch + custom http agent", async () => {
+    const { createServer } = await import("node:http");
+    const { Agent } = await import("node:http");
 
-    await channel.reply(
-      { channel: TELEGRAM_CHANNEL_NAME, chatId: 1, payload: {} },
-      "x",
-    );
+    const received: { url: string }[] = [];
+    const httpServer = createServer((req, res) => {
+      req.on("data", () => {});
+      req.on("end", () => {
+        received.push({ url: req.url ?? "" });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, result: true }));
+      });
+    });
+    await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+    const address = httpServer.address();
+    if (!address || typeof address === "string") {
+      throw new Error("server did not bind");
+    }
+    const port = address.port;
+    const agent = new Agent({ keepAlive: false });
 
-    const init = fetchSpy.mock.calls[0]?.[1] as { dispatcher?: unknown };
-    expect(init?.dispatcher).toBeUndefined();
-    fetchSpy.mockRestore();
+    try {
+      const channel = new TelegramChannel(
+        BOT_TOKEN,
+        makeFakeLogger(),
+        makeSpyTelemetry(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        { agent: agent as any, apiBaseUrl: `http://127.0.0.1:${port}` },
+      );
+
+      await channel.indicateProcessing({
+        channel: TELEGRAM_CHANNEL_NAME,
+        chatId: 5,
+        payload: {},
+      });
+
+      expect(received).toHaveLength(1);
+      expect(received[0].url).toBe(`/bot${BOT_TOKEN}/sendChatAction`);
+    } finally {
+      agent.destroy();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    }
   });
 });

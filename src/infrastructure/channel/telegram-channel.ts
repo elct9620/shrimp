@@ -1,4 +1,7 @@
-import type { Dispatcher } from "undici";
+import type { Agent as HttpsAgent } from "node:https";
+import nodeFetch, {
+  type RequestInit as NodeFetchRequestInit,
+} from "node-fetch";
 import type { ChannelGateway } from "../../use-cases/ports/channel-gateway";
 import type { ConversationRef } from "../../entities/conversation-ref";
 import type { LoggerPort } from "../../use-cases/ports/logger";
@@ -88,8 +91,11 @@ const DEFAULT_CHAT_ACTION_TIMEOUT_MS = 2_000;
 export type TelegramChannelOptions = {
   requestTimeoutMs?: number;
   chatActionTimeoutMs?: number;
-  dispatcher?: Dispatcher;
+  agent?: HttpsAgent;
+  apiBaseUrl?: string;
 };
+
+const DEFAULT_API_BASE_URL = "https://api.telegram.org";
 
 function isRetryableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status < 600);
@@ -138,7 +144,8 @@ function retryDelayMs(
 export class TelegramChannel implements ChannelGateway {
   private readonly requestTimeoutMs: number;
   private readonly chatActionTimeoutMs: number;
-  private readonly dispatcher: Dispatcher | undefined;
+  private readonly agent: HttpsAgent | undefined;
+  private readonly apiBaseUrl: string;
 
   constructor(
     private readonly botToken: string,
@@ -150,26 +157,26 @@ export class TelegramChannel implements ChannelGateway {
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.chatActionTimeoutMs =
       options.chatActionTimeoutMs ?? DEFAULT_CHAT_ACTION_TIMEOUT_MS;
-    this.dispatcher = options.dispatcher;
+    this.agent = options.agent;
+    this.apiBaseUrl = options.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+  }
+
+  private endpoint(method: string): string {
+    return `${this.apiBaseUrl}/bot${this.botToken}/${method}`;
   }
 
   private fetchInit(
     method: "POST",
     body: string,
     timeoutMs: number,
-  ): RequestInit {
-    const init: RequestInit = {
+  ): NodeFetchRequestInit {
+    const init: NodeFetchRequestInit = {
       method,
       headers: { "content-type": "application/json" },
       body,
       signal: AbortSignal.timeout(timeoutMs),
     };
-    // Node's bundled undici types (`undici-types`) and the explicit `undici`
-    // npm package ship structurally identical but nominally distinct
-    // `Dispatcher` types. Type-erase at the fetch boundary; runtime is fine.
-    if (this.dispatcher) {
-      (init as { dispatcher?: unknown }).dispatcher = this.dispatcher;
-    }
+    if (this.agent) init.agent = this.agent;
     return init;
   }
 
@@ -182,7 +189,7 @@ export class TelegramChannel implements ChannelGateway {
       return;
     }
     const chatId = ref.chatId!;
-    const url = `https://api.telegram.org/bot${this.botToken}/sendChatAction`;
+    const url = this.endpoint("sendChatAction");
     const body = JSON.stringify({ chat_id: chatId, action: "typing" });
 
     // Best-effort: typing indicator is cosmetic. No retries — an expired
@@ -193,7 +200,7 @@ export class TelegramChannel implements ChannelGateway {
       span.setAttribute("telegram.chat_action.action", "typing");
 
       try {
-        const resp = await fetch(
+        const resp = await nodeFetch(
           url,
           this.fetchInit("POST", body, this.chatActionTimeoutMs),
         );
@@ -229,7 +236,7 @@ export class TelegramChannel implements ChannelGateway {
       return;
     }
     const chatId = ref.chatId!;
-    const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
+    const url = this.endpoint("sendMessage");
     const chunks = chunkText(text, TELEGRAM_MAX_MESSAGE_LENGTH);
     const totalChunks = chunks.length;
 
@@ -303,9 +310,9 @@ export class TelegramChannel implements ChannelGateway {
           // Network-level attempt — transient socket failures and timeout land
           // in the catch block. AbortSignal.timeout bounds each attempt so a
           // hung request cannot stall the Job Queue.
-          let resp: Response;
+          let resp: Awaited<ReturnType<typeof nodeFetch>>;
           try {
-            resp = await fetch(
+            resp = await nodeFetch(
               url,
               this.fetchInit("POST", body, this.requestTimeoutMs),
             );
