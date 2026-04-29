@@ -10,7 +10,10 @@ import {
   type McpConfig,
 } from "./infrastructure/config/mcp-config";
 import { createTelemetry } from "./infrastructure/telemetry/telemetry-factory";
-import { TodoistApi } from "@doist/todoist-sdk";
+import { TodoistApi, type CustomFetch } from "@doist/todoist-sdk";
+import nodeFetch, {
+  type RequestInit as NodeFetchRequestInit,
+} from "node-fetch";
 import { TodoistBoardRepository } from "./infrastructure/todoist/todoist-board-repository";
 import { AiSdkShrimpAgent } from "./infrastructure/ai/ai-sdk-shrimp-agent";
 import { deriveGenAiProviderName } from "./infrastructure/ai/provider-name";
@@ -40,6 +43,27 @@ import type { Tracer } from "@opentelemetry/api";
 import type { ToolDescription } from "./use-cases/ports/tool-description";
 
 // ---------------------------------------------------------------------------
+// node-fetch adapter — satisfies the SDK's CustomFetch contract.
+// node-fetch's Response.headers is a Headers object, not Record<string,string>,
+// so we normalise it here and avoid loading the undici dispatcher entirely.
+// ---------------------------------------------------------------------------
+const todoistFetch: CustomFetch = async (url, options) => {
+  const res = await nodeFetch(url, options as NodeFetchRequestInit);
+  const headers: Record<string, string> = {};
+  res.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  return {
+    ok: res.ok,
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+    text: () => res.text(),
+    json: () => res.json() as Promise<unknown>,
+  };
+};
+
+// ---------------------------------------------------------------------------
 // Module-level factory registrations (sync — lazy until resolved)
 // Note: FactoryProvider does not support Lifecycle.Singleton in tsyringe;
 // factories are called each resolve. In production, each token is resolved
@@ -52,7 +76,7 @@ container.register(TOKENS.BoardRepository, {
     const env = c.resolve<EnvConfig>(TOKENS.EnvConfig);
     const logger = c.resolve<LoggerPort>(TOKENS.Logger);
     return new TodoistBoardRepository(
-      new TodoistApi(env.todoistApiToken),
+      new TodoistApi(env.todoistApiToken, { customFetch: todoistFetch }),
       env.todoistProjectId,
       logger.child({ module: "TodoistBoardRepository" }),
     );
