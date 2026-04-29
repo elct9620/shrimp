@@ -1075,3 +1075,81 @@ describe("TelegramChannel.indicateProcessing", () => {
     });
   });
 });
+
+describe("TelegramChannel dispatcher injection", () => {
+  it("forwards the injected dispatcher to fetch on reply", async () => {
+    server.use(
+      http.post(`${TELEGRAM_BASE}/sendMessage`, () =>
+        HttpResponse.json({ ok: true, result: {} }),
+      ),
+    );
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const dispatcher = { dispatch: vi.fn(), close: vi.fn(), destroy: vi.fn() };
+    const channel = new TelegramChannel(
+      BOT_TOKEN,
+      makeFakeLogger(),
+      makeSpyTelemetry(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { dispatcher: dispatcher as any },
+    );
+
+    await channel.reply(
+      { channel: TELEGRAM_CHANNEL_NAME, chatId: 123, payload: {} },
+      "hi",
+    );
+
+    const init = fetchSpy.mock.calls[0]?.[1] as { dispatcher?: unknown };
+    expect(init?.dispatcher).toBe(dispatcher);
+    fetchSpy.mockRestore();
+  });
+
+  it("forwards the injected dispatcher to fetch on indicateProcessing", async () => {
+    server.use(
+      http.post(`${TELEGRAM_BASE}/sendChatAction`, () =>
+        HttpResponse.json({ ok: true, result: true }),
+      ),
+    );
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const dispatcher = { dispatch: vi.fn(), close: vi.fn(), destroy: vi.fn() };
+    const channel = new TelegramChannel(
+      BOT_TOKEN,
+      makeFakeLogger(),
+      makeSpyTelemetry(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { dispatcher: dispatcher as any },
+    );
+
+    await channel.indicateProcessing({
+      channel: TELEGRAM_CHANNEL_NAME,
+      chatId: 123,
+      payload: {},
+    });
+
+    const init = fetchSpy.mock.calls[0]?.[1] as { dispatcher?: unknown };
+    expect(init?.dispatcher).toBe(dispatcher);
+    fetchSpy.mockRestore();
+  });
+
+  it("omits dispatcher option when none injected (default)", async () => {
+    server.use(
+      http.post(`${TELEGRAM_BASE}/sendMessage`, () =>
+        HttpResponse.json({ ok: true, result: {} }),
+      ),
+    );
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const channel = new TelegramChannel(
+      BOT_TOKEN,
+      makeFakeLogger(),
+      makeSpyTelemetry(),
+    );
+
+    await channel.reply(
+      { channel: TELEGRAM_CHANNEL_NAME, chatId: 1, payload: {} },
+      "x",
+    );
+
+    const init = fetchSpy.mock.calls[0]?.[1] as { dispatcher?: unknown };
+    expect(init?.dispatcher).toBeUndefined();
+    fetchSpy.mockRestore();
+  });
+});

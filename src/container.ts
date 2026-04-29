@@ -25,6 +25,7 @@ import { ToolProviderFactoryImpl } from "./adapters/tools/tool-provider-factory-
 import { HeartbeatJob } from "./use-cases/heartbeat-job";
 import { NoopChannelGateway } from "./infrastructure/channel/noop-channel-gateway";
 import { TelegramChannel } from "./infrastructure/channel/telegram-channel";
+import { createTelegramDispatcher } from "./infrastructure/channel/telegram-dispatcher";
 import { JsonlSessionRepository } from "./infrastructure/session/jsonl-session-repository";
 import { FileSkillRepository } from "./infrastructure/skill/file-skill-repository";
 import { FileUserAgents } from "./infrastructure/prompt/file-user-agents";
@@ -159,12 +160,14 @@ export async function bootstrap(): Promise<void> {
   // 3b. ChannelGateway — TelegramChannel when enabled, NoopChannelGateway otherwise.
   // Registered before step 8 (ToolProviderFactory) so BuiltInToolFactory can resolve it.
   if (env.channelsEnabled) {
+    const telegramDispatcher = createTelegramDispatcher();
     container.register(TOKENS.ChannelGateway, {
       useFactory: (c) =>
         new TelegramChannel(
           env.telegramBotToken!,
           logger.child({ module: "TelegramChannel" }),
           c.resolve<TelemetryPort>(TOKENS.Telemetry),
+          { dispatcher: telegramDispatcher },
         ),
     });
 

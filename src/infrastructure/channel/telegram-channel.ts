@@ -1,3 +1,4 @@
+import type { Dispatcher } from "undici";
 import type { ChannelGateway } from "../../use-cases/ports/channel-gateway";
 import type { ConversationRef } from "../../entities/conversation-ref";
 import type { LoggerPort } from "../../use-cases/ports/logger";
@@ -87,6 +88,7 @@ const DEFAULT_CHAT_ACTION_TIMEOUT_MS = 2_000;
 export type TelegramChannelOptions = {
   requestTimeoutMs?: number;
   chatActionTimeoutMs?: number;
+  dispatcher?: Dispatcher;
 };
 
 function isRetryableStatus(status: number): boolean {
@@ -136,6 +138,7 @@ function retryDelayMs(
 export class TelegramChannel implements ChannelGateway {
   private readonly requestTimeoutMs: number;
   private readonly chatActionTimeoutMs: number;
+  private readonly dispatcher: Dispatcher | undefined;
 
   constructor(
     private readonly botToken: string,
@@ -147,6 +150,27 @@ export class TelegramChannel implements ChannelGateway {
       options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.chatActionTimeoutMs =
       options.chatActionTimeoutMs ?? DEFAULT_CHAT_ACTION_TIMEOUT_MS;
+    this.dispatcher = options.dispatcher;
+  }
+
+  private fetchInit(
+    method: "POST",
+    body: string,
+    timeoutMs: number,
+  ): RequestInit {
+    const init: RequestInit = {
+      method,
+      headers: { "content-type": "application/json" },
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    };
+    // Node's bundled undici types (`undici-types`) and the explicit `undici`
+    // npm package ship structurally identical but nominally distinct
+    // `Dispatcher` types. Type-erase at the fetch boundary; runtime is fine.
+    if (this.dispatcher) {
+      (init as { dispatcher?: unknown }).dispatcher = this.dispatcher;
+    }
+    return init;
   }
 
   async indicateProcessing(ref: ConversationRef): Promise<void> {
@@ -169,12 +193,10 @@ export class TelegramChannel implements ChannelGateway {
       span.setAttribute("telegram.chat_action.action", "typing");
 
       try {
-        const resp = await fetch(url, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body,
-          signal: AbortSignal.timeout(this.chatActionTimeoutMs),
-        });
+        const resp = await fetch(
+          url,
+          this.fetchInit("POST", body, this.chatActionTimeoutMs),
+        );
         span.setAttribute("http.status_code", resp.status);
         if (!resp.ok) {
           span.recordException(new Error(`http ${resp.status}`));
@@ -283,12 +305,10 @@ export class TelegramChannel implements ChannelGateway {
           // hung request cannot stall the Job Queue.
           let resp: Response;
           try {
-            resp = await fetch(url, {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body,
-              signal: AbortSignal.timeout(this.requestTimeoutMs),
-            });
+            resp = await fetch(
+              url,
+              this.fetchInit("POST", body, this.requestTimeoutMs),
+            );
           } catch (err) {
             const isLastAttempt = attempt === MAX_ATTEMPTS - 1;
             span.recordException(err);
