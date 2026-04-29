@@ -4,18 +4,24 @@ export type ErrorContext = {
   name: string;
   message: string;
   code?: string | number;
+  errno?: number;
+  syscall?: string;
+  address?: string;
+  port?: number;
   cause?: ErrorContext;
+  errors?: ErrorContext[];
 };
 
 /**
  * Serialize an unknown error value into a plain object that preserves the
- * full `err.cause` chain. Safe to call with any input — it never throws.
+ * full `err.cause` chain plus `AggregateError.errors[]`. Safe to call with
+ * any input — it never throws.
  *
  * Recursion is capped at depth 5 to handle circular-cause references.
  *
- * Note: AggregateError's `errors[]` array is intentionally not serialized;
- * `message` carries the summary string, which is sufficient for log context.
- * Callers that need the individual sub-errors should handle them separately.
+ * AggregateError sub-errors are expanded because undici's fetch failures
+ * surface real diagnostics (per-IP `syscall`/`address`/`port`/`code`) only
+ * inside `.errors[]`; the wrapper's `message` is empty.
  */
 export function errorContext(err: unknown, depth = 0): ErrorContext {
   if (!(err instanceof Error)) {
@@ -27,10 +33,20 @@ export function errorContext(err: unknown, depth = 0): ErrorContext {
     message: err.message,
   };
 
-  const code = (err as { code?: unknown }).code;
-  if (typeof code === "string" || typeof code === "number") {
-    result.code = code;
+  const raw = err as {
+    code?: unknown;
+    errno?: unknown;
+    syscall?: unknown;
+    address?: unknown;
+    port?: unknown;
+  };
+  if (typeof raw.code === "string" || typeof raw.code === "number") {
+    result.code = raw.code;
   }
+  if (typeof raw.errno === "number") result.errno = raw.errno;
+  if (typeof raw.syscall === "string") result.syscall = raw.syscall;
+  if (typeof raw.address === "string") result.address = raw.address;
+  if (typeof raw.port === "number") result.port = raw.port;
 
   if (depth < MAX_DEPTH - 1) {
     let cause: unknown;
@@ -44,6 +60,11 @@ export function errorContext(err: unknown, depth = 0): ErrorContext {
 
     if (cause !== undefined) {
       result.cause = errorContext(cause, depth + 1);
+    }
+
+    const errors = (err as { errors?: unknown }).errors;
+    if (Array.isArray(errors)) {
+      result.errors = errors.map((e) => errorContext(e, depth + 1));
     }
   }
 

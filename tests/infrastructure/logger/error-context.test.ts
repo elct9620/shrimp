@@ -143,6 +143,118 @@ describe("errorContext", () => {
     );
   });
 
+  describe("AggregateError", () => {
+    it("expands errors[] with each sub-error name, message, and code", () => {
+      // Arrange
+      const sub1 = new Error("ipv6 connect failed") as Error & {
+        code: string;
+      };
+      sub1.code = "ETIMEDOUT";
+      const sub2 = new Error("ipv4 connect failed") as Error & {
+        code: string;
+      };
+      sub2.code = "ECONNREFUSED";
+      const agg = new AggregateError([sub1, sub2], "");
+
+      // Act
+      const result = errorContext(agg);
+
+      // Assert
+      expect(result.name).toBe("AggregateError");
+      expect(result.errors).toHaveLength(2);
+      expect(result.errors?.[0]).toMatchObject({
+        name: "Error",
+        message: "ipv6 connect failed",
+        code: "ETIMEDOUT",
+      });
+      expect(result.errors?.[1]).toMatchObject({
+        name: "Error",
+        message: "ipv4 connect failed",
+        code: "ECONNREFUSED",
+      });
+    });
+
+    it("expands AggregateError nested under cause (undici fetch shape)", () => {
+      // Arrange — mirror the real-world undici failure shape:
+      // TypeError("fetch failed", cause: AggregateError([connect ETIMEDOUT 1.2.3.4:443, ...]))
+      const sub1 = Object.assign(new Error("connect ETIMEDOUT"), {
+        code: "ETIMEDOUT",
+        syscall: "connect",
+        address: "149.154.167.220",
+        port: 443,
+      });
+      const agg = new AggregateError([sub1], "");
+      const wrapper = new TypeError("fetch failed", { cause: agg });
+
+      // Act
+      const result = errorContext(wrapper);
+
+      // Assert
+      expect(result.cause?.name).toBe("AggregateError");
+      expect(result.cause?.errors?.[0]).toMatchObject({
+        message: "connect ETIMEDOUT",
+        code: "ETIMEDOUT",
+        syscall: "connect",
+        address: "149.154.167.220",
+        port: 443,
+      });
+    });
+
+    it("respects depth cap on errors[] entries", () => {
+      // Arrange — deeply nested cause inside an aggregated sub-error
+      let deepest: Error = new Error("level 6");
+      for (let i = 5; i >= 1; i--) {
+        deepest = new Error(`level ${i}`, { cause: deepest });
+      }
+      const agg = new AggregateError([deepest], "");
+      const top = new Error("top", { cause: agg });
+
+      // Act & Assert — must not blow up; depth cap still applies inside errors[]
+      expect(() => errorContext(top)).not.toThrow();
+    });
+  });
+
+  describe("system error fields", () => {
+    it("captures syscall, address, port, errno when present", () => {
+      // Arrange — Node-style system error
+      const err = Object.assign(new Error("connect ETIMEDOUT"), {
+        code: "ETIMEDOUT",
+        errno: -110,
+        syscall: "connect",
+        address: "2001:db8::1",
+        port: 443,
+      });
+
+      // Act
+      const result = errorContext(err);
+
+      // Assert
+      expect(result).toMatchObject({
+        name: "Error",
+        message: "connect ETIMEDOUT",
+        code: "ETIMEDOUT",
+        errno: -110,
+        syscall: "connect",
+        address: "2001:db8::1",
+        port: 443,
+      });
+    });
+
+    it("omits system-error fields when absent", () => {
+      // Arrange
+      const err = new Error("plain error");
+
+      // Act
+      const result = errorContext(err);
+
+      // Assert
+      expect(result).not.toHaveProperty("syscall");
+      expect(result).not.toHaveProperty("address");
+      expect(result).not.toHaveProperty("port");
+      expect(result).not.toHaveProperty("errno");
+    });
+  });
+
   describe("cause getter throws", () => {
     it("does not propagate the getter error and treats cause as absent", () => {
       // Arrange — simulate undici-style lazy getter that throws
