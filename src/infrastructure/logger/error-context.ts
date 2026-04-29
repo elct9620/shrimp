@@ -19,9 +19,10 @@ export type ErrorContext = {
  *
  * Recursion is capped at depth 5 to handle circular-cause references.
  *
- * AggregateError sub-errors are expanded because undici's fetch failures
- * surface real diagnostics (per-IP `syscall`/`address`/`port`/`code`) only
- * inside `.errors[]`; the wrapper's `message` is empty.
+ * AggregateError sub-errors are expanded because fetch failures (e.g. from
+ * connection-level errors) surface real diagnostics (per-IP
+ * `syscall`/`address`/`port`/`code`) only inside `.errors[]`; the wrapper's
+ * `message` is empty.
  */
 export function errorContext(err: unknown, depth = 0): ErrorContext {
   if (!(err instanceof Error)) {
@@ -53,8 +54,8 @@ export function errorContext(err: unknown, depth = 0): ErrorContext {
     try {
       cause = err.cause;
     } catch {
-      // Some environments (e.g. undici) construct causes lazily via getters
-      // that may throw. Treat a throwing getter as "no cause".
+      // Some fetch implementations construct causes lazily via getters that
+      // may throw. Treat a throwing getter as "no cause".
       cause = undefined;
     }
 
