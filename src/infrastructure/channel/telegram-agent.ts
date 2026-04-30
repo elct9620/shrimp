@@ -18,10 +18,17 @@ import https from "node:https";
  * Telegram outbound traffic is low frequency (~1–N small POSTs per user
  * message), so the handshake cost is negligible vs. delivery reliability.
  *
- * Implemented on Node's `https.Agent` rather than an undici `Dispatcher`
- * because node-fetch routes through `https.request` and accepts a
- * Node-native agent without dispatch-protocol versioning concerns.
+ * Happy-eyeballs (`autoSelectFamily`) is forced on with a 250ms attempt
+ * window so a black-holed IPv6 path falls back to IPv4 quickly rather
+ * than burning the request's full timeout budget. `api.telegram.org`
+ * publishes a single A and a single AAAA record, so without fast-fallback
+ * a broken IPv6 route in the container's network would block every call
+ * for the full Linux SYN-retry default.
  */
 export function createTelegramAgent(): https.Agent {
-  return new https.Agent({ keepAlive: false });
+  return new https.Agent({
+    keepAlive: false,
+    autoSelectFamily: true,
+    autoSelectFamilyAttemptTimeout: 250,
+  });
 }

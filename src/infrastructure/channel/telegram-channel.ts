@@ -85,8 +85,11 @@ const RETRY_AFTER_CAP_MS = 10_000;
 // upstream slowness.
 export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 // Typing indicator is cosmetic and Telegram only displays it for ~5s.
-// Keep the timeout short so a slow Bot API never delays the Agent start.
-const DEFAULT_CHAT_ACTION_TIMEOUT_MS = 2_000;
+// 5s gives a cold TCP+TLS handshake (Asia → Telegram Amsterdam DC, ~250ms
+// RTT × ≥2 round-trips) realistic headroom under transient packet loss
+// while still being short enough that a stuck Bot API never delays the
+// Agent start meaningfully.
+const DEFAULT_CHAT_ACTION_TIMEOUT_MS = 5_000;
 
 export type TelegramChannelOptions = {
   requestTimeoutMs?: number;
