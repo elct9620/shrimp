@@ -837,14 +837,14 @@ SummarizePort uses AI SDK's provider interface with OpenAI-compatible convention
 
 ### Prompt Caching
 
-At the AI-provider boundary, Shrimp emits the `x-session-affinity` HTTP header on every request carrying a stable identifier for the current Agent invocation. Providers that support prefix-cache routing by this header — Cloudflare Workers AI prompt caching is the motivating example — achieve higher prefix-cache hit rates; providers that do not recognize the header ignore it harmlessly.
+At the AI-provider boundary, Shrimp emits the `x-session-affinity` HTTP header on every Shrimp Agent request carrying a stable identifier for the current Agent invocation. Providers that support prefix-cache routing by this header — Cloudflare Workers AI prompt caching is the motivating example — achieve higher prefix-cache hit rates; providers that do not recognize the header ignore it harmlessly.
 
 Both Job kinds emit the header:
 
-| Job kind     | Identifier carried in `x-session-affinity`                                                                                                                                                                                                                                   |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ChannelJob   | The **Session ID** of the current Session. Affinity is stable across the multiple AI round-trips within one Agent invocation and also extends across conversation turns (the Session persists between ChannelJobs).                                                          |
-| HeartbeatJob | A stable per-invocation **Job identifier**. Affinity is stable across the multiple AI round-trips within one Agent invocation — all of which share the same system prompt, tool definitions, and initial user prompt, making them the highest-frequency prefix-cache target. |
+| Job kind     | Identifier carried in `x-session-affinity`                                                                                                                                                                                                                           |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ChannelJob   | The **Session ID** of the current Session. Affinity is stable across the multiple AI round-trips within one Agent invocation and also extends across conversation turns (the Session persists between ChannelJobs).                                                  |
+| HeartbeatJob | A stable per-invocation **Job ID**. Affinity is stable across the multiple AI round-trips within one Agent invocation — all of which share the same system prompt, tool definitions, and initial user prompt, making them the highest-frequency prefix-cache target. |
 
 The header name `x-session-affinity` is an infrastructure-internal constant tied to the provider protocol; it is not operator-configurable and requires no environment variable.
 
