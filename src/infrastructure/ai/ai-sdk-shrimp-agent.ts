@@ -38,6 +38,11 @@ const ATTR_GEN_AI_INPUT_MESSAGES = "gen_ai.input.messages";
 const ATTR_GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages";
 const ATTR_ERROR_TYPE = "error.type";
 
+// HTTP header used to signal session affinity to the AI provider load balancer.
+// ChannelJob sends the session ID; HeartbeatJob sends the job ID.
+// MUST NOT be sent by SummarizePort (see SPEC.md §Prompt Caching).
+export const SESSION_AFFINITY_HEADER = "x-session-affinity";
+
 // Stable type-level identifier for the Shrimp Agent implementation.
 // Per OTel gen_ai semconv, gen_ai.agent.id is a stable unique identifier for
 // the agent (analogous to an OpenAI assistant ID for custom agents). We use a
@@ -90,6 +95,7 @@ export class AiSdkShrimpAgent implements ShrimpAgent {
       instructions: input.systemPrompt,
       stopWhen: stepCountIs(input.maxSteps),
       providerOptions: this.providerOptions,
+      headers: { [SESSION_AFFINITY_HEADER]: input.sessionId ?? input.jobId },
       experimental_telemetry: {
         isEnabled: true,
         functionId: "shrimp.job",
