@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
 import { AiSdkSummarizePort } from "../../../src/infrastructure/ai/ai-sdk-summarize-port";
+import { SESSION_AFFINITY_HEADER } from "../../../src/infrastructure/ai/ai-sdk-shrimp-agent";
 import type { SummarizeInput } from "../../../src/use-cases/ports/summarize";
 import { makeFakeLogger } from "../../mocks/fake-logger";
 
@@ -201,6 +202,21 @@ describe("AiSdkSummarizePort.summarize", () => {
       const result = await port.summarize(baseInput);
 
       expect(result).toBe("");
+    });
+  });
+
+  describe("prompt caching independence", () => {
+    it("should NOT include x-session-affinity header in the doGenerate call", async () => {
+      // SummarizePort is independent of the Shrimp Agent — it MUST NOT send the
+      // session-affinity header that is reserved for Shrimp Agent requests only
+      // (see SPEC.md §Prompt Caching / §Independence from Shrimp Agent).
+      const model = makeModel();
+      const port = makePort(model);
+
+      await port.summarize(baseInput);
+
+      const callOptions = model.doGenerateCalls[0];
+      expect(callOptions.headers?.[SESSION_AFFINITY_HEADER]).toBeUndefined();
     });
   });
 });
