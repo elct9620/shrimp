@@ -888,6 +888,25 @@ describe("AiSdkShrimpAgent.run", () => {
         expect(call.headers![SESSION_AFFINITY_HEADER]).toBe("sess-abc");
       }
     });
+
+    it("should send x-session-affinity equal to jobId when sessionId is absent (HeartbeatJob fallback)", async () => {
+      // HeartbeatJob shape: sessionId is NOT set. The header must fall back to jobId.
+      // Using distinct values ("job-xyz" vs no sessionId) ensures a swapped ?? operand
+      // regression is caught — if the code used sessionId ?? jobId but sessionId was
+      // accidentally defined, or vice versa, the assertion would fail.
+      const model = makeModel("stop");
+      const agent = makeAgent(model, makeFakeLogger());
+
+      await agent.run({
+        ...baseInput,
+        jobId: "job-xyz",
+        sessionId: undefined,
+      });
+
+      const call = model.doGenerateCalls[0];
+      expect(call.headers).toBeDefined();
+      expect(call.headers![SESSION_AFFINITY_HEADER]).toBe("job-xyz");
+    });
   });
 
   describe("logging", () => {
