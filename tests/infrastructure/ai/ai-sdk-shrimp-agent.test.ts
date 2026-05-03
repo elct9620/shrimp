@@ -9,7 +9,10 @@ import {
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import { SpanStatusCode, type Tracer } from "@opentelemetry/api";
-import { AiSdkShrimpAgent } from "../../../src/infrastructure/ai/ai-sdk-shrimp-agent";
+import {
+  AiSdkShrimpAgent,
+  SESSION_AFFINITY_HEADER,
+} from "../../../src/infrastructure/ai/ai-sdk-shrimp-agent";
 import type { JobInput } from "../../../src/use-cases/ports/shrimp-agent";
 import type { LoggerPort } from "../../../src/use-cases/ports/logger";
 import { makeFakeLogger } from "../../mocks/fake-logger";
@@ -838,6 +841,52 @@ describe("AiSdkShrimpAgent.run", () => {
       const result = await agent.run(baseInput);
 
       expect(result.promptTokens).toBeUndefined();
+    });
+  });
+
+  describe("session affinity header", () => {
+    it("should send x-session-affinity equal to sessionId on every doGenerate call for a ChannelJob (multi-step)", async () => {
+      // ChannelJob shape: sessionId is set. The header must equal sessionId, not jobId,
+      // and must be present on ALL doGenerate calls across ≥2 round-trips.
+      const multiStepModel = makeMultiStepModel([
+        {
+          content: [
+            {
+              type: "tool-call",
+              toolCallId: "call-1",
+              toolName: "ping",
+              input: "{}",
+            },
+          ],
+          finishReason: "tool-calls",
+        },
+        {
+          content: [{ type: "text", text: "done" }],
+          finishReason: "stop",
+        },
+      ]);
+
+      const pingTool = tool({
+        description: "ping",
+        inputSchema: z.object({}),
+        execute: async () => "pong",
+      });
+
+      const agent = makeAgent(multiStepModel, makeFakeLogger());
+      await agent.run({
+        ...baseInput,
+        jobId: "job-xyz",
+        sessionId: "sess-abc",
+        tools: { ping: pingTool },
+        maxSteps: 3,
+      });
+
+      const calls = multiStepModel.doGenerateCalls;
+      expect(calls.length).toBeGreaterThanOrEqual(2);
+      for (const call of calls) {
+        expect(call.headers).toBeDefined();
+        expect(call.headers![SESSION_AFFINITY_HEADER]).toBe("sess-abc");
+      }
     });
   });
 
